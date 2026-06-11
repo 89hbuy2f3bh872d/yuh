@@ -1,39 +1,38 @@
-function parseAmount(str, balance) {
-  if (str === "all")  return balance;
-  if (str === "half") return Math.floor(balance / 2);
-  const m = str.match(/^([\d.]+)([km]?)$/i);
-  if (!m) return NaN;
-  let n = parseFloat(m[1]);
-  if (m[2].toLowerCase() === "k") n *= 1_000;
-  if (m[2].toLowerCase() === "m") n *= 1_000_000;
-  return Math.floor(n);
-}
-
 export default {
   name: "pay",
   aliases: ["give", "transfer"],
-  description: "Send Flux to another user. Usage: !pay @user <amount|all|half|1k>",
-  async execute({ message, args, db, embed }) {
-    const target = message.mentions?.users?.first?.() ?? message.mentions?.[0];
-    if (!target) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Mention a user to pay.")] });
-    if (target.id === message.author.id) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ You can't pay yourself.")] });
+  description: "Send FluxCoins to another user. `&pay @user <amount>`",
+  async execute({ message, args, db, embed, prefix }) {
+    const target = message.mentions?.users?.first();
+    const uid = message.author.id;
 
-    const sender = await db.getUser(message.author.id);
-    const rawAmt = args[1] ?? args[0];
-    const amount = parseAmount(rawAmt, sender.balance);
+    if (!target || target.bot)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ Usage: \`${prefix}pay @user <amount>\``)] });
+    if (target.id === uid)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ You can't pay yourself.")] });
 
-    if (!rawAmt || isNaN(amount) || amount <= 0)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid amount (e.g. `500`, `1k`, `all`, `half`).")] });
-    if (amount > sender.balance)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ You only have **${sender.balance.toLocaleString()} Flux**.`)] });
+    const rawAmt = args[1]?.toLowerCase();
+    const user = await db.getUser(uid);
+    let amount;
+    if (rawAmt === "all")  amount = user.balance;
+    else if (rawAmt === "half") amount = Math.floor(user.balance / 2);
+    else {
+      const m = rawAmt?.match(/^([\d.]+)(k|m)?$/);
+      if (!m) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ Usage: \`${prefix}pay @user <amount|half|all>\``)] });
+      amount = Math.floor(parseFloat(m[1]) * (m[2] === "m" ? 1_000_000 : m[2] === "k" ? 1_000 : 1));
+    }
 
-    const ok = await db.transfer(message.author.id, target.id, amount);
-    if (!ok) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Transfer failed.")] });
+    if (!amount || amount <= 0)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Amount must be greater than 0.")] });
 
-    message.channel.send({ embeds: [
-      embed(0x3498db)
+    const ok = await db.transfer(uid, target.id, amount);
+    if (!ok)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient FluxCoins.")] });
+
+    return message.channel.send({ embeds: [
+      embed(0x2ecc71)
         .setTitle("💸 Transfer Complete")
-        .setDescription(`**${message.author.username}** → **${target.username}**: **${amount.toLocaleString()} Flux**`)
+        .setDescription(`**${message.author.username}** sent **${amount.toLocaleString()} FC** to **${target.username}**.`)
     ]});
   },
 };

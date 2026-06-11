@@ -1,62 +1,55 @@
 import { HouseEdge } from "../src/HouseEdge.mjs";
 
-const SYMBOLS = ["🍒", "🍋", "🍊", "🍇", "💎", "7️⃣"];
-const WEIGHTS  = [30,   25,   20,   15,   7,   3];
-const TOTAL    = WEIGHTS.reduce((a, b) => a + b, 0);
+const REELS = ["🍒","🍋","🍊","🍇","💎","7️⃣","🔔","⭐"];
+const WEIGHTS = [30, 25, 20, 15, 5, 3, 1, 1]; // sum = 100
+const PAYOUTS = { "🍒":1.5, "🍋":1.8, "🍊":2.2, "🍇":2.5, "💎":5, "7️⃣":8, "🔔":6, "⭐":4 };
 
 function spin() {
-  let r = Math.random() * TOTAL;
-  for (let i = 0; i < SYMBOLS.length; i++) {
+  const total = WEIGHTS.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < REELS.length; i++) {
     r -= WEIGHTS[i];
-    if (r <= 0) return SYMBOLS[i];
+    if (r <= 0) return REELS[i];
   }
-  return SYMBOLS[0];
+  return REELS[0];
 }
-
-const PAYOUTS = { "7️⃣": 10, "💎": 7, "🍇": 4, "🍊": 3, "🍋": 2, "🍒": 1.5 };
-const RTP = 0.92;
 
 export default {
   name: "slots",
-  description: "Spin the slots. !slots <bet>",
-  async execute({ message, args, db, embed }) {
-    const user = await db.getUser(message.author.id);
-    const bet  = parseInt(args[0]);
-    if (isNaN(bet) || bet <= 0)  return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid bet.")] });
-    if (bet > user.balance)      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient balance.")] });
-    if (bet > 1_000_000)         return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **1,000,000 Flux**.")] });
+  aliases: ["sl", "slot"],
+  description: "Spin the slots. `&slots <bet>`",
+  async execute({ message, args, db, embed, prefix }) {
+    const uid = message.author.id;
+    const bet = parseInt(args[0]);
+    const user = await db.getUser(uid);
+
+    if (isNaN(bet) || bet <= 0)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ Usage: \`${prefix}slots <bet>\``)] });
+    if (bet > user.balance)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient FluxCoins.")] });
+    if (bet > 1_000_000)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **1,000,000 FC**.")] });
 
     const reels = [spin(), spin(), spin()];
     const display = reels.join(" | ");
+    const [a, b, c] = reels;
 
-    let won = false;
-    let payout = 0;
-
-    if (reels[0] === reels[1] && reels[1] === reels[2]) {
-      payout = Math.floor(bet * PAYOUTS[reels[0]] * RTP);
-      won = true;
-    } else if (reels[0] === reels[1] || reels[1] === reels[2]) {
-      payout = Math.floor(bet * 0.5);
-      won = true;
-    }
-
-    if (won) {
-      const delta = payout - bet;
-      await db.updateBalance(message.author.id, delta);
-      await db.recordGame(message.author.id, true, payout);
-      message.channel.send({ embeds: [
-        embed(0x2ecc71)
-          .setTitle("🎰 Slots — WIN!")
-          .setDescription(`${display}\n\n+**${payout.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
-      ]});
+    if (a === b && b === c) {
+      const mult = PAYOUTS[a] ?? 2;
+      const win = Math.floor(bet * mult * 0.92);
+      await db.updateBalance(uid, win);
+      await db.recordGame(uid, true, bet + win);
+      return message.channel.send({ embeds: [embed(0xf1c40f).setTitle("🎰 JACKPOT!").setDescription(`**[ ${display} ]**\n+**${win.toLocaleString()} FC** (${mult}x)\n${HouseEdge.baitWin()}`)] });
+    } else if (a === b || b === c || a === c) {
+      const sym = a === b ? a : c;
+      const win = Math.floor(bet * 0.5);
+      await db.updateBalance(uid, win);
+      await db.recordGame(uid, true, bet + win);
+      return message.channel.send({ embeds: [embed(0x3498db).setTitle("🎰 Slots — Partial Win").setDescription(`**[ ${display} ]**\n+**${win.toLocaleString()} FC** (pair of ${sym})\n${HouseEdge.baitWin()}`)] });
     } else {
-      await db.updateBalance(message.author.id, -bet);
-      await db.recordGame(message.author.id, false, bet);
-      message.channel.send({ embeds: [
-        embed(0xe74c3c)
-          .setTitle("🎰 Slots — LOSS")
-          .setDescription(`${display}\n\n-**${bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
-      ]});
+      await db.updateBalance(uid, -bet);
+      await db.recordGame(uid, false, bet);
+      return message.channel.send({ embeds: [embed(0xe74c3c).setTitle("🎰 Slots — No Match").setDescription(`**[ ${display} ]**\n-**${bet.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`)] });
     }
   },
 };

@@ -33,18 +33,18 @@ const sessions = new Map();
 export default {
   name: "blackjack",
   aliases: ["bj"],
-  description: "Play blackjack. !bj <bet> | !bj hit | !bj stand | !bj double",
-  async execute({ message, args, db, embed }) {
+  description: "Play blackjack. `&bj <bet>` | `&bj hit` | `&bj stand` | `&bj double`",
+  async execute({ message, args, db, embed, prefix }) {
     const uid = message.author.id;
     const sub = args[0]?.toLowerCase();
+    const p = prefix;
 
-    // Start new game
     if (!sessions.has(uid) || !["hit","stand","double","h","s","d"].includes(sub)) {
       const bet = parseInt(sub);
       const user = await db.getUser(uid);
-      if (isNaN(bet) || bet <= 0) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid bet, e.g. `!bj 500`.")] });
-      if (bet > user.balance)     return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient balance.")] });
-      if (bet > 500_000)          return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **500,000 Flux**.")] });
+      if (isNaN(bet) || bet <= 0) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ Provide a valid bet, e.g. \`${p}bj 500\`.`)] });
+      if (bet > user.balance)     return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient FluxCoins.")] });
+      if (bet > 500_000)          return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **500,000 FC**.")] });
 
       const deck = newDeck();
       const player = [deck.pop(), deck.pop()];
@@ -58,7 +58,7 @@ export default {
         await db.recordGame(uid, true, bet + payout);
         return message.channel.send({ embeds: [
           embed(0xf1c40f).setTitle("🃏 Blackjack — NATURAL 21! 🎉")
-            .setDescription(`Your hand: **${fmt(player)}** (21)\n+**${payout.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
+            .setDescription(`Your hand: **${fmt(player)}** (21)\n+**${payout.toLocaleString()} FC**\n${HouseEdge.baitWin()}`)
         ]});
       }
 
@@ -67,19 +67,18 @@ export default {
           .setDescription(
             `Your hand: **${fmt(player)}** (${handTotal(player)})\n` +
             `Dealer shows: **${fmt([dealer[0]])}**\n\n` +
-            `Type \`!bj hit\`, \`!bj stand\`, or \`!bj double\``
+            `Type \`${p}bj hit\`, \`${p}bj stand\`, or \`${p}bj double\``
           )
       ]});
     }
 
-    // In-game actions
     const sess = sessions.get(uid);
     const { deck, player, dealer, bet } = sess;
 
-    if (["hit","h"].includes(sub) || (["double","d"].includes(sub))) {
+    if (["hit","h","double","d"].includes(sub)) {
       if (["double","d"].includes(sub)) {
         const user = await db.getUser(uid);
-        if (user.balance < bet) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Not enough Flux to double.")] });
+        if (user.balance < bet) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Not enough FC to double.")] });
         sess.bet = bet * 2;
         sess.doubled = true;
       }
@@ -92,20 +91,17 @@ export default {
         await db.recordGame(uid, false, sess.bet);
         return message.channel.send({ embeds: [
           embed(0xe74c3c).setTitle("🃏 Blackjack — BUST")
-            .setDescription(`Your hand: **${fmt(player)}** (${ptotal}) — bust!\n-**${sess.bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
+            .setDescription(`Your hand: **${fmt(player)}** (${ptotal}) — bust!\n-**${sess.bet.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`)
         ]});
       }
 
-      if (sess.doubled) {
-        // Auto-stand after double
-        sub === "d" && (args[0] = "stand");
-      } else {
+      if (!sess.doubled) {
         return message.channel.send({ embeds: [
           embed(0x3498db).setTitle("🃏 Blackjack")
             .setDescription(
               `Your hand: **${fmt(player)}** (${ptotal})\n` +
               `Dealer shows: **${fmt([dealer[0]])}**\n\n` +
-              `Type \`!bj hit\` or \`!bj stand\``
+              `Type \`${p}bj hit\` or \`${p}bj stand\``
             )
         ]});
       }
@@ -113,7 +109,6 @@ export default {
 
     if (["stand","s"].includes(sub) || sess.doubled) {
       sessions.delete(uid);
-      // Dealer draws to soft 17
       while (handTotal(dealer) < 17) dealer.push(deck.pop());
 
       const ptotal = handTotal(player);
@@ -127,20 +122,19 @@ export default {
             .setDescription(`You: **${fmt(player)}** (${ptotal}) | Dealer: **${fmt(dealer)}** (${dtotal})\nBet returned.`)
         ]});
       }
-
       if (won) {
         await db.updateBalance(uid, sess.bet);
         await db.recordGame(uid, true, sess.bet * 2);
         message.channel.send({ embeds: [
           embed(0x2ecc71).setTitle("🃏 Blackjack — WIN!")
-            .setDescription(`You: **${fmt(player)}** (${ptotal}) | Dealer: **${fmt(dealer)}** (${dtotal})\n+**${sess.bet.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
+            .setDescription(`You: **${fmt(player)}** (${ptotal}) | Dealer: **${fmt(dealer)}** (${dtotal})\n+**${sess.bet.toLocaleString()} FC**\n${HouseEdge.baitWin()}`)
         ]});
       } else {
         await db.updateBalance(uid, -sess.bet);
         await db.recordGame(uid, false, sess.bet);
         message.channel.send({ embeds: [
           embed(0xe74c3c).setTitle("🃏 Blackjack — LOSS")
-            .setDescription(`You: **${fmt(player)}** (${ptotal}) | Dealer: **${fmt(dealer)}** (${dtotal})\n-**${sess.bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
+            .setDescription(`You: **${fmt(player)}** (${ptotal}) | Dealer: **${fmt(dealer)}** (${dtotal})\n-**${sess.bet.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`)
         ]});
       }
     }

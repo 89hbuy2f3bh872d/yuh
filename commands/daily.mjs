@@ -1,26 +1,30 @@
-const DAILY = 500;
-const COOLDOWN_MS = 86_400_000;
 const cooldowns = new Map();
+const DAILY_AMOUNT = 500;
+const COOLDOWN_MS = 20 * 60 * 60 * 1000; // 20 hours
 
 export default {
   name: "daily",
-  description: "Claim your daily 500 Flux.",
+  aliases: ["claim"],
+  description: "Claim your daily FluxCoins reward.",
   async execute({ message, db, embed }) {
+    const uid = message.author.id;
+    const last = cooldowns.get(uid) ?? 0;
     const now = Date.now();
-    const last = cooldowns.get(message.author.id) ?? 0;
-    const diff = now - last;
-    if (diff < COOLDOWN_MS) {
-      const remaining = Math.ceil((COOLDOWN_MS - diff) / 3_600_000);
-      return message.channel.send({ embeds: [
-        embed(0xe74c3c).setDescription(`⏰ Come back in **${remaining}h** for your next daily.`)
-      ]});
+    const remaining = COOLDOWN_MS - (now - last);
+
+    if (remaining > 0) {
+      const h = Math.floor(remaining / 3600000);
+      const m = Math.floor((remaining % 3600000) / 60000);
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`⏳ Come back in **${h}h ${m}m** to claim your daily reward.`)] });
     }
-    cooldowns.set(message.author.id, now);
-    const user = await db.updateBalance(message.author.id, DAILY);
-    message.channel.send({ embeds: [
-      embed(0x2ecc71)
-        .setTitle("🎁 Daily Claimed!")
-        .setDescription(`+**${DAILY} Flux** added! New balance: **${user.balance?.toLocaleString() ?? "?"}**`)
+
+    cooldowns.set(uid, now);
+    await db.updateBalance(uid, DAILY_AMOUNT);
+    const user = await db.getUser(uid);
+    return message.channel.send({ embeds: [
+      embed(0xf1c40f)
+        .setTitle("🎁 Daily Reward")
+        .setDescription(`You claimed **${DAILY_AMOUNT} FC**!\nNew balance: **${user.balance.toLocaleString()} FC**`)
     ]});
   },
 };

@@ -3,38 +3,33 @@ import { HouseEdge } from "../src/HouseEdge.mjs";
 export default {
   name: "coinflip",
   aliases: ["cf", "flip"],
-  description: "Flip a coin. !coinflip <heads|tails> <bet>",
-  async execute({ message, args, db, embed }) {
-    const user  = await db.getUser(message.author.id);
-    const side  = args[0]?.toLowerCase();
-    const bet   = parseInt(args[1]);
+  description: "Flip a coin. `&cf <bet> <heads|tails>`",
+  async execute({ message, args, db, embed, prefix }) {
+    const uid = message.author.id;
+    const bet = parseInt(args[0]);
+    const side = args[1]?.toLowerCase();
+    const user = await db.getUser(uid);
 
-    if (!side || !["heads","tails","h","t"].includes(side))
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Choose `heads` or `tails`.")] });
-    if (isNaN(bet) || bet <= 0)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid bet.")] });
+    if (isNaN(bet) || bet <= 0 || !["heads","tails","h","t"].includes(side))
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ Usage: \`${prefix}cf <bet> <heads|tails>\``)] });
     if (bet > user.balance)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient balance.")] });
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient FluxCoins.")] });
     if (bet > 500_000)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **500,000 Flux**.")] });
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **500,000 FC**.")] });
 
-    const pick   = side[0] === "h" ? "heads" : "tails";
-    const won    = Math.random() < 0.475; // 47.5% win = 5% house edge
-    const result = won ? pick : (pick === "heads" ? "tails" : "heads");
-    const coin   = result === "heads" ? "🪙 Heads" : "🌑 Tails";
+    const win = Math.random() < 0.475;
+    const result = win === (["heads","h"].includes(side)) ? "heads" : "tails";
+    const correct = (["heads","h"].includes(side) && result === "heads") || (["tails","t"].includes(side) && result === "tails");
+    const coin = result === "heads" ? "🪙" : "🌑";
 
-    if (won) {
-      await db.updateBalance(message.author.id, bet);
-      await db.recordGame(message.author.id, true, bet);
-      message.channel.send({ embeds: [
-        embed(0x2ecc71).setTitle(`${coin} — WIN!`).setDescription(`+**${bet.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
-      ]});
+    if (correct) {
+      await db.updateBalance(uid, bet);
+      await db.recordGame(uid, true, bet * 2);
+      return message.channel.send({ embeds: [embed(0x2ecc71).setTitle(`${coin} Coin Flip — WIN!`).setDescription(`Landed **${result}**! +**${bet.toLocaleString()} FC**\n${HouseEdge.baitWin()}`)] });
     } else {
-      await db.updateBalance(message.author.id, -bet);
-      await db.recordGame(message.author.id, false, bet);
-      message.channel.send({ embeds: [
-        embed(0xe74c3c).setTitle(`${coin} — LOSS`).setDescription(`-**${bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
-      ]});
+      await db.updateBalance(uid, -bet);
+      await db.recordGame(uid, false, bet);
+      return message.channel.send({ embeds: [embed(0xe74c3c).setTitle(`${coin} Coin Flip — LOSS`).setDescription(`Landed **${result}**. -**${bet.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`)] });
     }
   },
 };

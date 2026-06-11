@@ -7,7 +7,7 @@ export class CommandHandler {
     this.client = client;
     this.db = db;
     this.config = config;
-    this.prefix = config.prefix ?? "!";
+    this.prefix = config.prefix ?? "&";
     this.commands = new Map();
   }
 
@@ -31,11 +31,21 @@ export class CommandHandler {
 
     const args = message.content.slice(this.prefix.length).trim().split(/\s+/);
     const cmdName = args.shift().toLowerCase();
+    if (!cmdName) return;
+
     const cmd = this.commands.get(cmdName);
-    if (!cmd) return;
+    if (!cmd) {
+      message.channel?.send?.({
+        embeds: [
+          makeEmbed(0xe74c3c)
+            .setDescription(`❌ Unknown command \`${this.prefix}${cmdName}\`. Use \`${this.prefix}help\` to see all commands.`)
+        ]
+      }).catch(() => {});
+      return;
+    }
 
     try {
-      await cmd.execute({ message, args, db: this.db, config: this.config, embed: makeEmbed });
+      await cmd.execute({ message, args, db: this.db, config: this.config, embed: makeEmbed, prefix: this.prefix, commands: this.commands });
     } catch (e) {
       console.error(`[Command:${cmdName}]`, e);
       message.channel?.send?.({ content: "⚠️ Something went wrong." }).catch(() => {});
