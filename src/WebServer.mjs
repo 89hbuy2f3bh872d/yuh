@@ -26,9 +26,9 @@ const SL_ORIGIN_HOST = _baseUrlEnv
 const SL_EMBED = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // ---------------------------------------------------------------------------
-// Le Bandit — only game shown in the lobby
+// Le Bandit — only game shown in the lobby (matched by stable numeric ID)
 // ---------------------------------------------------------------------------
-const LE_BANDIT_SLUG = "le-bandit";
+const LE_BANDIT_ID = 16485;
 
 // In-memory game cache — refreshed once per day
 let _gameCache   = [];
@@ -94,11 +94,11 @@ async function fetchAllGames() {
   return _gameCache;
 }
 
-/** Returns only Le Bandit from the full catalogue */
+/** Returns only Le Bandit (id 16485) from the full catalogue */
 async function fetchLobbyGames() {
   const all = await fetchAllGames();
-  const bandit = all.filter(g => g.slug === LE_BANDIT_SLUG);
-  if (!bandit.length) console.warn("[SlotsLaunch] Le Bandit not found in catalogue — check slug.");
+  const bandit = all.filter(g => g.id === LE_BANDIT_ID);
+  if (!bandit.length) console.warn(`[SlotsLaunch] Le Bandit (id ${LE_BANDIT_ID}) not found in catalogue.`);
   return bandit;
 }
 
@@ -223,27 +223,6 @@ input,select{font:inherit;color:inherit}
   margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;
 }
 
-/* FILTERS */
-.filters{
-  display:flex;flex-wrap:wrap;gap:.5rem;
-  margin-bottom:1.5rem;align-items:center;
-}
-.filter-input{
-  background:#0a1f0a;border:1px solid #2ecc7133;border-radius:8px;
-  color:#e2ffe2;padding:.4rem .75rem;font-size:.85rem;
-  transition:border-color .2s,box-shadow .2s;
-  min-width:180px;
-}
-.filter-input:focus{outline:none;border-color:#2ecc71;box-shadow:0 0 0 3px #2ecc7122}
-.filter-select{
-  background:#0a1f0a;border:1px solid #2ecc7133;border-radius:8px;
-  color:#e2ffe2;padding:.4rem .75rem;font-size:.85rem;
-  cursor:pointer;
-  transition:border-color .2s;
-}
-.filter-select:focus{outline:none;border-color:#2ecc71}
-.filter-count{font-size:.75rem;color:#4a9a4a;margin-left:.25rem}
-
 /* GAME GRID */
 .game-grid{
   display:grid;
@@ -320,16 +299,6 @@ input,select{font:inherit;color:inherit}
 }
 .empty-icon{font-size:3rem;margin-bottom:.75rem}
 .empty-txt{font-size:.9rem}
-
-/* LOAD MORE */
-.load-more-wrap{text-align:center;margin-top:1.5rem}
-.load-more-btn{
-  background:#0a1f0a;border:1px solid #2ecc7133;
-  color:#4a9a4a;padding:.6rem 2rem;border-radius:8px;
-  font-size:.85rem;font-weight:700;
-  transition:all .18s;
-}
-.load-more-btn:hover{border-color:#2ecc71;color:#2ecc71;box-shadow:0 0 12px #2ecc7122}
 
 /* GAME VIEWER */
 .viewer-header{
@@ -501,7 +470,6 @@ function lobbyPage(bal, tag, avatar, games) {
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
   <div class="section-title">🎮 Game Library <span class="filter-count" id="countBadge">${games.length} games</span></div>
-
   <div class="game-grid" id="gameGrid"></div>
 </div>
 
