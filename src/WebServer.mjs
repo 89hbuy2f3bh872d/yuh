@@ -11,10 +11,10 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch — token auth via query string, no Host header needed
+// SlotsLaunch — token read from SL_TOKEN env var or config
 // ---------------------------------------------------------------------------
 const SL_API_BASE  = "https://slotslaunch.com/api";
-const SL_TOKEN     = "udnXH2QA6zMDmx1UuIw9VQnz0jG5lIPatXBLAYUgahkzJSo3Kk";
+const SL_TOKEN     = process.env.SL_TOKEN ?? "";
 const SL_EMBED     = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // In-memory game cache — refreshed once per day
@@ -24,6 +24,10 @@ let _cacheExpiry = 0;
 async function fetchAllGames() {
   const now = Date.now();
   if (_gameCache.length && now < _cacheExpiry) return _gameCache;
+  if (!SL_TOKEN) {
+    console.warn("[SlotsLaunch] SL_TOKEN is not set — skipping game fetch.");
+    return [];
+  }
   console.log("[SlotsLaunch] Refreshing game catalogue…");
   const all = [];
   let page = 1;
