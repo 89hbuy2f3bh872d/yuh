@@ -690,7 +690,6 @@ function playClickSound() {
 }
 
 function playReelTickSound(i) {
-  // each reel slightly different pitch
   const freqs = [180, 200, 220];
   playTone(freqs[i],'sawtooth',.04,.06);
 }
@@ -704,7 +703,6 @@ function playWinSound(type) {
   if (muted) return;
   const ctx = getCtx(); if (!ctx) return;
   if (type === 'jackpot') {
-    // fanfare
     const notes = [523,659,784,1047];
     notes.forEach((f,i)=>{
       setTimeout(()=>playTone(f,'square',.3,.2),i*120);
@@ -738,7 +736,6 @@ function toggleMute() {
   document.getElementById('muteBtn').textContent = muted ? '\uD83D\uDD07 SFX' : '\uD83D\uDD0A SFX';
 }
 
-// unlock audio on first interaction
 document.addEventListener('click', ()=>{ const c=getCtx(); if(c&&c.state==='suspended')c.resume(); }, {once:true});
 
 // ===== MARQUEE =====
@@ -749,11 +746,11 @@ const MARQUEE_ITEMS = [
   '\uD83C\uDFB0 Le Bandit', 'SirGreen Casino', 'FluxCoins Economy',
 ];
 document.getElementById('marqueeInner').innerHTML =
-  MARQUEE_ITEMS.map(t=>`<span class="marquee-item">${t}</span>`).join('');
+  MARQUEE_ITEMS.map(function(t){ return '<span class="marquee-item">'+t+'</span>'; }).join('');
 
 // ===== REEL SYMBOLS (shown in strips) =====
 const SYMS = ['\uD83C\uDF52','\uD83C\uDF4B','\uD83C\uDF4A','\uD83C\uDF47','\uD83D\uDD14','\u2B50','\uD83D\uDC8E','\uD83C\uDF1F'];
-const SYM_STRIP_COUNT = 30; // symbols per visual strip
+const SYM_STRIP_COUNT = 30;
 
 function buildStrips() {
   for (let i=0;i<3;i++) {
@@ -771,7 +768,7 @@ function buildStrips() {
 buildStrips();
 
 // ===== REEL ANIMATION =====
-const REEL_H = 130; // px per symbol
+const REEL_H = 130;
 let reelAnimations = [null,null,null];
 
 function animateReel(reelIdx, finalSym, delay, onDone) {
@@ -779,33 +776,30 @@ function animateReel(reelIdx, finalSym, delay, onDone) {
   const syms = strip.querySelectorAll('.reel-sym');
   const totalH = (syms.length-1) * REEL_H;
 
-  // Set final symbol at position 0 (visible center)
   syms[0].textContent = finalSym;
 
-  // Start far down, scroll up
-  const spinDur = 600 + delay * 300; // ms
+  const spinDur = 600 + delay * 300;
   const ticks = Math.floor(spinDur / 60);
   let tick = 0;
   let offset = -(ticks * REEL_H * 0.8 % totalH);
 
   strip.style.transition = 'none';
-  strip.style.transform = `translateY(${-totalH/2}px)`;
+  strip.style.transform = 'translateY('+(-totalH/2)+'px)';
 
   let tickInterval;
-  setTimeout(()=>{
-    tickInterval = setInterval(()=>{
+  setTimeout(function(){
+    tickInterval = setInterval(function(){
       tick++;
       offset += REEL_H * 0.9;
       if (offset > 0) offset -= totalH;
       strip.style.transition = 'none';
-      strip.style.transform = `translateY(${offset}px)`;
+      strip.style.transform = 'translateY('+offset+'px)';
       playReelTickSound(reelIdx);
       if (tick >= ticks) {
         clearInterval(tickInterval);
-        // snap to center
         strip.style.transition = 'transform 180ms cubic-bezier(.17,.67,.12,1)';
         strip.style.transform = 'translateY(0px)';
-        setTimeout(()=>{
+        setTimeout(function(){
           playReelStopSound(reelIdx);
           if (onDone) onDone();
         }, 200);
@@ -838,7 +832,8 @@ function togglePaytable(){
 
 // ===== CONFETTI =====
 const CONFETTI_COLORS = ['#2ecc71','#f1c40f','#e74c3c','#3498db','#9b59b6','#1abc9c','#f39c12'];
-function launchConfetti(count=60) {
+function launchConfetti(count) {
+  count = count || 60;
   const container = document.getElementById('confettiContainer');
   container.innerHTML = '';
   for (let i=0;i<count;i++) {
@@ -856,7 +851,7 @@ function launchConfetti(count=60) {
     ].join(';');
     container.appendChild(el);
   }
-  setTimeout(()=>container.innerHTML='',3500);
+  setTimeout(function(){container.innerHTML='';},3500);
 }
 
 // ===== WIN OVERLAY =====
@@ -868,14 +863,14 @@ function showWinOverlay(text, delta, isJackpot) {
   wt.textContent = text;
   wd.textContent = '+' + delta.toLocaleString() + ' FC';
   ov.classList.add('show');
-  setTimeout(()=>ov.classList.remove('show'), 2500);
+  setTimeout(function(){ov.classList.remove('show');}, 2500);
 }
 
 // ===== PAYLINE FLASH =====
 function flashPayline(isJackpot) {
   const pl = document.getElementById('payline');
   pl.className = 'payline ' + (isJackpot ? 'jackpot' : '') + ' flash';
-  setTimeout(()=>pl.className='payline', 700);
+  setTimeout(function(){pl.className='payline';}, 700);
 }
 
 // ===== BALANCE BUMP =====
@@ -887,14 +882,14 @@ function bumpBal(newBal) {
   const step = 16;
   const steps = dur/step;
   let i=0;
-  const interval = setInterval(()=>{
+  const interval = setInterval(function(){
     i++;
     const cur = Math.round(start + diff*(i/steps));
     el.textContent = cur.toLocaleString() + ' FC';
     if(i>=steps){clearInterval(interval);el.textContent=newBal.toLocaleString()+' FC';}
   },step);
   el.classList.add('bump');
-  setTimeout(()=>el.classList.remove('bump'),400);
+  setTimeout(function(){el.classList.remove('bump');},400);
 }
 
 // ===== STREAK =====
@@ -917,7 +912,7 @@ function showMultiplier(mult) {
   const b = document.getElementById('multBanner');
   b.textContent = '\u2605 '+mult+'x Multiplier Active!';
   b.classList.add('show');
-  setTimeout(()=>b.classList.remove('show'), 3000);
+  setTimeout(function(){b.classList.remove('show');}, 3000);
 }
 
 // ===== BONUS PANEL =====
@@ -946,7 +941,6 @@ async function doSpin() {
   if (isNaN(bet) || bet < 1) { shakeInput(); return; }
   playClickSound();
 
-  // bonus spin is free
   const isBonusSpin = bonusSpins > 0;
 
   spinning = true;
@@ -958,7 +952,6 @@ async function doSpin() {
   const mult = getMultiplier();
   showMultiplier(mult);
 
-  // call server
   const fetchBody = isBonusSpin
     ? 'bet='+bet+'&bonus=1'
     : 'bet='+bet;
@@ -981,10 +974,9 @@ async function doSpin() {
     spinning=false; btn.disabled=false; btn.textContent='\uD83C\uDFB0 SPIN'; return;
   }
 
-  // animate reels sequentially
   let doneCount = 0;
-  d.reels.forEach((sym, i) => {
-    animateReel(i, sym, i * 280, () => {
+  d.reels.forEach(function(sym, i) {
+    animateReel(i, sym, i * 280, function() {
       doneCount++;
       if (doneCount === 3) finishSpin(d, isBonusSpin, mult);
     });
@@ -997,18 +989,16 @@ function finishSpin(d, isBonusSpin, mult) {
   const isBonus  = d.bonus_triggered;
   const resultEl = document.getElementById('result');
 
-  // bonus spins consumed
   if (isBonusSpin) {
     bonusSpins = Math.max(0, bonusSpins - 1);
     updateBonusPanel();
   }
 
-  // bonus spins triggered
   if (isBonus) {
     bonusSpins += 7;
     updateBonusPanel();
     playBonusSound();
-    setTimeout(()=>{
+    setTimeout(function(){
       resultEl.className='result-line bonus';
       resultEl.textContent='\uD83D\uDD14 BONUS ACTIVATED! 7 Free Spins with 2x multiplier!';
     }, 400);
@@ -1022,7 +1012,7 @@ function finishSpin(d, isBonusSpin, mult) {
 
     if (isJackpot) {
       document.getElementById('machine').classList.add('flash-win');
-      setTimeout(()=>document.getElementById('machine').classList.remove('flash-win'),500);
+      setTimeout(function(){document.getElementById('machine').classList.remove('flash-win');},500);
       showWinOverlay('JACKPOT!', displayDelta, true);
       playWinSound('jackpot');
       launchConfetti(120);
@@ -1048,7 +1038,6 @@ function finishSpin(d, isBonusSpin, mult) {
 
   bumpBal(d.bal);
 
-  // re-enable button
   const btn = document.getElementById('spinBtn');
   const label = bonusSpins > 0 ? '\uD83C\uDF1F BONUS SPIN!' : '\uD83C\uDFB0 SPIN';
   btn.textContent = label;
@@ -1070,14 +1059,12 @@ function shakeInput() {
   el.style.animation='shake .3s ease-in-out';
 }
 
-// keyboard shortcut: Space to spin
-document.addEventListener('keydown',e=>{
+document.addEventListener('keydown',function(e){
   if (e.code==='Space' && document.activeElement.tagName!=='INPUT') {
     e.preventDefault(); doSpin();
   }
 });
 
-// init reel display (show starting symbols)
 (function initReels(){
   for(let i=0;i<3;i++){
     const strip=document.getElementById('strip'+i);
@@ -1335,9 +1322,7 @@ export class WebServer {
       if (bet > bal)              return this._json(res, 400, { error: "Insufficient FC" });
       if (bet > 1_000_000)        return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
 
-      // spin
       let reels = [spinReel(), spinReel(), spinReel()];
-      // wild substitution: replace any non-matching wild with a matching sym
       reels = applyWild(reels);
 
       const [a, b, c] = reels;
@@ -1345,14 +1330,12 @@ export class WebServer {
       let bonusTriggered = false;
       let jackpot = false;
 
-      // scatter: 3 bells = bonus
       const bells = reels.filter(r => r === SCATTER).length;
       if (bells >= 3) {
         bonusTriggered = true;
-        msg = "3x Bell Scatter — Bonus Spins!";
+        msg = "3x Bell Scatter \u2014 Bonus Spins!";
       }
 
-      // jackpot check (glowing star)
       const isJackpotStar = "\uD83C\uDF1F";
       if (a === isJackpotStar && b === isJackpotStar && c === isJackpotStar) {
         const mult = PAYOUTS[isJackpotStar] ?? 25;
@@ -1393,11 +1376,9 @@ export class WebServer {
 // wild substitution helper (server-side)
 function applyWild(reels) {
   const [a, b, c] = reels;
-  // if one is wild and the other two match, sub wild for that sym
   if (a === WILD && b === c) return [b, b, c];
   if (b === WILD && a === c) return [a, a, c];
   if (c === WILD && a === b) return [a, b, a];
-  // two wilds + one sym = jackpot for that sym
   if (a === WILD && b === WILD) return [c, c, c];
   if (a === WILD && c === WILD) return [b, b, b];
   if (b === WILD && c === WILD) return [a, a, a];
