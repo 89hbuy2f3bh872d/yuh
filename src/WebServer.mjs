@@ -11,96 +11,20 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch — token read from env; origin is auto-derived from webBaseUrl
-// SL_TOKEN:  your API token from slotslaunch.com/account/api-token
-// SL_ORIGIN: override if needed, otherwise derived automatically from WEB_BASE_URL / webBaseUrl
+// SlotsLaunch — Le Bandit is hardcoded by id; no catalogue fetch needed.
+// SL_TOKEN: your API token from slotslaunch.com/account/api-token
 // ---------------------------------------------------------------------------
-const SL_API_BASE = "https://slotslaunch.com/api";
-const SL_TOKEN    = process.env.SL_TOKEN ?? "";
-// Derive origin from WEB_BASE_URL env var, falling back to SL_ORIGIN if explicitly set
-const _baseUrlEnv = process.env.WEB_BASE_URL ?? process.env.SL_ORIGIN ?? "";
-const SL_ORIGIN_HOST = _baseUrlEnv
-  ? (() => { try { return new URL(_baseUrlEnv).hostname; } catch { return _baseUrlEnv; } })()
-  : "";
+const SL_TOKEN = process.env.SL_TOKEN ?? "";
+
+// Le Bandit — id 16485, embed URL constructed directly.
+const LE_BANDIT = {
+  id:       16485,
+  name:     "Le Bandit",
+  provider: "Hacksaw Gaming",
+  thumb:    "https://assets.slotslaunch.com/16001/le-bandit.jpg",
+};
 
 const SL_EMBED = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
-
-// ---------------------------------------------------------------------------
-// Le Bandit — only game shown in the lobby (matched by stable numeric ID)
-// ---------------------------------------------------------------------------
-const LE_BANDIT_ID = 16485;
-
-// In-memory game cache — refreshed once per day
-let _gameCache   = [];
-let _cacheExpiry = 0;
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-async function fetchAllGames() {
-  const now = Date.now();
-  if (_gameCache.length && now < _cacheExpiry) return _gameCache;
-  if (!SL_TOKEN) {
-    console.warn("[SlotsLaunch] SL_TOKEN is not set — skipping game fetch.");
-    return [];
-  }
-  if (!SL_ORIGIN_HOST) {
-    console.warn("[SlotsLaunch] SL_ORIGIN could not be derived — set WEB_BASE_URL or SL_ORIGIN env var.");
-  } else {
-    console.log(`[SlotsLaunch] Using origin: ${SL_ORIGIN_HOST}`);
-  }
-  console.log("[SlotsLaunch] Refreshing game catalogue…");
-  const all = [];
-  let page = 1;
-  while (true) {
-    try {
-      const raw = await nodeFetch(
-        `${SL_API_BASE}/games?token=${SL_TOKEN}&per_page=150&page=${page}&published=1&order_by=name&order=asc`,
-        { headers: {
-            "Accept":     "application/json",
-            "Origin":     SL_ORIGIN_HOST,
-            "User-Agent": "Mozilla/5.0 (compatible; FluxerCasinoBot/1.0)",
-        } }
-      );
-      if (page === 1) {
-        console.log("[SlotsLaunch] API response (page 1):", raw.slice(0, 300));
-      }
-      let json;
-      try {
-        json = JSON.parse(raw);
-      } catch {
-        console.error("[SlotsLaunch] Invalid JSON:", raw.slice(0, 300));
-        break;
-      }
-      if (!json.data?.length) {
-        console.log("[SlotsLaunch] Empty data:", JSON.stringify(json).slice(0, 300));
-        break;
-      }
-      all.push(...json.data);
-      if (!json.links?.next) break;
-      page++;
-      await sleep(500); // respect 2 r/s rate limit
-    } catch (e) {
-      console.error("[SlotsLaunch] fetch error:", e.message);
-      break;
-    }
-  }
-  if (all.length) {
-    _gameCache   = all;
-    _cacheExpiry = Date.now() + 24 * 60 * 60 * 1000;
-    console.log(`[SlotsLaunch] Cached ${all.length} games.`);
-  } else {
-    console.warn("[SlotsLaunch] No games cached — check SL_TOKEN and SL_ORIGIN are valid.");
-  }
-  return _gameCache;
-}
-
-/** Returns only Le Bandit (id 16485) from the full catalogue */
-async function fetchLobbyGames() {
-  const all = await fetchAllGames();
-  const bandit = all.filter(g => g.id === LE_BANDIT_ID);
-  if (!bandit.length) console.warn(`[SlotsLaunch] Le Bandit (id ${LE_BANDIT_ID}) not found in catalogue.`);
-  return bandit;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -160,13 +84,11 @@ a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 input,select{font:inherit;color:inherit}
 
-/* scrollbar */
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#0a1a0a}
 ::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
 ::-webkit-scrollbar-thumb:hover{background:#2ecc71aa}
 
-/* NAV */
 .nav{
   position:sticky;top:0;z-index:100;
   background:rgba(6,14,6,.92);
@@ -183,29 +105,13 @@ input,select{font:inherit;color:inherit}
 }
 .nav-logo span{font-size:1.3rem}
 .nav-spacer{flex:1}
-.nav-bal{
-  font-size:.8rem;font-weight:700;
-  color:#a8e6a8;white-space:nowrap;
-}
+.nav-bal{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal strong{color:#2ecc71;font-size:.95rem}
-.nav-user{
-  display:flex;align-items:center;gap:.5rem;
-  font-size:.8rem;color:#a8d5a8;
-}
-.nav-avatar{
-  width:28px;height:28px;border-radius:50%;
-  border:1px solid #2ecc7144;object-fit:cover;
-}
-.nav-logout{
-  font-size:.7rem;color:#3a6b3a;
-  border-bottom:1px solid #2ecc7122;
-  cursor:pointer;background:none;border-color:transparent;
-  border-bottom:1px solid #2ecc7122;
-  padding:0;
-}
+.nav-user{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:#a8d5a8}
+.nav-avatar{width:28px;height:28px;border-radius:50%;border:1px solid #2ecc7144;object-fit:cover}
+.nav-logout{font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;cursor:pointer}
 .nav-logout:hover{color:#2ecc71}
 
-/* AMBIENT */
 .ambient{
   position:fixed;inset:0;pointer-events:none;z-index:0;
   background:
@@ -213,22 +119,14 @@ input,select{font:inherit;color:inherit}
     radial-gradient(ellipse 50% 40% at 10% 90%,#0b2b0b22 0%,transparent 60%);
 }
 
-/* WRAPPER */
 .wrap{position:relative;z-index:1;padding:1.5rem 1.5rem 3rem}
 
-/* SECTION TITLE */
 .section-title{
   font-size:1rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
   color:#2ecc71;text-shadow:0 0 10px #2ecc7155;
-  margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;
+  margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem;
 }
 
-/* GAME GRID */
-.game-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
-  gap:1rem;
-}
 .game-card{
   background:#0a1f0a;
   border:1px solid #2ecc7122;
@@ -237,6 +135,7 @@ input,select{font:inherit;color:inherit}
   cursor:pointer;
   transition:transform .18s,box-shadow .18s,border-color .18s;
   position:relative;
+  max-width:280px;
 }
 .game-card:hover{
   transform:translateY(-4px) scale(1.02);
@@ -244,22 +143,10 @@ input,select{font:inherit;color:inherit}
   border-color:#2ecc7166;
 }
 .game-card:active{transform:translateY(-1px) scale(1.01)}
-.game-thumb-wrap{
-  width:100%;aspect-ratio:4/3;
-  overflow:hidden;background:#071507;
-  position:relative;
-}
-.game-thumb{
-  width:100%;height:100%;object-fit:cover;
-  display:block;
-  transition:transform .3s;
-}
+.game-thumb-wrap{width:100%;aspect-ratio:4/3;overflow:hidden;background:#071507;position:relative}
+.game-thumb{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
 .game-card:hover .game-thumb{transform:scale(1.06)}
-.game-thumb-placeholder{
-  width:100%;height:100%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:2.5rem;color:#2ecc7133;
-}
+.game-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2.5rem;color:#2ecc7133}
 .game-play-overlay{
   position:absolute;inset:0;
   background:rgba(6,14,6,.6);
@@ -275,32 +162,9 @@ input,select{font:inherit;color:inherit}
   box-shadow:0 0 20px #2ecc7188;
 }
 .game-info{padding:.6rem .7rem .7rem}
-.game-name{
-  font-size:.78rem;font-weight:700;
-  color:#c8f5c8;line-height:1.3;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-.game-meta{
-  font-size:.65rem;color:#4a9a4a;margin-top:.2rem;
-  display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;
-}
-.game-tag{
-  background:#0d2b0d;border:1px solid #2ecc7122;
-  border-radius:4px;padding:.1rem .3rem;
-  font-size:.6rem;color:#5aaa5a;
-}
-.game-rtp{color:#8ad58a}
+.game-name{font-size:.78rem;font-weight:700;color:#c8f5c8;line-height:1.3}
+.game-meta{font-size:.65rem;color:#4a9a4a;margin-top:.2rem}
 
-/* EMPTY */
-.empty{
-  grid-column:1/-1;
-  text-align:center;padding:4rem 1rem;
-  color:#3a6b3a;
-}
-.empty-icon{font-size:3rem;margin-bottom:.75rem}
-.empty-txt{font-size:.9rem}
-
-/* GAME VIEWER */
 .viewer-header{
   display:flex;align-items:center;gap:1rem;
   padding:.75rem 1.5rem;
@@ -316,37 +180,20 @@ input,select{font:inherit;color:inherit}
   transition:all .18s;display:flex;align-items:center;gap:.4rem;
 }
 .viewer-back:hover{border-color:#2ecc71;color:#2ecc71}
-.viewer-title{
-  font-size:.95rem;font-weight:900;color:#e2ffe2;
-  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+.viewer-title{font-size:.95rem;font-weight:900;color:#e2ffe2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .viewer-provider{font-size:.75rem;color:#4a9a4a}
-.viewer-wallet{
-  display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;
-}
+.viewer-wallet{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
 .wallet-label{font-size:.7rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
-.wallet-val{
-  font-size:1rem;font-weight:900;color:#2ecc71;
-  text-shadow:0 0 10px #2ecc7155;
-}
+.wallet-val{font-size:1rem;font-weight:900;color:#2ecc71;text-shadow:0 0 10px #2ecc7155}
 .wallet-note{font-size:.65rem;color:#3a6b3a;max-width:200px;line-height:1.4}
 
-.game-frame-wrap{
-  width:100%;height:calc(100vh - 110px);
-  background:#040d04;
-  position:relative;
-}
-.game-frame{
-  width:100%;height:100%;
-  border:none;display:block;
-  background:#040d04;
-}
+.game-frame-wrap{width:100%;height:calc(100vh - 110px);background:#040d04;position:relative}
+.game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
 .frame-loading{
   position:absolute;inset:0;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:#040d04;gap:1rem;
-  pointer-events:none;
-  transition:opacity .3s;
+  pointer-events:none;transition:opacity .3s;
 }
 .frame-loading.hidden{opacity:0}
 .frame-spinner{
@@ -359,11 +206,7 @@ input,select{font:inherit;color:inherit}
 @keyframes spin{to{transform:rotate(360deg)}}
 .frame-loading-txt{font-size:.85rem;color:#4a9a4a}
 
-/* LOGIN */
-.login-wrap{
-  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;
-  position:relative;z-index:1;
-}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1}
 .login-card{
   background:linear-gradient(160deg,#0e230e,#071507);
   border:2px solid #2ecc7133;border-radius:20px;
@@ -372,10 +215,7 @@ input,select{font:inherit;color:inherit}
   box-shadow:0 0 60px #2ecc7111,inset 0 1px 0 #2ecc7122;
 }
 .login-logo{font-size:3.5rem;margin-bottom:.5rem}
-.login-title{
-  font-size:2rem;font-weight:900;color:#2ecc71;
-  text-shadow:0 0 20px #2ecc71cc;margin-bottom:.25rem;
-}
+.login-title{font-size:2rem;font-weight:900;color:#2ecc71;text-shadow:0 0 20px #2ecc71cc;margin-bottom:.25rem}
 .login-sub{font-size:.75rem;letter-spacing:.25em;text-transform:uppercase;color:#4a9a4a;margin-bottom:1.5rem}
 .login-desc{font-size:.9rem;color:#a8d5a8;display:block;margin-bottom:1.5rem;line-height:1.6}
 .login-btn{
@@ -388,7 +228,6 @@ input,select{font:inherit;color:inherit}
 .login-btn:hover{background:linear-gradient(135deg,#2ecc71,#39d97a);box-shadow:0 6px 30px #2ecc7166;transform:translateY(-1px)}
 .login-footer{margin-top:1.5rem;font-size:.7rem;color:#2a4a2a;line-height:1.7}
 
-/* ERROR CARD */
 .err-card{
   background:#0e230e;border:2px solid #2ecc7133;border-radius:16px;
   padding:2rem;max-width:420px;width:100%;text-align:center;
@@ -408,7 +247,6 @@ input,select{font:inherit;color:inherit}
 @media(max-width:600px){
   .nav{padding:.5rem 1rem;gap:.6rem}
   .wrap{padding:1rem 1rem 2rem}
-  .game-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.65rem}
   .viewer-header{padding:.5rem 1rem}
   .game-frame-wrap{height:calc(100vh - 130px)}
 }
@@ -437,9 +275,9 @@ ${bodyContent}
 function navBar(tag, avatar, bal) {
   const av = avatar
     ? `<img class="nav-avatar" src="${esc(avatar)}" alt="${esc(tag)}" loading="lazy">`
-    : `<span style="font-size:1.3rem">🎰</span>`;
+    : `<span style="font-size:1.3rem">\uD83C\uDFB0</span>`;
   return `<nav class="nav">
-  <div class="nav-logo"><span>🎰</span> SirGreen Casino</div>
+  <div class="nav-logo"><span>\uD83C\uDFB0</span> SirGreen Casino</div>
   <div class="nav-spacer"></div>
   <div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div>
   <div class="nav-user">${av}<span>${esc(tag)}</span></div>
@@ -448,71 +286,29 @@ function navBar(tag, avatar, bal) {
 }
 
 // ---------------------------------------------------------------------------
-// LOBBY PAGE
+// LOBBY PAGE — just Le Bandit
 // ---------------------------------------------------------------------------
-function lobbyPage(bal, tag, avatar, games) {
-  const gamesJson = JSON.stringify(games.map(g => ({
-    id:       g.id,
-    name:     g.name,
-    thumb:    g.thumb ?? "",
-    provider: g.provider ?? "",
-    prov_id:  g.provider_id,
-    type:     g.type ?? "",
-    type_id:  g.type_id,
-    rtp:      g.rtp ?? null,
-    megaways: g.megaways ?? false,
-    bonus:    g.bonus_buy ?? false,
-    prog:     g.progressive ?? false,
-    vol:      g.volatility ?? "",
-  })));
+function lobbyPage(bal, tag, avatar) {
+  const g = LE_BANDIT;
+  const thumb = g.thumb
+    ? `<img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=game-thumb-placeholder>\uD83C\uDFB0</div>'">`
+    : '<div class="game-thumb-placeholder">\uD83C\uDFB0</div>';
 
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
-  <div class="section-title">🎮 Game Library <span class="filter-count" id="countBadge">${games.length} games</span></div>
-  <div class="game-grid" id="gameGrid"></div>
-</div>
-
-<script>
-const ALL_GAMES = ${gamesJson};
-
-function buildCard(g) {
-  const thumb = g.thumb
-    ? \`<img class="game-thumb" src="\${g.thumb}" alt="\${g.name}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=game-thumb-placeholder>🎰</div>'">\`
-    : '<div class="game-thumb-placeholder">🎰</div>';
-  const tags = [];
-  if (g.megaways) tags.push('Megaways');
-  if (g.bonus)    tags.push('Bonus Buy');
-  if (g.prog)     tags.push('Progressive');
-  const tagHtml = tags.map(t => \`<span class="game-tag">\${t}</span>\`).join('');
-  const rtpHtml = g.rtp ? \`<span class="game-rtp">RTP \${g.rtp}%</span>\` : '';
-  const volHtml = g.vol ? \`<span class="game-tag">\${g.vol}</span>\` : '';
-  return \`<div class="game-card" onclick="openGame(\${g.id},'\${encodeURIComponent(g.name)}','\${encodeURIComponent(g.provider)}')">
-  <div class="game-thumb-wrap">
-    \${thumb}
-    <div class="game-play-overlay"><div class="game-play-btn">▶ Play</div></div>
-  </div>
-  <div class="game-info">
-    <div class="game-name">\${g.name}</div>
-    <div class="game-meta">
-      <span>\${g.provider}</span>
-      \${rtpHtml}\${volHtml}\${tagHtml}
+  <div class="section-title">\uD83C\uDFAE Game Lobby</div>
+  <div class="game-card" onclick="window.location.href='/play?game=${g.id}&name=${encodeURIComponent(g.name)}&provider=${encodeURIComponent(g.provider)}'">
+    <div class="game-thumb-wrap">
+      ${thumb}
+      <div class="game-play-overlay"><div class="game-play-btn">\u25B6 Play</div></div>
+    </div>
+    <div class="game-info">
+      <div class="game-name">${esc(g.name)}</div>
+      <div class="game-meta">${esc(g.provider)}</div>
     </div>
   </div>
-</div>\`;
-}
-
-function openGame(id, nameEnc, provEnc) {
-  window.location.href = '/play?game=' + id + '&name=' + nameEnc + '&provider=' + provEnc;
-}
-
-const grid = document.getElementById('gameGrid');
-if (ALL_GAMES.length) {
-  grid.innerHTML = ALL_GAMES.map(buildCard).join('');
-} else {
-  grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-txt">No games found</div></div>';
-}
-</script>
+</div>
 `);
 }
 
@@ -524,7 +320,7 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
   return shellPage("", `
 <div style="display:flex;flex-direction:column;height:100vh">
   <div class="viewer-header">
-    <button class="viewer-back" onclick="history.back()">← Back</button>
+    <button class="viewer-back" onclick="history.back()">\u2190 Back</button>
     <div style="flex:1;min-width:0">
       <div class="viewer-title">${esc(gameName)}</div>
       <div class="viewer-provider">${esc(gameProvider)}</div>
@@ -532,21 +328,19 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
     <div class="viewer-wallet">
       <div>
         <div class="wallet-label">FluxCoins Balance</div>
-        <div class="wallet-val" id="walBal">${Number(bal).toLocaleString()} FC</div>
+        <div class="wallet-val">${Number(bal).toLocaleString()} FC</div>
       </div>
       <div class="wallet-note">Balance shown for reference. Real-money play not enabled.</div>
     </div>
     <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
   </div>
-
   <div class="game-frame-wrap">
     <div class="frame-loading" id="frameLoading">
       <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading ${esc(gameName)}…</div>
+      <div class="frame-loading-txt">Loading ${esc(gameName)}\u2026</div>
     </div>
     <iframe
       class="game-frame"
-      id="gameFrame"
       src="${esc(embedUrl)}"
       allowfullscreen
       allow="autoplay; fullscreen"
@@ -554,13 +348,7 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
     ></iframe>
   </div>
 </div>
-
-<script>
-setTimeout(function(){
-  var fl = document.getElementById('frameLoading');
-  if (fl) fl.classList.add('hidden');
-}, 8000);
-</script>
+<script>setTimeout(function(){var f=document.getElementById('frameLoading');if(f)f.classList.add('hidden');},8000);</script>
 `);
 }
 
@@ -572,11 +360,11 @@ function loginPage(authUrl) {
 <div class="ambient"></div>
 <div class="login-wrap">
   <div class="login-card">
-    <div class="login-logo">🎰</div>
+    <div class="login-logo">\uD83C\uDFB0</div>
     <div class="login-title">SirGreen Casino</div>
     <div class="login-sub">Powered by FluxCoins</div>
-    <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to access thousands of games with your FluxCoin balance.</span>
-    <a class="login-btn" href="${esc(authUrl)}">🟢&nbsp; Login with Fluxer</a>
+    <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span>
+    <a class="login-btn" href="${esc(authUrl)}">\uD83D\uDFE2&nbsp; Login with Fluxer</a>
     <div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div>
   </div>
 </div>
@@ -611,8 +399,6 @@ export class WebServer {
   }
 
   async start() {
-    fetchAllGames().catch(() => {});
-
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
@@ -622,8 +408,6 @@ export class WebServer {
     );
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] SirGreen Casino running on port ${this.port}`));
-
-    setInterval(() => fetchAllGames().catch(() => {}), 24 * 60 * 60 * 1000);
 
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
@@ -641,19 +425,12 @@ export class WebServer {
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const [user, games] = await Promise.all([
-        this.db.getUser(uid),
-        fetchLobbyGames(),
-      ]);
+      const user    = await this.db.getUser(uid);
       const cookies = parseCookies(req);
       const bal     = Number(user?.bal ?? 0);
       const tag     = decodeURIComponent(cookies.dtag ?? "Player");
       const avatar  = decodeURIComponent(cookies.dav  ?? "");
-      return this._html(res, 200, lobbyPage(bal, tag, avatar, games));
-    }
-
-    if (path === "/play" && req.method === "GET" && !u.searchParams.get("game")) {
-      return this._redirect(res, "/lobby");
+      return this._html(res, 200, lobbyPage(bal, tag, avatar));
     }
 
     if (path === "/play" && req.method === "GET") {
@@ -681,9 +458,9 @@ export class WebServer {
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(
-          "⚠️ Not Configured",
+          "\u26A0\uFE0F Not Configured",
           "Add fluxerClientId, fluxerClientSecret, and webBaseUrl to config.json.",
-          "#", "—"
+          "#", "\u2014"
         ));
       }
       const state = crypto.randomBytes(16).toString("hex");
@@ -701,7 +478,7 @@ export class WebServer {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
       if (!code || !state || !this._states.has(state)) {
-        return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+        return this._html(res, 400, errPage("\u274C Login Failed", "Invalid or expired login state.", "/login", "Try again"));
       }
       this._states.delete(state);
       let tokenData;
@@ -720,12 +497,12 @@ export class WebServer {
         tokenData = JSON.parse(raw);
       } catch (e) {
         console.error("[OAuth] token exchange failed", e);
-        return this._html(res, 500, errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"));
+        return this._html(res, 500, errPage("\u26A0\uFE0F Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
       if (!tokenData.access_token) {
         console.error("[OAuth] no access_token:", tokenData);
         return this._html(res, 400, errPage(
-          "❌ Login Failed",
+          "\u274C Login Failed",
           tokenData.error_description ?? tokenData.message ?? "Unknown error",
           "/login", "Try again"
         ));
@@ -736,7 +513,7 @@ export class WebServer {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         }));
       } catch {
-        return this._html(res, 500, errPage("⚠️ Error", "Could not fetch your Fluxer profile.", "/login", "Retry"));
+        return this._html(res, 500, errPage("\u26A0\uFE0F Error", "Could not fetch your Fluxer profile.", "/login", "Retry"));
       }
       const userId = me.id;
       const tag    = me.username ?? me.tag ?? userId;
