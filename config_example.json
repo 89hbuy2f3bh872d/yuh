@@ -1,6 +1,8 @@
 {
   "token": "YOUR_BOT_TOKEN_HERE",
   "prefix": "&",
+  "webPort": 3420,
+  "webHost": "YOUR_VPS_IP_OR_DOMAIN",
   "mongodb": {
     "uri": "YOUR_MONGODB_URI_HERE",
     "database": ""

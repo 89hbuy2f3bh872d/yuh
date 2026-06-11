@@ -1,27 +1,23 @@
+import { COLORS } from "../src/theme.mjs";
 export default {
   name: "leaderboard",
   aliases: ["lb", "top"],
-  description: "Global FluxCoins leaderboard.",
-  async execute({ message, args, db, embed }) {
+  description: "Global richest players. `&lb wins` for top earners.",
+  async execute({ message, args, db, embed, prefix }) {
     const mode = args[0]?.toLowerCase();
-    const field = mode === "wins" ? "totalWon" : "balance";
+    const field = mode === "wins" ? "tw" : "bal";
     const title = mode === "wins" ? "🏆 Top Earners" : "🏆 Richest Players";
     const rows = await db.getLeaderboard(field, 10);
-
-    if (!rows.length)
-      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("No data yet.")] });
-
+    if (!rows.length) return message.channel.send({ embeds: [embed(COLORS.error).setDescription("No data yet.")] });
     const lines = rows.map((u, i) => {
       const medal = ["🥇","🥈","🥉"][i] ?? `**${i + 1}.**`;
-      const val = field === "totalWon" ? u.totalWon : u.balance;
-      return `${medal} <@${u.userId}> — **${val.toLocaleString()} FC**`;
+      return `${medal} <@${u._id}> — **${(u[field] ?? 0).toLocaleString()} FC**`;
     });
-
     return message.channel.send({ embeds: [
-      embed(0xf1c40f)
+      embed(COLORS.gold)
         .setTitle(title)
         .setDescription(lines.join("\n"))
-        .setFooter({ text: "Global · Use &lb wins for top earners" })
+        .setFooter({ text: `Global · ${prefix}lb wins for top earners` })
     ]});
   },
 };

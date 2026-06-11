@@ -1,6 +1,7 @@
 import { EmbedBuilder } from "@fluxerjs/core";
 import fs from "fs";
 import path from "path";
+import { COLORS } from "./theme.mjs";
 
 export class CommandHandler {
   constructor(client, db, config) {
@@ -37,7 +38,7 @@ export class CommandHandler {
     if (!cmd) {
       message.channel?.send?.({
         embeds: [
-          makeEmbed(0xe74c3c)
+          makeEmbed(COLORS.error)
             .setDescription(`❌ Unknown command \`${this.prefix}${cmdName}\`. Use \`${this.prefix}help\` to see all commands.`)
         ]
       }).catch(() => {});
@@ -53,6 +54,6 @@ export class CommandHandler {
   }
 }
 
-export function makeEmbed(color = 0x2b2d31) {
-  return new EmbedBuilder().setColor(color);
+export function makeEmbed(color) {
+  return new EmbedBuilder().setColor(color ?? COLORS.accent);
 }
