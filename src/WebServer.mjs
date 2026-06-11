@@ -15,6 +15,10 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // ---------------------------------------------------------------------------
 const SL_API_BASE  = "https://slotslaunch.com/api";
 const SL_TOKEN     = "o37amWKFbEuZURwULDFeShH617DAbBYmtmmkKGg2Ho74c27DIC";
+// SL_HOST must be the domain you registered on slotslaunch.com — NOT your server IP.
+// Go to https://slotslaunch.com/account/api-token and check the "host" field.
+// Example: "sirgreen.casino" or "82.223.104.166" only if that IP is registered there.
+const SL_HOST      = process.env.SL_HOST ?? "82.223.104.166";
 const SL_EMBED     = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // In-memory game cache — refreshed once per day
@@ -31,10 +35,23 @@ async function fetchAllGames() {
     try {
       const raw = await nodeFetch(
         `${SL_API_BASE}/games?per_page=150&page=${page}&published=1&order_by=name&order=asc`,
-        { headers: { "Accept": "application/json", "X-License": SL_TOKEN } }
+        { headers: { "Accept": "application/json", "Host": SL_HOST } }
       );
-      const json = JSON.parse(raw);
-      if (!json.data?.length) break;
+      // Log first page raw response to help diagnose auth/host issues
+      if (page === 1) {
+        console.log("[SlotsLaunch] API response (page 1):", raw.slice(0, 500));
+      }
+      let json;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        console.error("[SlotsLaunch] Invalid JSON response:", raw.slice(0, 300));
+        break;
+      }
+      if (!json.data?.length) {
+        console.log("[SlotsLaunch] Empty data on page", page, "— full response:", JSON.stringify(json).slice(0, 300));
+        break;
+      }
       all.push(...json.data);
       if (!json.links?.next) break;
       page++;
@@ -47,6 +64,8 @@ async function fetchAllGames() {
     _gameCache   = all;
     _cacheExpiry = Date.now() + 24 * 60 * 60 * 1000;
     console.log(`[SlotsLaunch] Cached ${all.length} games.`);
+  } else {
+    console.warn("[SlotsLaunch] No games cached — check that SL_HOST matches your registered domain on slotslaunch.com/account/api-token");
   }
   return _gameCache;
 }
@@ -76,10 +95,18 @@ function nodeFetch(url, opts = {}) {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
     const body    = opts.body ?? "";
+    // Build headers — if Host is overridden, use servername for SNI explicitly
     const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
     const r = mod.request(
-      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      {
+        hostname:   parsed.hostname,
+        port:       parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path:       parsed.pathname + parsed.search,
+        method:     opts.method ?? "GET",
+        headers,
+        // Ensure SNI always uses the real hostname, not whatever Host header says
+        servername: parsed.hostname,
+      },
       res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
     );
     r.on("error", reject);
