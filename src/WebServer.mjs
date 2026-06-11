@@ -4,9 +4,16 @@ import { URL } from "url";
 import crypto from "crypto";
 
 // ---------------------------------------------------------------------------
-// Fluxer OAuth2 uses Discord's OAuth infrastructure.
-// Scope: identify — we only need the user's ID and username.
+// Fluxer OAuth2  —  https://api.fluxer.app/v1
+// Authorize : https://fluxer.app/oauth2/authorize
+// Token     : https://api.fluxer.app/v1/oauth2/token
+// Me        : https://api.fluxer.app/v1/users/@me
+// Scope     : identify
 // ---------------------------------------------------------------------------
+
+const FLUXER_AUTH_URL  = "https://fluxer.app/oauth2/authorize";
+const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
+const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 const PAGE = (body) => `<!DOCTYPE html>
 <html lang="en">
@@ -30,8 +37,6 @@ h2{color:#27ae60;margin-bottom:1rem;font-size:1.05rem;font-weight:400}
      align-items:center;justify-content:center;gap:.5rem;text-decoration:none}
 .btn:hover{background:#27ae60}.btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.btn-fluxer{background:#2ecc71;color:#0a1a0a}
-.btn-fluxer:hover{background:#27ae60}
 .bal{font-size:1.6rem;color:#2ecc71;font-weight:700;margin:1rem 0}
 .reels{font-size:3.5rem;letter-spacing:.4rem;margin:1.5rem 0;
         display:flex;align-items:center;justify-content:center;gap:.5rem}
@@ -49,6 +54,7 @@ input[type=number]:focus{outline:2px solid #2ecc71;border-color:transparent}
 .avatar{width:52px;height:52px;border-radius:50%;border:2px solid #2ecc71;margin-bottom:.6rem}
 .tag{color:#a8d5a8;font-size:.9rem;margin-bottom:.8rem}
 .logo{font-size:2.5rem;margin-bottom:.5rem}
+.err{color:#e74c3c;margin-top:.8rem;font-size:.9rem}
 </style>
 </head>
 <body>${body}</body>
@@ -106,12 +112,12 @@ export class WebServer {
   constructor(db, config) {
     this.db           = db;
     this.port         = config.webPort             ?? 3420;
-    this.clientId     = config.discordClientId     ?? "";
-    this.clientSecret = config.discordClientSecret ?? "";
+    this.clientId     = config.fluxerClientId      ?? config.discordClientId     ?? "";
+    this.clientSecret = config.fluxerClientSecret  ?? config.discordClientSecret ?? "";
     const host        = config.webHost && config.webHost !== "0.0.0.0" ? config.webHost : "localhost";
     this.baseUrl      = config.webBaseUrl ?? `http://${host}:${this.port}`;
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
-    this._states      = new Map(); // csrf state -> timestamp
+    this._states      = new Map();
   }
 
   async start() {
@@ -123,7 +129,6 @@ export class WebServer {
     );
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] Le Bandit running on port ${this.port}`));
-    // Prune stale CSRF states every 10 min
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
       for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
@@ -143,7 +148,7 @@ export class WebServer {
       const user    = await this.db.getUser(uid);
       const cookies = parseCookies(req);
       return this._html(res, 200, PAGE(this._gamePage(
-        user.bal ?? 0,
+        Number(user?.bal ?? 0),
         decodeURIComponent(cookies.dtag ?? "Player"),
         decodeURIComponent(cookies.dav  ?? "")
       )));
@@ -157,14 +162,14 @@ export class WebServer {
             <div class="logo">🎰</div>
             <h1>Not Configured</h1>
             <p style="margin-top:1rem;color:#a8d5a8">
-              Add <code>discordClientId</code>, <code>discordClientSecret</code>,
+              Add <code>fluxerClientId</code>, <code>fluxerClientSecret</code>,
               and <code>webBaseUrl</code> to <code>config.json</code>.
             </p>
           </div>`));
       }
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
-      const authUrl = new URL("https://discord.com/oauth2/authorize");
+      const authUrl = new URL(FLUXER_AUTH_URL);
       authUrl.searchParams.set("client_id",     this.clientId);
       authUrl.searchParams.set("redirect_uri",  this.redirectUri);
       authUrl.searchParams.set("response_type", "code");
@@ -178,7 +183,7 @@ export class WebServer {
           <p style="margin-bottom:1.5rem;color:#a8d5a8">
             Login with your <strong>Fluxer</strong> account to access your FluxCoin balance.
           </p>
-          <a class="btn btn-fluxer" href="${authUrl}">
+          <a class="btn" href="${authUrl}">
             🟢&nbsp; Login with Fluxer
           </a>
           <p class="footer">Your balance is global across all Fluxer servers.</p>
@@ -193,15 +198,14 @@ export class WebServer {
       if (!code || !state || !this._states.has(state)) {
         return this._html(res, 400, PAGE(`
           <div class="card"><h1>❌ Login Failed</h1>
-          <p style="margin-top:1rem">Invalid or expired login state.</p>
-          <a class="btn" style="margin-top:1.2rem" href="/login">Try again</a></div>`));
+          <p style="margin-top:1rem">Invalid or expired login state. <a class="btn" style="margin-top:1rem" href="/login">Try again</a></p></div>`));
       }
       this._states.delete(state);
 
-      // Exchange code for access token
+      // Exchange code for access token via Fluxer API
       let tokenData;
       try {
-        const raw = await nodeFetch("https://discord.com/api/oauth2/token", {
+        const raw = await nodeFetch(FLUXER_TOKEN_URL, {
           method:  "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body:    new URLSearchParams({
@@ -215,17 +219,18 @@ export class WebServer {
         tokenData = JSON.parse(raw);
       } catch (e) {
         console.error("[OAuth] token exchange failed", e);
-        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not reach Fluxer. Try again.</p></div>`));
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not reach Fluxer. Try again.</p><a class="btn" style="margin-top:1rem" href="/login">Retry</a></div>`));
       }
 
       if (!tokenData.access_token) {
-        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p>${tokenData.error_description ?? "Unknown error"}</p><a class="btn" style="margin-top:1rem" href="/login">Try again</a></div>`));
+        console.error("[OAuth] no access_token in response:", tokenData);
+        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p>${tokenData.error_description ?? tokenData.message ?? "Unknown error"}</p><a class="btn" style="margin-top:1rem" href="/login">Try again</a></div>`));
       }
 
-      // Fetch user identity
+      // Fetch user identity from Fluxer API
       let me;
       try {
-        me = JSON.parse(await nodeFetch("https://discord.com/api/users/@me", {
+        me = JSON.parse(await nodeFetch(FLUXER_ME_URL, {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         }));
       } catch {
@@ -233,12 +238,12 @@ export class WebServer {
       }
 
       const userId = me.id;
-      const tag    = me.username + (me.discriminator && me.discriminator !== "0" ? `#${me.discriminator}` : "");
+      const tag    = me.username ?? me.tag ?? userId;
+      // Fluxer avatar CDN mirrors Discord's structure
       const avatar = me.avatar
-        ? `https://cdn.discordapp.com/avatars/${userId}/${me.avatar}.png?size=64`
+        ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64`
         : "";
 
-      // Create 2h session
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
 
@@ -273,9 +278,10 @@ export class WebServer {
       const body = await parseBody(req);
       const bet  = parseInt(body.bet);
       const user = await this.db.getUser(uid);
-      if (isNaN(bet) || bet < 1)   return this._json(res, 400, { error: "Invalid bet" });
-      if (bet > (user.bal ?? 0))   return this._json(res, 400, { error: "Insufficient FC" });
-      if (bet > 1_000_000)         return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
+      const bal  = Number(user?.bal ?? 0);
+      if (isNaN(bet) || bet < 1)  return this._json(res, 400, { error: "Invalid bet" });
+      if (bet > bal)              return this._json(res, 400, { error: "Insufficient FC" });
+      if (bet > 1_000_000)        return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
 
       const reels = [spinReel(), spinReel(), spinReel()];
       const [a, b, c] = reels;
@@ -293,7 +299,7 @@ export class WebServer {
 
       const upd    = await this.db.updateBalance(uid, delta);
       await this.db.recordGame(uid, delta > 0, Math.abs(delta));
-      const newBal = (upd?.bal ?? (user.bal + delta));
+      const newBal = Number(upd?.bal ?? (bal + delta));
       return this._json(res, 200, { reels, delta, msg, type, bal: newBal });
     }
 

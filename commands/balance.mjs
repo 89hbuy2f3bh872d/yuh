@@ -7,22 +7,29 @@ export default {
 
   async execute({ message, args, db, embed }) {
     const uid = args[0]
-      ? (message.mentions.users.first()?.id ?? args[0])
+      ? (message.mentions?.users?.first()?.id ?? args[0])
       : message.author.id;
 
-    const u = await db.getUser(uid);
     const tag = args[0]
-      ? (message.mentions.users.first()?.tag ?? uid)
-      : message.author.tag;
+      ? (message.mentions?.users?.first()?.tag ?? uid)
+      : (message.author.tag ?? message.author.username ?? uid);
+
+    const u = await db.getUser(uid);
+
+    // Defensive defaults — guard against any driver version returning sparse doc
+    const bal    = Number(u?.bal  ?? 0);
+    const won    = Number(u?.tw   ?? 0);
+    const lost   = Number(u?.tl   ?? 0);
+    const games  = Number(u?.gp   ?? 0);
 
     return message.channel.send({ embeds: [
       embed(COLORS.accent)
         .setTitle("💰 Balance")
-        .setDescription(`**${tag}**\n\`${u.bal.toLocaleString()} FC\``)
+        .setDescription(`**${tag}**\n\`${bal.toLocaleString()} FC\``)
         .addFields(
-          { name: "Won",   value: u.tw.toLocaleString(), inline: true },
-          { name: "Lost",  value: u.tl.toLocaleString(), inline: true },
-          { name: "Games", value: u.gp.toString(),       inline: true }
+          { name: "Won",   value: won.toLocaleString(),   inline: true },
+          { name: "Lost",  value: lost.toLocaleString(),  inline: true },
+          { name: "Games", value: games.toString(),       inline: true }
         )
     ]});
   },
