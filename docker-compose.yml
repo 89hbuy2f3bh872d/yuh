@@ -1,21 +1,17 @@
+version: "3.9"
 services:
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on: [mongo]
+    volumes:
+      - ./config.json:/app/config.json:ro
+    environment:
+      - NODE_ENV=production
   mongo:
     image: mongo:7
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
-    ports:
-      - "27017:27017"
-
-  casino:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      - mongo
-    volumes:
-      - ./config.json:/app/config.json:ro
-    environment:
-      - NODE_ENV=production
-
 volumes:
   mongo_data:

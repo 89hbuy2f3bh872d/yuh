@@ -1,47 +1,40 @@
-import { CommandBuilder } from "../src/CommandHandler.mjs";
-import { EmbedBuilder } from "@fluxerjs/core";
-import { getOrCreate, addBalance, recordResult, fmt } from "../src/Database.mjs";
-import { parseBet } from "../src/Utils.mjs";
-import { RTP, baitAfterLoss, baitAfterWin } from "../src/HouseEdge.mjs";
+import { HouseEdge } from "../src/HouseEdge.mjs";
 
-export const command = new CommandBuilder()
-  .setName("coinflip")
-  .addAliases("cf", "flip")
-  .setDescription("Flip a coin! Pick heads or tails. Win 1.9x your bet on correct guess.")
-  .addChoiceOption(o => o.setName("side").setDescription("heads or tails").addChoices("heads","tails").setRequired(true))
-  .addStringOption(o => o.setName("bet").setDescription("Amount to bet").setRequired(true))
-  .setCategory("casino");
+export default {
+  name: "coinflip",
+  aliases: ["cf", "flip"],
+  description: "Flip a coin. !coinflip <heads|tails> <bet>",
+  async execute({ message, args, db, embed }) {
+    const user  = await db.getUser(message.author.id);
+    const side  = args[0]?.toLowerCase();
+    const bet   = parseInt(args[1]);
 
-export async function run(msg, data) {
-  const userId = msg.message.author.id;
-  const username = msg.message.author.username ?? userId;
-  const user = await getOrCreate(userId, username);
-  const side = data.get("side")?.value;
-  const bet = parseBet(data.get("bet")?.value, user.balance);
+    if (!side || !["heads","tails","h","t"].includes(side))
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Choose `heads` or `tails`.")] });
+    if (isNaN(bet) || bet <= 0)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid bet.")] });
+    if (bet > user.balance)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient balance.")] });
+    if (bet > 500_000)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **500,000 Flux**.")] });
 
-  if (!bet || bet < 1) return msg.reply("❌ Invalid bet amount.");
-  if (bet > user.balance) return msg.reply(`❌ You only have **${fmt(user.balance)} Flux**.`);
+    const pick   = side[0] === "h" ? "heads" : "tails";
+    const won    = Math.random() < 0.475; // 47.5% win = 5% house edge
+    const result = won ? pick : (pick === "heads" ? "tails" : "heads");
+    const coin   = result === "heads" ? "🪙 Heads" : "🌑 Tails";
 
-  await addBalance(userId, -bet);
-  const won = Math.random() < RTP.coinflip;
-  const result = won ? side : (side === "heads" ? "tails" : "heads");
-  const payout = won ? Math.floor(bet * 1.9) : 0;
-  const icon = result === "heads" ? "🪙" : "🔴";
-
-  if (won) {
-    await addBalance(userId, payout);
-    await recordResult(userId, payout, 0);
-    const embed = new EmbedBuilder()
-      .setColor(0xf5c518)
-      .setTitle("🪙 Coinflip")
-      .setDescription(`${icon} It landed **${result}**!\nYou won **+${fmt(payout)} Flux**!\n\n${baitAfterWin()}`);
-    return msg.reply({ embeds: [embed] });
-  }
-
-  await recordResult(userId, 0, bet);
-  const embed = new EmbedBuilder()
-    .setColor(0xff4444)
-    .setTitle("🪙 Coinflip")
-    .setDescription(`${icon} It landed **${result}**!\nYou called ${side} and lost **${fmt(bet)} Flux**.\n\n${baitAfterLoss()}`);
-  msg.reply({ embeds: [embed] });
-}
+    if (won) {
+      await db.updateBalance(message.author.id, bet);
+      await db.recordGame(message.author.id, true, bet);
+      message.channel.send({ embeds: [
+        embed(0x2ecc71).setTitle(`${coin} — WIN!`).setDescription(`+**${bet.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
+      ]});
+    } else {
+      await db.updateBalance(message.author.id, -bet);
+      await db.recordGame(message.author.id, false, bet);
+      message.channel.send({ embeds: [
+        embed(0xe74c3c).setTitle(`${coin} — LOSS`).setDescription(`-**${bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
+      ]});
+    }
+  },
+};

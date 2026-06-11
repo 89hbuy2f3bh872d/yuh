@@ -1,15 +1,13 @@
 {
   "name": "fluxer-casino",
-  "type": "module",
   "version": "1.0.0",
-  "description": "A Fluxer virtual-currency casino bot — global balances, house edge, leaderboards.",
-  "engines": { "node": ">=22.0.0" },
-  "dependencies": {
-    "@fluxerjs/core": "^1.3.1",
-    "mongodb": "^6.7.0"
-  },
+  "type": "module",
+  "main": "index.mjs",
   "scripts": {
-    "start": "node index.mjs",
-    "dev": "node --inspect index.mjs --trace-warnings"
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@fluxerjs/core": "latest",
+    "mongodb": "^6.5.0"
   }
 }

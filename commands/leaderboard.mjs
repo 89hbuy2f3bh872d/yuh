@@ -1,36 +1,21 @@
-import { CommandBuilder } from "../src/CommandHandler.mjs";
-import { EmbedBuilder } from "@fluxerjs/core";
-import { getLeaderboard, fmt } from "../src/Database.mjs";
+export default {
+  name: "leaderboard",
+  aliases: ["lb", "top"],
+  description: "Global leaderboard. !lb [rich|winners]",
+  async execute({ message, args, db, embed }) {
+    const mode = (args[0] ?? "rich").toLowerCase();
+    const field = mode === "winners" ? "totalWon" : "balance";
+    const title = mode === "winners" ? "🏆 Top Earners" : "💰 Richest Players";
 
-export const command = new CommandBuilder()
-  .setName("leaderboard")
-  .addAliases("lb", "top", "richest")
-  .setDescription("Global casino leaderboard. Modes: richest (default) or earners.")
-  .addChoiceOption(o =>
-    o.setName("mode")
-     .setDescription("richest = top balances, earners = total winnings")
-     .addChoices("richest", "earners")
-     .setDefault("richest")
-  )
-  .setCategory("casino");
+    const rows = await db.getLeaderboard(field, 10);
+    if (!rows.length) return message.channel.send({ embeds: [embed(0x95a5a6).setDescription("No data yet.")] });
 
-const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+    const lines = rows.map((u, i) =>
+      `**${i + 1}.** <@${u.userId}> — **${u[field].toLocaleString()} Flux**`
+    );
 
-export async function run(msg, data) {
-  const mode = data.get("mode")?.value ?? "richest";
-  const users = await getLeaderboard(mode, 10);
-
-  const title = mode === "earners" ? "🏆 Top Earners (All Time)" : "💰 Richest Players";
-  const lines = users.map((u, i) => {
-    const val = mode === "earners" ? u.totalWon : u.balance;
-    const name = u.username && u.username !== "Unknown" ? u.username : `<@${u.userId}>`;
-    return `${medals[i] ?? `${i+1}.`} **${name}** — ${fmt(val)} Flux`;
-  });
-
-  const embed = new EmbedBuilder()
-    .setColor(0xf5c518)
-    .setTitle(title)
-    .setDescription(lines.length ? lines.join("\n") : "No data yet. Be the first to play!")
-    .setFooter({ text: "Global rankings across all servers" });
-  msg.reply({ embeds: [embed] });
-}
+    message.channel.send({ embeds: [
+      embed(0xf1c40f).setTitle(title).setDescription(lines.join("\n"))
+    ]});
+  },
+};

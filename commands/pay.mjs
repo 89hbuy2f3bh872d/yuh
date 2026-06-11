@@ -1,38 +1,39 @@
-import { CommandBuilder } from "../src/CommandHandler.mjs";
-import { EmbedBuilder } from "@fluxerjs/core";
-import { getOrCreate, transfer, fmt } from "../src/Database.mjs";
-import { parseBet } from "../src/Utils.mjs";
-
-export const command = new CommandBuilder()
-  .setName("pay")
-  .addAliases("send", "give")
-  .setDescription("Send Flux to another user. Supports: all, half, 1k, 2.5m.")
-  .addUserOption(o => o.setName("user").setDescription("User to pay").setRequired(true))
-  .addStringOption(o => o.setName("amount").setDescription("Amount to send").setRequired(true))
-  .setCategory("casino");
-
-export async function run(msg, data) {
-  const fromId = msg.message.author.id;
-  const fromName = msg.message.author.username ?? fromId;
-  const toId = data.get("user")?.value;
-  const rawAmt = data.get("amount")?.value;
-
-  if (!toId || toId === fromId) {
-    return msg.reply("❌ Please mention a valid user to pay (can't pay yourself).");
-  }
-
-  const from = await getOrCreate(fromId, fromName);
-  const amt = parseBet(rawAmt, from.balance);
-
-  if (!amt || amt < 1) return msg.reply("❌ Invalid amount.");
-  if (from.balance < amt) return msg.reply(`❌ You only have **${fmt(from.balance)} Flux**.`);
-
-  await getOrCreate(toId, toId);
-  await transfer(fromId, toId, amt);
-
-  const embed = new EmbedBuilder()
-    .setColor(0x00aaff)
-    .setTitle("💸 Transfer Successful")
-    .setDescription(`<@${fromId}> sent **${fmt(amt)} Flux** to <@${toId}> 🪙`);
-  msg.reply({ embeds: [embed] });
+function parseAmount(str, balance) {
+  if (str === "all")  return balance;
+  if (str === "half") return Math.floor(balance / 2);
+  const m = str.match(/^([\d.]+)([km]?)$/i);
+  if (!m) return NaN;
+  let n = parseFloat(m[1]);
+  if (m[2].toLowerCase() === "k") n *= 1_000;
+  if (m[2].toLowerCase() === "m") n *= 1_000_000;
+  return Math.floor(n);
 }
+
+export default {
+  name: "pay",
+  aliases: ["give", "transfer"],
+  description: "Send Flux to another user. Usage: !pay @user <amount|all|half|1k>",
+  async execute({ message, args, db, embed }) {
+    const target = message.mentions?.users?.first?.() ?? message.mentions?.[0];
+    if (!target) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Mention a user to pay.")] });
+    if (target.id === message.author.id) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ You can't pay yourself.")] });
+
+    const sender = await db.getUser(message.author.id);
+    const rawAmt = args[1] ?? args[0];
+    const amount = parseAmount(rawAmt, sender.balance);
+
+    if (!rawAmt || isNaN(amount) || amount <= 0)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid amount (e.g. `500`, `1k`, `all`, `half`).")] });
+    if (amount > sender.balance)
+      return message.channel.send({ embeds: [embed(0xe74c3c).setDescription(`❌ You only have **${sender.balance.toLocaleString()} Flux**.`)] });
+
+    const ok = await db.transfer(message.author.id, target.id, amount);
+    if (!ok) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Transfer failed.")] });
+
+    message.channel.send({ embeds: [
+      embed(0x3498db)
+        .setTitle("💸 Transfer Complete")
+        .setDescription(`**${message.author.username}** → **${target.username}**: **${amount.toLocaleString()} Flux**`)
+    ]});
+  },
+};

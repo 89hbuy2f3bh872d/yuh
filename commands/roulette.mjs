@@ -1,73 +1,52 @@
-import { CommandBuilder } from "../src/CommandHandler.mjs";
-import { EmbedBuilder } from "@fluxerjs/core";
-import { getOrCreate, addBalance, recordResult, fmt } from "../src/Database.mjs";
-import { parseBet } from "../src/Utils.mjs";
-import { RTP, baitAfterLoss, baitAfterWin } from "../src/HouseEdge.mjs";
+import { HouseEdge } from "../src/HouseEdge.mjs";
 
-const REDS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
-function spin() { return Math.floor(Math.random() * 37); }
-function evaluate(bet, num) {
-  if (/^\d+$/.test(bet)) {
-    const n = parseInt(bet);
-    if (n < 0 || n > 36) return { ok: false };
-    return { win: num === n, mult: 35 };
-  }
-  switch (bet.toLowerCase()) {
-    case "red": return { win: REDS.has(num), mult: 1 };
-    case "black": return { win: num > 0 && !REDS.has(num), mult: 1 };
-    case "even": return { win: num > 0 && num % 2 === 0, mult: 1 };
-    case "odd": return { win: num > 0 && num % 2 !== 0, mult: 1 };
-    case "low": return { win: num >= 1 && num <= 18, mult: 1 };
-    case "high": return { win: num >= 19 && num <= 36, mult: 1 };
-    case "dozen1": return { win: num >= 1 && num <= 12, mult: 2 };
-    case "dozen2": return { win: num >= 13 && num <= 24, mult: 2 };
-    case "dozen3": return { win: num >= 25 && num <= 36, mult: 2 };
-    default: return { ok: false };
-  }
-}
-const VALID = ["red","black","even","odd","low","high","dozen1","dozen2","dozen3","0–36"];
+const RED   = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+const BLACK = new Set([2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35]);
 
-export const command = new CommandBuilder()
-  .setName("roulette")
-  .addAlias("rl")
-  .setDescription("European roulette. Bet types: red/black/even/odd/low/high/dozen1-3 or a number 0–36.")
-  .addStringOption(o => o.setName("bet_type").setDescription("Bet type (red, black, 0–36, etc.)").setRequired(true))
-  .addStringOption(o => o.setName("amount").setDescription("Amount to bet").setRequired(true))
-  .setCategory("casino");
+function spin() { return Math.floor(Math.random() * 37); } // 0-36 European
 
-export async function run(msg, data) {
-  const userId = msg.message.author.id;
-  const username = msg.message.author.username ?? userId;
-  const user = await getOrCreate(userId, username);
-  const betType = data.get("bet_type")?.value;
-  const amount = parseBet(data.get("amount")?.value, user.balance);
+export default {
+  name: "roulette",
+  aliases: ["rl"],
+  description: "Roulette. !roulette <red|black|odd|even|1-36> <bet>",
+  async execute({ message, args, db, embed }) {
+    const user = await db.getUser(message.author.id);
+    const pick = args[0]?.toLowerCase();
+    const bet  = parseInt(args[1]);
 
-  if (!amount || amount < 1) return msg.reply("❌ Invalid amount.");
-  if (amount > user.balance) return msg.reply(`❌ You only have **${fmt(user.balance)} Flux**.`);
+    if (!pick) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Pick: `red`, `black`, `odd`, `even`, or a number 1-36.")] });
+    if (isNaN(bet) || bet <= 0) return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Provide a valid bet.")] });
+    if (bet > user.balance)     return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Insufficient balance.")] });
+    if (bet > 750_000)          return message.channel.send({ embeds: [embed(0xe74c3c).setDescription("❌ Max bet is **750,000 Flux**.")] });
 
-  const ev = evaluate(betType, 0);
-  if (ev.ok === false && !/^\d+$/.test(betType)) return msg.reply(`❌ Unknown bet type. Valid: ${VALID.join(", ")}.`);
+    const num = spin();
+    const color = num === 0 ? "green" : RED.has(num) ? "red" : "black";
+    const icon  = color === "green" ? "🟢" : color === "red" ? "🔴" : "⚫";
 
-  await addBalance(userId, -amount);
-  const num = spin();
-  const color = num === 0 ? "🟢" : REDS.has(num) ? "🔴" : "⚫";
-  const res = evaluate(betType, num);
-  const payout = res.win ? Math.floor(amount * res.mult * RTP.roulette) + amount : 0;
+    let multiplier = 0;
+    const pickNum = parseInt(pick);
+    if (!isNaN(pickNum) && pickNum >= 1 && pickNum <= 36) {
+      if (num === pickNum) multiplier = 35;
+    } else if (pick === "red"   && color === "red")   multiplier = 1;
+    else if (pick === "black" && color === "black") multiplier = 1;
+    else if (pick === "odd"   && num % 2 !== 0 && num !== 0) multiplier = 1;
+    else if (pick === "even"  && num % 2 === 0 && num !== 0) multiplier = 1;
 
-  if (res.win && payout > 0) {
-    await addBalance(userId, payout);
-    await recordResult(userId, payout - amount, 0);
-    const embed = new EmbedBuilder()
-      .setColor(0xf5c518)
-      .setTitle("🎡 Roulette")
-      .setDescription(`${color} Ball landed on **${num}**!\nYou bet **${betType}** and won **+${fmt(payout - amount)} Flux**!\n\n${baitAfterWin()}`);
-    return msg.reply({ embeds: [embed] });
-  }
-
-  await recordResult(userId, 0, amount);
-  const embed = new EmbedBuilder()
-    .setColor(0xff4444)
-    .setTitle("🎡 Roulette")
-    .setDescription(`${color} Ball landed on **${num}**.\nYou bet **${betType}** and lost **${fmt(amount)} Flux**.\n\n${baitAfterLoss()}`);
-  msg.reply({ embeds: [embed] });
-}
+    if (multiplier > 0) {
+      const profit = Math.floor(bet * multiplier);
+      await db.updateBalance(message.author.id, profit);
+      await db.recordGame(message.author.id, true, bet + profit);
+      message.channel.send({ embeds: [
+        embed(0x2ecc71).setTitle(`🎡 Roulette — WIN! ${icon} ${num}`)
+          .setDescription(`+**${profit.toLocaleString()} Flux**\n${HouseEdge.baitWin()}`)
+      ]});
+    } else {
+      await db.updateBalance(message.author.id, -bet);
+      await db.recordGame(message.author.id, false, bet);
+      message.channel.send({ embeds: [
+        embed(0xe74c3c).setTitle(`🎡 Roulette — LOSS ${icon} ${num}`)
+          .setDescription(`-**${bet.toLocaleString()} Flux**\n${HouseEdge.baitLoss()}`)
+      ]});
+    }
+  },
+};

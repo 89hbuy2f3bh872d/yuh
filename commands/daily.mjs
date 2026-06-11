@@ -1,31 +1,26 @@
-import { CommandBuilder } from "../src/CommandHandler.mjs";
-import { EmbedBuilder } from "@fluxerjs/core";
-import { getOrCreate, claimDaily, fmt } from "../src/Database.mjs";
-import { baitAfterLoss } from "../src/HouseEdge.mjs";
+const DAILY = 500;
+const COOLDOWN_MS = 86_400_000;
+const cooldowns = new Map();
 
-export const command = new CommandBuilder()
-  .setName("daily")
-  .setDescription("Claim your daily Flux reward (500–1000 Flux, once per 24 hours).")
-  .setCategory("casino");
-
-export async function run(msg) {
-  const userId = msg.message.author.id;
-  const username = msg.message.author.username ?? userId;
-  await getOrCreate(userId, username);
-  const result = await claimDaily(userId);
-  if (result.ok) {
-    const embed = new EmbedBuilder()
-      .setColor(0x00cc66)
-      .setTitle("🎁 Daily Reward Claimed!")
-      .setDescription(`You received **${fmt(result.reward)} Flux** 🪙\n\n${baitAfterLoss()}`);
-    return msg.reply({ embeds: [embed] });
-  }
-  const ms = result.next - Date.now();
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const embed = new EmbedBuilder()
-    .setColor(0xff4444)
-    .setTitle("⏳ Already Claimed")
-    .setDescription(`Come back in **${h}h ${m}m** for your next reward.`);
-  msg.reply({ embeds: [embed] });
-}
+export default {
+  name: "daily",
+  description: "Claim your daily 500 Flux.",
+  async execute({ message, db, embed }) {
+    const now = Date.now();
+    const last = cooldowns.get(message.author.id) ?? 0;
+    const diff = now - last;
+    if (diff < COOLDOWN_MS) {
+      const remaining = Math.ceil((COOLDOWN_MS - diff) / 3_600_000);
+      return message.channel.send({ embeds: [
+        embed(0xe74c3c).setDescription(`⏰ Come back in **${remaining}h** for your next daily.`)
+      ]});
+    }
+    cooldowns.set(message.author.id, now);
+    const user = await db.updateBalance(message.author.id, DAILY);
+    message.channel.send({ embeds: [
+      embed(0x2ecc71)
+        .setTitle("🎁 Daily Claimed!")
+        .setDescription(`+**${DAILY} Flux** added! New balance: **${user.balance?.toLocaleString() ?? "?"}**`)
+    ]});
+  },
+};
