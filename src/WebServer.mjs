@@ -11,32 +11,42 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch — Le Bandit is hardcoded by id; no catalogue fetch needed.
-// SL_TOKEN: your API token from slotslaunch.com/account/api-token
+// SlotsLaunch
+// SL_TOKEN  = your API token
+// SL_ORIGIN = your server's public IP / hostname (passed as origin to SL)
+// Le Bandit is hardcoded — no catalogue fetch needed.
 // ---------------------------------------------------------------------------
-const SL_TOKEN = process.env.SL_TOKEN ?? "";
+const SL_TOKEN  = process.env.SL_TOKEN  ?? "";
+const SL_ORIGIN = process.env.SL_ORIGIN ?? "";
 
-// Le Bandit — id 16485, embed URL constructed directly.
 const LE_BANDIT = {
   id:       16485,
   name:     "Le Bandit",
   provider: "Hacksaw Gaming",
-  thumb:    "https://assets.slotslaunch.com/16001/le-bandit.jpg",
+  // Verified CDN path from slotslaunch.com/launch-pad/games/16485--le-bandit
+  thumb:    "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
+  // Fallback: fetch from their public thumb endpoint
+  thumbAlt: `https://slotslaunch.com/storage/games/16485/thumb.jpg`,
 };
 
-const SL_EMBED = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
+// SlotsLaunch launch API — returns { url: "https://..." } with the real game URL.
+// Docs: https://slotslaunch.com/documentation  →  GET /api/game/launch
+async function fetchLaunchUrl(gameId) {
+  const endpoint = `https://slotslaunch.com/api/game/launch?token=${encodeURIComponent(SL_TOKEN)}&game_id=${gameId}&origin=${encodeURIComponent(SL_ORIGIN)}`;
+  try {
+    const raw  = await nodeFetch(endpoint);
+    const json = JSON.parse(raw);
+    // Response shape: { url: "...", ... }  or  { data: { url: "..." } }
+    return json?.url ?? json?.data?.url ?? json?.launch_url ?? null;
+  } catch (e) {
+    console.error("[SlotsLaunch] launch fetch failed:", e.message);
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function parseBody(req) {
-  return new Promise(resolve => {
-    let d = "";
-    req.on("data", c => d += c);
-    req.on("end", () => { try { resolve(Object.fromEntries(new URLSearchParams(d))); } catch { resolve({}); } });
-  });
-}
-
 function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -70,7 +80,7 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------------------
-// SHARED CSS (dark green casino theme)
+// SHARED CSS
 // ---------------------------------------------------------------------------
 const SHARED_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -146,7 +156,13 @@ input,select{font:inherit;color:inherit}
 .game-thumb-wrap{width:100%;aspect-ratio:4/3;overflow:hidden;background:#071507;position:relative}
 .game-thumb{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
 .game-card:hover .game-thumb{transform:scale(1.06)}
-.game-thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2.5rem;color:#2ecc7133}
+.game-thumb-placeholder{
+  width:100%;height:100%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:.5rem;background:linear-gradient(135deg,#071f07,#0e2e0e);
+}
+.game-thumb-placeholder svg{opacity:.4}
+.game-thumb-placeholder span{font-size:.7rem;color:#2ecc7166;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
 .game-play-overlay{
   position:absolute;inset:0;
   background:rgba(6,14,6,.6);
@@ -165,46 +181,19 @@ input,select{font:inherit;color:inherit}
 .game-name{font-size:.78rem;font-weight:700;color:#c8f5c8;line-height:1.3}
 .game-meta{font-size:.65rem;color:#4a9a4a;margin-top:.2rem}
 
-.viewer-header{
-  display:flex;align-items:center;gap:1rem;
-  padding:.75rem 1.5rem;
-  background:rgba(6,14,6,.95);
-  border-bottom:1px solid #2ecc7122;
-  flex-wrap:wrap;
-  position:sticky;top:0;z-index:50;
+.launch-wrap{
+  min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1rem;position:relative;z-index:1;
 }
-.viewer-back{
-  background:#0a1f0a;border:1px solid #2ecc7133;
-  color:#a8e6a8;padding:.4rem .9rem;border-radius:8px;
-  font-size:.8rem;font-weight:700;
-  transition:all .18s;display:flex;align-items:center;gap:.4rem;
-}
-.viewer-back:hover{border-color:#2ecc71;color:#2ecc71}
-.viewer-title{font-size:.95rem;font-weight:900;color:#e2ffe2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.viewer-provider{font-size:.75rem;color:#4a9a4a}
-.viewer-wallet{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
-.wallet-label{font-size:.7rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
-.wallet-val{font-size:1rem;font-weight:900;color:#2ecc71;text-shadow:0 0 10px #2ecc7155}
-.wallet-note{font-size:.65rem;color:#3a6b3a;max-width:200px;line-height:1.4}
-
-.game-frame-wrap{width:100%;height:calc(100vh - 110px);background:#040d04;position:relative}
-.game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
-.frame-loading{
-  position:absolute;inset:0;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:#040d04;gap:1rem;
-  pointer-events:none;transition:opacity .3s;
-}
-.frame-loading.hidden{opacity:0}
-.frame-spinner{
-  width:48px;height:48px;
+.launch-spinner{
+  width:52px;height:52px;
   border:3px solid #2ecc7122;
   border-top-color:#2ecc71;
   border-radius:50%;
   animation:spin .8s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
-.frame-loading-txt{font-size:.85rem;color:#4a9a4a}
+.launch-txt{font-size:.9rem;color:#4a9a4a}
 
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1}
 .login-card{
@@ -247,10 +236,39 @@ input,select{font:inherit;color:inherit}
 @media(max-width:600px){
   .nav{padding:.5rem 1rem;gap:.6rem}
   .wrap{padding:1rem 1rem 2rem}
-  .viewer-header{padding:.5rem 1rem}
-  .game-frame-wrap{height:calc(100vh - 130px)}
 }
 `;
+
+// Le Bandit SVG banner fallback (shown when thumbnail fails to load)
+const LE_BANDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 210" width="280" height="210">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#071f07"/>
+      <stop offset="100%" stop-color="#0e2e0e"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5d020"/>
+      <stop offset="100%" stop-color="#c8a400"/>
+    </linearGradient>
+  </defs>
+  <rect width="280" height="210" fill="url(#bg)"/>
+  <!-- decorative dots -->
+  <circle cx="30" cy="30" r="2" fill="#2ecc7122"/>
+  <circle cx="250" cy="30" r="2" fill="#2ecc7122"/>
+  <circle cx="30" cy="180" r="2" fill="#2ecc7122"/>
+  <circle cx="250" cy="180" r="2" fill="#2ecc7122"/>
+  <!-- slot reels -->
+  <rect x="60" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
+  <rect x="120" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
+  <rect x="180" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
+  <!-- 7s -->
+  <text x="80" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
+  <text x="140" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
+  <text x="200" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
+  <!-- title -->
+  <text x="140" y="165" font-size="13" font-family="'Segoe UI',sans-serif" font-weight="900" fill="#2ecc71" text-anchor="middle" letter-spacing="2">LE BANDIT</text>
+  <text x="140" y="180" font-size="8" font-family="'Segoe UI',sans-serif" fill="#2ecc7177" text-anchor="middle" letter-spacing="1">HACKSAW GAMING</text>
+</svg>`;
 
 // ---------------------------------------------------------------------------
 // PAGE SHELLS
@@ -275,9 +293,9 @@ ${bodyContent}
 function navBar(tag, avatar, bal) {
   const av = avatar
     ? `<img class="nav-avatar" src="${esc(avatar)}" alt="${esc(tag)}" loading="lazy">`
-    : `<span style="font-size:1.3rem">\uD83C\uDFB0</span>`;
+    : `<span style="font-size:1.3rem">&#127918;</span>`;
   return `<nav class="nav">
-  <div class="nav-logo"><span>\uD83C\uDFB0</span> SirGreen Casino</div>
+  <div class="nav-logo"><span>&#127918;</span> SirGreen Casino</div>
   <div class="nav-spacer"></div>
   <div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div>
   <div class="nav-user">${av}<span>${esc(tag)}</span></div>
@@ -286,22 +304,37 @@ function navBar(tag, avatar, bal) {
 }
 
 // ---------------------------------------------------------------------------
-// LOBBY PAGE — just Le Bandit
+// LOBBY PAGE
 // ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
-  const thumb = g.thumb
-    ? `<img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=game-thumb-placeholder>\uD83C\uDFB0</div>'">`
-    : '<div class="game-thumb-placeholder">\uD83C\uDFB0</div>';
+  // Multi-source thumbnail: try CDN path, then alternate, then inline SVG
+  const thumbHtml = `
+    <img
+      class="game-thumb" id="gameThumb"
+      src="${esc(g.thumb)}"
+      alt="${esc(g.name)}"
+      loading="lazy"
+      onerror="
+        if(this.dataset.tried!='alt'){
+          this.dataset.tried='alt';
+          this.src='${esc(g.thumbAlt)}';
+        } else {
+          this.style.display='none';
+          this.parentNode.insertAdjacentHTML('afterbegin',document.getElementById('lbSvg').innerHTML);
+        }
+      "
+    >
+    <template id="lbSvg">${LE_BANDIT_SVG.replace(/`/g, "&#96;")}</template>`;
 
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
-  <div class="section-title">\uD83C\uDFAE Game Lobby</div>
-  <div class="game-card" onclick="window.location.href='/play?game=${g.id}&name=${encodeURIComponent(g.name)}&provider=${encodeURIComponent(g.provider)}'">
+  <div class="section-title">&#127918; Game Lobby</div>
+  <div class="game-card" onclick="window.location.href='/launch?game=${g.id}'">
     <div class="game-thumb-wrap">
-      ${thumb}
-      <div class="game-play-overlay"><div class="game-play-btn">\u25B6 Play</div></div>
+      ${thumbHtml}
+      <div class="game-play-overlay"><div class="game-play-btn">&#9654; Play</div></div>
     </div>
     <div class="game-info">
       <div class="game-name">${esc(g.name)}</div>
@@ -313,42 +346,14 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// GAME VIEWER PAGE
+// LAUNCH PAGE — server-side fetches SL launch URL, redirects browser there
 // ---------------------------------------------------------------------------
-function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
-  const embedUrl = SL_EMBED(gameId);
+function launchingPage(gameName) {
   return shellPage("", `
-<div style="display:flex;flex-direction:column;height:100vh">
-  <div class="viewer-header">
-    <button class="viewer-back" onclick="history.back()">\u2190 Back</button>
-    <div style="flex:1;min-width:0">
-      <div class="viewer-title">${esc(gameName)}</div>
-      <div class="viewer-provider">${esc(gameProvider)}</div>
-    </div>
-    <div class="viewer-wallet">
-      <div>
-        <div class="wallet-label">FluxCoins Balance</div>
-        <div class="wallet-val">${Number(bal).toLocaleString()} FC</div>
-      </div>
-      <div class="wallet-note">Balance shown for reference. Real-money play not enabled.</div>
-    </div>
-    <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
-  </div>
-  <div class="game-frame-wrap">
-    <div class="frame-loading" id="frameLoading">
-      <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading ${esc(gameName)}\u2026</div>
-    </div>
-    <iframe
-      class="game-frame"
-      src="${esc(embedUrl)}"
-      allowfullscreen
-      allow="autoplay; fullscreen"
-      onload="document.getElementById('frameLoading').classList.add('hidden')"
-    ></iframe>
-  </div>
+<div class="launch-wrap">
+  <div class="launch-spinner"></div>
+  <div class="launch-txt">Launching ${esc(gameName)}&#8230;</div>
 </div>
-<script>setTimeout(function(){var f=document.getElementById('frameLoading');if(f)f.classList.add('hidden');},8000);</script>
 `);
 }
 
@@ -357,14 +362,13 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
 // ---------------------------------------------------------------------------
 function loginPage(authUrl) {
   return shellPage("", `
-<div class="ambient"></div>
 <div class="login-wrap">
   <div class="login-card">
-    <div class="login-logo">\uD83C\uDFB0</div>
+    <div class="login-logo">&#127918;</div>
     <div class="login-title">SirGreen Casino</div>
     <div class="login-sub">Powered by FluxCoins</div>
     <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span>
-    <a class="login-btn" href="${esc(authUrl)}">\uD83D\uDFE2&nbsp; Login with Fluxer</a>
+    <a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a>
     <div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div>
   </div>
 </div>
@@ -422,6 +426,7 @@ export class WebServer {
 
     if (path === "/") return this._redirect(res, "/lobby");
 
+    // ── LOBBY ──────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -433,21 +438,38 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, avatar));
     }
 
-    if (path === "/play" && req.method === "GET") {
+    // ── LAUNCH — fetches SL launch URL server-side, redirects browser ──────
+    if (path === "/launch" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const gameId   = parseInt(u.searchParams.get("game") ?? "");
-      const gameName = decodeURIComponent(u.searchParams.get("name") ?? "Game");
-      const gameProv = decodeURIComponent(u.searchParams.get("provider") ?? "");
+      const gameId = parseInt(u.searchParams.get("game") ?? "");
       if (!gameId) return this._redirect(res, "/lobby");
-      const user = await this.db.getUser(uid);
-      const bal  = Number(user?.bal ?? 0);
-      const cookies = parseCookies(req);
-      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
-      const avatar  = decodeURIComponent(cookies.dav  ?? "");
-      return this._html(res, 200, gamePage(bal, tag, avatar, gameId, gameName, gameProv));
+
+      // Show spinner page while we fetch the launch URL
+      const gameInfo = gameId === LE_BANDIT.id ? LE_BANDIT : { name: "Game" };
+
+      if (!SL_TOKEN) {
+        return this._html(res, 500, errPage(
+          "⚠️ Not Configured",
+          "Set the SL_TOKEN environment variable to your SlotsLaunch API token.",
+          "/lobby", "← Back"
+        ));
+      }
+
+      const launchUrl = await fetchLaunchUrl(gameId);
+      if (!launchUrl) {
+        return this._html(res, 502, errPage(
+          "⚠️ Launch Failed",
+          "Could not retrieve the game launch URL from SlotsLaunch. Check your SL_TOKEN and SL_ORIGIN.",
+          "/lobby", "← Back"
+        ));
+      }
+
+      // Redirect the browser directly to the real game URL (no iframe needed)
+      return this._redirect(res, launchUrl);
     }
 
+    // ── BALANCE API ────────────────────────────────────────────────────────
     if (path === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -455,12 +477,13 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
+    // ── LOGIN ──────────────────────────────────────────────────────────────
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(
-          "\u26A0\uFE0F Not Configured",
+          "⚠️ Not Configured",
           "Add fluxerClientId, fluxerClientSecret, and webBaseUrl to config.json.",
-          "#", "\u2014"
+          "#", "—"
         ));
       }
       const state = crypto.randomBytes(16).toString("hex");
@@ -474,11 +497,12 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl.toString()));
     }
 
+    // ── OAUTH CALLBACK ─────────────────────────────────────────────────────
     if (path === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
       if (!code || !state || !this._states.has(state)) {
-        return this._html(res, 400, errPage("\u274C Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+        return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
       }
       this._states.delete(state);
       let tokenData;
@@ -497,12 +521,12 @@ export class WebServer {
         tokenData = JSON.parse(raw);
       } catch (e) {
         console.error("[OAuth] token exchange failed", e);
-        return this._html(res, 500, errPage("\u26A0\uFE0F Error", "Could not reach Fluxer.", "/login", "Retry"));
+        return this._html(res, 500, errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
       if (!tokenData.access_token) {
         console.error("[OAuth] no access_token:", tokenData);
         return this._html(res, 400, errPage(
-          "\u274C Login Failed",
+          "❌ Login Failed",
           tokenData.error_description ?? tokenData.message ?? "Unknown error",
           "/login", "Try again"
         ));
@@ -513,7 +537,7 @@ export class WebServer {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         }));
       } catch {
-        return this._html(res, 500, errPage("\u26A0\uFE0F Error", "Could not fetch your Fluxer profile.", "/login", "Retry"));
+        return this._html(res, 500, errPage("⚠️ Error", "Could not fetch your Fluxer profile.", "/login", "Retry"));
       }
       const userId = me.id;
       const tag    = me.username ?? me.tag ?? userId;
@@ -532,6 +556,7 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
+    // ── LOGOUT ─────────────────────────────────────────────────────────────
     if (path === "/logout") {
       const uid = this._uid(req);
       if (uid) {
