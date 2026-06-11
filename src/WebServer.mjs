@@ -11,15 +11,20 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch — token read from SL_TOKEN env var or config
+// SlotsLaunch — token + origin read from env vars or config
+// SL_TOKEN:  your API token from slotslaunch.com/account/api-token
+// SL_ORIGIN: the EXACT domain you registered for that token (e.g. "www.example.com")
 // ---------------------------------------------------------------------------
-const SL_API_BASE  = "https://slotslaunch.com/api";
-const SL_TOKEN     = process.env.SL_TOKEN ?? "";
-const SL_EMBED     = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
+const SL_API_BASE    = "https://slotslaunch.com/api";
+const SL_TOKEN       = process.env.SL_TOKEN       ?? "";
+const SL_ORIGIN_HOST = process.env.SL_ORIGIN      ?? "";
+const SL_EMBED       = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // In-memory game cache — refreshed once per day
 let _gameCache   = [];
 let _cacheExpiry = 0;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function fetchAllGames() {
   const now = Date.now();
@@ -27,6 +32,9 @@ async function fetchAllGames() {
   if (!SL_TOKEN) {
     console.warn("[SlotsLaunch] SL_TOKEN is not set — skipping game fetch.");
     return [];
+  }
+  if (!SL_ORIGIN_HOST) {
+    console.warn("[SlotsLaunch] SL_ORIGIN is not set — API auth will fail. Set it to the domain registered for your token.");
   }
   console.log("[SlotsLaunch] Refreshing game catalogue…");
   const all = [];
@@ -37,7 +45,7 @@ async function fetchAllGames() {
         `${SL_API_BASE}/games?token=${SL_TOKEN}&per_page=150&page=${page}&published=1&order_by=name&order=asc`,
         { headers: {
             "Accept":     "application/json",
-            "Host":       "slotslaunch.com",
+            "Origin":     SL_ORIGIN_HOST,
             "User-Agent": "Mozilla/5.0 (compatible; FluxerCasinoBot/1.0)",
         } }
       );
@@ -58,6 +66,7 @@ async function fetchAllGames() {
       all.push(...json.data);
       if (!json.links?.next) break;
       page++;
+      await sleep(500); // respect 2 r/s rate limit
     } catch (e) {
       console.error("[SlotsLaunch] fetch error:", e.message);
       break;
@@ -68,7 +77,7 @@ async function fetchAllGames() {
     _cacheExpiry = Date.now() + 24 * 60 * 60 * 1000;
     console.log(`[SlotsLaunch] Cached ${all.length} games.`);
   } else {
-    console.warn("[SlotsLaunch] No games cached — check SL_TOKEN is valid.");
+    console.warn("[SlotsLaunch] No games cached — check SL_TOKEN and SL_ORIGIN are valid.");
   }
   return _gameCache;
 }
