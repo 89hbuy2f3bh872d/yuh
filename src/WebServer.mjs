@@ -35,7 +35,11 @@ async function fetchAllGames() {
     try {
       const raw = await nodeFetch(
         `${SL_API_BASE}/games?token=${SL_TOKEN}&per_page=150&page=${page}&published=1&order_by=name&order=asc`,
-        { headers: { "Accept": "application/json" } }
+        { headers: {
+            "Accept":     "application/json",
+            "Host":       "slotslaunch.com",
+            "User-Agent": "Mozilla/5.0 (compatible; FluxerCasinoBot/1.0)",
+        } }
       );
       if (page === 1) {
         console.log("[SlotsLaunch] API response (page 1):", raw.slice(0, 300));
