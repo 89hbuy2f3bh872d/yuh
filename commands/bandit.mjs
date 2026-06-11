@@ -9,11 +9,11 @@ export default {
   async execute({ message, db, embed, webHost, webPort }) {
     const uid = message.author.id;
     const token = crypto.randomBytes(24).toString("hex");
-    const expires = Date.now() + 10 * 60 * 1000; // 10 min
 
-    await db.addSession(uid, token, expires);
+    // store token with 10-minute TTL
+    await db.createSession(uid, token, 10 * 60 * 1000);
 
-    const url = `http://${webHost}:${webPort}/play?t=${token}`;
+    const url = `http://${webHost}:${webPort}/play?t=${token}&u=${uid}`;
 
     try {
       await message.author.send({ embeds: [
