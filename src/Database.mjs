@@ -31,7 +31,7 @@ export class Database {
   async getUser(userId) {
     const result = await this._users.findOneAndUpdate(
       { userId },
-      { $setOnInsert: { userId, balance: 1000, totalWon: 0, totalLost: 0, gamesPlayed: 0 } },
+      { $setOnInsert: { userId, balance: 1000, totalWon: 0, totalLost: 0, gamesPlayed: 0, lastDaily: 0 } },
       { upsert: true, returnDocument: "after" }
     );
     return result.value ?? result;
@@ -44,6 +44,14 @@ export class Database {
       { upsert: true, returnDocument: "after" }
     );
     return result.value ?? result;
+  }
+
+  async setLastDaily(userId, timestamp) {
+    await this._users.updateOne(
+      { userId },
+      { $set: { lastDaily: timestamp } },
+      { upsert: true }
+    );
   }
 
   async recordGame(userId, won, amount) {
