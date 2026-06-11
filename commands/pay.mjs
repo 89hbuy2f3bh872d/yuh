@@ -1,33 +1,47 @@
 import { COLORS } from "../src/theme.mjs";
+
+function parseBet(str, bal) {
+  if (!str) return NaN;
+  const s = str.toLowerCase();
+  if (s === "all") return bal;
+  if (s === "half") return Math.floor(bal / 2);
+  const m = s.match(/^([\d.]+)([km]?)$/);
+  if (!m) return NaN;
+  let v = parseFloat(m[1]);
+  if (m[2] === "k") v *= 1_000;
+  if (m[2] === "m") v *= 1_000_000;
+  return Math.floor(v);
+}
+
 export default {
   name: "pay",
-  aliases: ["give", "transfer"],
-  description: "Send FC to another user. `&pay @user <amount|half|all>`",
-  async execute({ message, args, db, embed, prefix }) {
-    const target = message.mentions?.users?.first();
+  aliases: ["give", "send"],
+  description: "Send FC to another user. `&pay @user <amount>`",
+
+  async execute({ message, args, db, embed }) {
     const uid = message.author.id;
-    if (!target || target.bot)
-      return message.channel.send({ embeds: [embed(COLORS.error).setDescription(`❌ Usage: \`${prefix}pay @user <amount>\``)] });
-    if (target.id === uid)
-      return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ You can't pay yourself.")] });
-    const rawAmt = args[1]?.toLowerCase();
-    const u = await db.getUser(uid);
-    let amount;
-    if (rawAmt === "all")       amount = u.bal;
-    else if (rawAmt === "half") amount = Math.floor(u.bal / 2);
-    else {
-      const m = rawAmt?.match(/^([\d.]+)(k|m)?$/);
-      if (!m) return message.channel.send({ embeds: [embed(COLORS.error).setDescription(`❌ Usage: \`${prefix}pay @user <amount|half|all>\``)] });
-      amount = Math.floor(parseFloat(m[1]) * (m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1));
+    const target = message.mentions.users.first();
+
+    if (!target || target.bot || target.id === uid) {
+      return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ Mention a valid user to pay.")] });
     }
-    if (!amount || amount <= 0)
-      return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ Amount must be greater than 0.")] });
-    const ok = await db.transfer(uid, target.id, amount);
-    if (!ok) return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ Insufficient FluxCoins.")] });
+
+    const u = await db.getUser(uid);
+    const amount = parseBet(args[1], u.bal);
+
+    if (isNaN(amount) || amount <= 0) {
+      return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ Invalid amount. e.g. `&pay @user 500` or `&pay @user all`")] });
+    }
+    if (amount > u.bal) {
+      return message.channel.send({ embeds: [embed(COLORS.error).setDescription("❌ Insufficient FC.")] });
+    }
+
+    await db.transfer(uid, target.id, amount);
+
     return message.channel.send({ embeds: [
       embed(COLORS.primary)
         .setTitle("💸 Transfer Complete")
-        .setDescription(`**${message.author.username}** sent **${amount.toLocaleString()} FC** to **${target.username}**.`)
+        .setDescription(`Sent **${amount.toLocaleString()} FC** to **${target.tag}**.`)
     ]});
   },
 };
