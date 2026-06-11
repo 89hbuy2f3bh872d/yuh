@@ -12,9 +12,10 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
 // SlotsLaunch
-// SL_TOKEN  = your API token
-// SL_ORIGIN = your server's public IP / hostname (passed as origin to SL)
-// Le Bandit is hardcoded — no catalogue fetch needed.
+// SL_TOKEN : your API token from slotslaunch.com/launch-pad/api
+// SL_ORIGIN: the EXACT domain/IP you registered in the token's "host" field
+//            (e.g. "82.223.104.166" or "www.yourcasino.com").
+//            SlotsLaunch validates every API call against the Origin header.
 // ---------------------------------------------------------------------------
 const SL_TOKEN  = process.env.SL_TOKEN  ?? "";
 const SL_ORIGIN = process.env.SL_ORIGIN ?? "";
@@ -25,24 +26,14 @@ const LE_BANDIT = {
   provider: "Hacksaw Gaming",
   // Verified CDN path from slotslaunch.com/launch-pad/games/16485--le-bandit
   thumb:    "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
-  // Fallback: fetch from their public thumb endpoint
-  thumbAlt: `https://slotslaunch.com/storage/games/16485/thumb.jpg`,
+  // Fallback: alternate path tried on onerror before falling back to SVG
+  thumbAlt: "https://slotslaunch.com/storage/games/16485/thumb.jpg",
 };
 
-// SlotsLaunch launch API — returns { url: "https://..." } with the real game URL.
-// Docs: https://slotslaunch.com/documentation  →  GET /api/game/launch
-async function fetchLaunchUrl(gameId) {
-  const endpoint = `https://slotslaunch.com/api/game/launch?token=${encodeURIComponent(SL_TOKEN)}&game_id=${gameId}&origin=${encodeURIComponent(SL_ORIGIN)}`;
-  try {
-    const raw  = await nodeFetch(endpoint);
-    const json = JSON.parse(raw);
-    // Response shape: { url: "...", ... }  or  { data: { url: "..." } }
-    return json?.url ?? json?.data?.url ?? json?.launch_url ?? null;
-  } catch (e) {
-    console.error("[SlotsLaunch] launch fetch failed:", e.message);
-    return null;
-  }
-}
+// Direct iframe embed — no launch-API call needed.
+// The token is appended as a query param; SlotsLaunch validates via Origin header.
+const SL_EMBED = (id) =>
+  `https://slotslaunch.com/iframe/${id}?token=${encodeURIComponent(SL_TOKEN)}`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,7 +42,8 @@ function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const idx = part.indexOf("="); if (idx < 0) continue;
-    out[decodeURIComponent(part.slice(0, idx).trim())] = decodeURIComponent(part.slice(idx + 1).trim());
+    out[decodeURIComponent(part.slice(0, idx).trim())] =
+      decodeURIComponent(part.slice(idx + 1).trim());
   }
   return out;
 }
@@ -63,8 +55,13 @@ function nodeFetch(url, opts = {}) {
     const body    = opts.body ?? "";
     const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
     const r = mod.request(
-      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: opts.method ?? "GET",
+        headers,
+      },
       res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
     );
     r.on("error", reject);
@@ -80,7 +77,7 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------------------
-// SHARED CSS
+// SHARED CSS (dark green casino theme)
 // ---------------------------------------------------------------------------
 const SHARED_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -181,19 +178,46 @@ input,select{font:inherit;color:inherit}
 .game-name{font-size:.78rem;font-weight:700;color:#c8f5c8;line-height:1.3}
 .game-meta{font-size:.65rem;color:#4a9a4a;margin-top:.2rem}
 
-.launch-wrap{
-  min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:1rem;position:relative;z-index:1;
+.viewer-header{
+  display:flex;align-items:center;gap:1rem;
+  padding:.75rem 1.5rem;
+  background:rgba(6,14,6,.95);
+  border-bottom:1px solid #2ecc7122;
+  flex-wrap:wrap;
+  position:sticky;top:0;z-index:50;
 }
-.launch-spinner{
-  width:52px;height:52px;
+.viewer-back{
+  background:#0a1f0a;border:1px solid #2ecc7133;
+  color:#a8e6a8;padding:.4rem .9rem;border-radius:8px;
+  font-size:.8rem;font-weight:700;
+  transition:all .18s;display:flex;align-items:center;gap:.4rem;
+}
+.viewer-back:hover{border-color:#2ecc71;color:#2ecc71}
+.viewer-title{font-size:.95rem;font-weight:900;color:#e2ffe2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer-provider{font-size:.75rem;color:#4a9a4a}
+.viewer-wallet{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.wallet-label{font-size:.7rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
+.wallet-val{font-size:1rem;font-weight:900;color:#2ecc71;text-shadow:0 0 10px #2ecc7155}
+.wallet-note{font-size:.65rem;color:#3a6b3a;max-width:200px;line-height:1.4}
+
+.game-frame-wrap{width:100%;height:calc(100vh - 110px);background:#040d04;position:relative}
+.game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
+.frame-loading{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#040d04;gap:1rem;
+  pointer-events:none;transition:opacity .3s;
+}
+.frame-loading.hidden{opacity:0}
+.frame-spinner{
+  width:48px;height:48px;
   border:3px solid #2ecc7122;
   border-top-color:#2ecc71;
   border-radius:50%;
   animation:spin .8s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
-.launch-txt{font-size:.9rem;color:#4a9a4a}
+.frame-loading-txt{font-size:.85rem;color:#4a9a4a}
 
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1}
 .login-card{
@@ -236,10 +260,12 @@ input,select{font:inherit;color:inherit}
 @media(max-width:600px){
   .nav{padding:.5rem 1rem;gap:.6rem}
   .wrap{padding:1rem 1rem 2rem}
+  .viewer-header{padding:.5rem 1rem}
+  .game-frame-wrap{height:calc(100vh - 130px)}
 }
 `;
 
-// Le Bandit SVG banner fallback (shown when thumbnail fails to load)
+// Le Bandit SVG banner fallback (shown when both CDN thumbnails 404)
 const LE_BANDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 210" width="280" height="210">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -252,20 +278,16 @@ const LE_BANDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 
     </linearGradient>
   </defs>
   <rect width="280" height="210" fill="url(#bg)"/>
-  <!-- decorative dots -->
   <circle cx="30" cy="30" r="2" fill="#2ecc7122"/>
   <circle cx="250" cy="30" r="2" fill="#2ecc7122"/>
   <circle cx="30" cy="180" r="2" fill="#2ecc7122"/>
   <circle cx="250" cy="180" r="2" fill="#2ecc7122"/>
-  <!-- slot reels -->
   <rect x="60" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
   <rect x="120" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
   <rect x="180" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
-  <!-- 7s -->
   <text x="80" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
   <text x="140" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
   <text x="200" y="113" font-size="32" font-family="serif" font-weight="900" fill="url(#gold)" text-anchor="middle">7</text>
-  <!-- title -->
   <text x="140" y="165" font-size="13" font-family="'Segoe UI',sans-serif" font-weight="900" fill="#2ecc71" text-anchor="middle" letter-spacing="2">LE BANDIT</text>
   <text x="140" y="180" font-size="8" font-family="'Segoe UI',sans-serif" fill="#2ecc7177" text-anchor="middle" letter-spacing="1">HACKSAW GAMING</text>
 </svg>`;
@@ -304,34 +326,25 @@ function navBar(tag, avatar, bal) {
 }
 
 // ---------------------------------------------------------------------------
-// LOBBY PAGE
+// LOBBY PAGE — Le Bandit card with 3-tier thumbnail fallback
 // ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
-  // Multi-source thumbnail: try CDN path, then alternate, then inline SVG
+  // onerror chain: primary CDN → thumbAlt → inline SVG placeholder
   const thumbHtml = `
     <img
-      class="game-thumb" id="gameThumb"
+      class="game-thumb"
       src="${esc(g.thumb)}"
       alt="${esc(g.name)}"
       loading="lazy"
-      onerror="
-        if(this.dataset.tried!='alt'){
-          this.dataset.tried='alt';
-          this.src='${esc(g.thumbAlt)}';
-        } else {
-          this.style.display='none';
-          this.parentNode.insertAdjacentHTML('afterbegin',document.getElementById('lbSvg').innerHTML);
-        }
-      "
-    >
-    <template id="lbSvg">${LE_BANDIT_SVG.replace(/`/g, "&#96;")}</template>`;
+      onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';this.insertAdjacentHTML('afterend','<div class=game-thumb-placeholder>${esc(LE_BANDIT_SVG)}</div>');}"
+    >`;
 
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
   <div class="section-title">&#127918; Game Lobby</div>
-  <div class="game-card" onclick="window.location.href='/launch?game=${g.id}'">
+  <div class="game-card" onclick="window.location.href='/play?game=${g.id}&name=${encodeURIComponent(g.name)}&provider=${encodeURIComponent(g.provider)}'">
     <div class="game-thumb-wrap">
       ${thumbHtml}
       <div class="game-play-overlay"><div class="game-play-btn">&#9654; Play</div></div>
@@ -346,14 +359,42 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// LAUNCH PAGE — server-side fetches SL launch URL, redirects browser there
+// GAME VIEWER PAGE — embeds SlotsLaunch iframe directly
 // ---------------------------------------------------------------------------
-function launchingPage(gameName) {
+function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
+  const embedUrl = SL_EMBED(gameId);
   return shellPage("", `
-<div class="launch-wrap">
-  <div class="launch-spinner"></div>
-  <div class="launch-txt">Launching ${esc(gameName)}&#8230;</div>
+<div style="display:flex;flex-direction:column;height:100vh">
+  <div class="viewer-header">
+    <button class="viewer-back" onclick="history.back()">&#8592; Back</button>
+    <div style="flex:1;min-width:0">
+      <div class="viewer-title">${esc(gameName)}</div>
+      <div class="viewer-provider">${esc(gameProvider)}</div>
+    </div>
+    <div class="viewer-wallet">
+      <div>
+        <div class="wallet-label">FluxCoins Balance</div>
+        <div class="wallet-val">${Number(bal).toLocaleString()} FC</div>
+      </div>
+      <div class="wallet-note">Balance shown for reference. Real-money play not enabled.</div>
+    </div>
+    <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
+  </div>
+  <div class="game-frame-wrap">
+    <div class="frame-loading" id="frameLoading">
+      <div class="frame-spinner"></div>
+      <div class="frame-loading-txt">Loading ${esc(gameName)}&#8230;</div>
+    </div>
+    <iframe
+      class="game-frame"
+      src="${esc(embedUrl)}"
+      allowfullscreen
+      allow="autoplay; fullscreen"
+      onload="document.getElementById('frameLoading').classList.add('hidden')"
+    ></iframe>
+  </div>
 </div>
+<script>setTimeout(function(){var f=document.getElementById('frameLoading');if(f)f.classList.add('hidden');},8000);</script>
 `);
 }
 
@@ -403,6 +444,10 @@ export class WebServer {
   }
 
   async start() {
+    if (!SL_TOKEN) {
+      console.warn("[SlotsLaunch] SL_TOKEN not set — game embeds will not work until it is.");
+    }
+
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
@@ -438,15 +483,14 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, avatar));
     }
 
-    // ── LAUNCH — fetches SL launch URL server-side, redirects browser ──────
-    if (path === "/launch" && req.method === "GET") {
+    // ── GAME VIEWER — direct SlotsLaunch iframe embed ──────────────────────
+    if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const gameId = parseInt(u.searchParams.get("game") ?? "");
+      const gameId   = parseInt(u.searchParams.get("game") ?? "");
+      const gameName = decodeURIComponent(u.searchParams.get("name") ?? "Game");
+      const gameProv = decodeURIComponent(u.searchParams.get("provider") ?? "");
       if (!gameId) return this._redirect(res, "/lobby");
-
-      // Show spinner page while we fetch the launch URL
-      const gameInfo = gameId === LE_BANDIT.id ? LE_BANDIT : { name: "Game" };
 
       if (!SL_TOKEN) {
         return this._html(res, 500, errPage(
@@ -456,17 +500,12 @@ export class WebServer {
         ));
       }
 
-      const launchUrl = await fetchLaunchUrl(gameId);
-      if (!launchUrl) {
-        return this._html(res, 502, errPage(
-          "⚠️ Launch Failed",
-          "Could not retrieve the game launch URL from SlotsLaunch. Check your SL_TOKEN and SL_ORIGIN.",
-          "/lobby", "← Back"
-        ));
-      }
-
-      // Redirect the browser directly to the real game URL (no iframe needed)
-      return this._redirect(res, launchUrl);
+      const user    = await this.db.getUser(uid);
+      const bal     = Number(user?.bal ?? 0);
+      const cookies = parseCookies(req);
+      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
+      const avatar  = decodeURIComponent(cookies.dav  ?? "");
+      return this._html(res, 200, gamePage(bal, tag, avatar, gameId, gameName, gameProv));
     }
 
     // ── BALANCE API ────────────────────────────────────────────────────────
@@ -488,13 +527,23 @@ export class WebServer {
       }
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
-      const authUrl = new URL(FLUXER_AUTH_URL);
-      authUrl.searchParams.set("client_id",     this.clientId);
-      authUrl.searchParams.set("redirect_uri",  this.redirectUri);
-      authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope",         "identify guilds");
-      authUrl.searchParams.set("state",         state);
-      return this._html(res, 200, loginPage(authUrl.toString()));
+
+      // Build the authorize URL exactly as Fluxer canary expects it:
+      // https://web.canary.fluxer.app/oauth2/authorize
+      //   ?client_id=<id>
+      //   &scope=identify+guilds
+      //   &redirect_uri=<encoded>
+      //   &response_type=code
+      //   &state=<state>
+      const authUrl =
+        `${FLUXER_AUTH_URL}` +
+        `?client_id=${encodeURIComponent(this.clientId)}` +
+        `&scope=identify+guilds` +
+        `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
+        `&response_type=code` +
+        `&state=${encodeURIComponent(state)}`;
+
+      return this._html(res, 200, loginPage(authUrl));
     }
 
     // ── OAUTH CALLBACK ─────────────────────────────────────────────────────
