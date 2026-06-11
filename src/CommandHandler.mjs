@@ -39,17 +39,27 @@ export class CommandHandler {
       message.channel?.send?.({
         embeds: [
           makeEmbed(COLORS.error)
-            .setDescription(`❌ Unknown command \`${this.prefix}${cmdName}\`. Use \`${this.prefix}help\` to see all commands.`)
+            .setDescription(`\u274c Unknown command \`${this.prefix}${cmdName}\`. Use \`${this.prefix}help\` to see all commands.`)
         ]
       }).catch(() => {});
       return;
     }
 
     try {
-      await cmd.execute({ message, args, db: this.db, config: this.config, embed: makeEmbed, prefix: this.prefix, commands: this.commands });
+      await cmd.execute({
+        message,
+        args,
+        db: this.db,
+        config: this.config,
+        embed: makeEmbed,
+        prefix: this.prefix,
+        commands: this.commands,
+        webHost: this.config.webHost ?? "localhost",
+        webPort: this.config.webPort ?? 3420,
+      });
     } catch (e) {
       console.error(`[Command:${cmdName}]`, e);
-      message.channel?.send?.({ content: "⚠️ Something went wrong." }).catch(() => {});
+      message.channel?.send?.({ content: "\u26a0\ufe0f Something went wrong." }).catch(() => {});
     }
   }
 }
