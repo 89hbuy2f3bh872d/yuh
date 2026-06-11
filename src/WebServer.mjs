@@ -13,25 +13,23 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // ---------------------------------------------------------------------------
 // SlotsLaunch
 // SL_TOKEN : your API token from slotslaunch.com/launch-pad/api
-// SL_ORIGIN: the EXACT domain/IP you registered in the token's "host" field
-//            (e.g. "82.223.104.166" or "www.yourcasino.com").
-//            SlotsLaunch validates every API call against the Origin header.
+// SL_ORIGIN: register "sirgreen.online" as the host in your SlotsLaunch token
+//            then set SL_ORIGIN=sirgreen.online when running the bot.
 // ---------------------------------------------------------------------------
 const SL_TOKEN  = process.env.SL_TOKEN  ?? "";
-const SL_ORIGIN = process.env.SL_ORIGIN ?? "";
+const SL_ORIGIN = process.env.SL_ORIGIN ?? "sirgreen.online";
 
 const LE_BANDIT = {
   id:       16485,
   name:     "Le Bandit",
   provider: "Hacksaw Gaming",
-  // Verified CDN path from slotslaunch.com/launch-pad/games/16485--le-bandit
-  thumb:    "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
-  // Fallback: alternate path tried on onerror before falling back to SVG
-  thumbAlt: "https://slotslaunch.com/storage/games/16485/thumb.jpg",
+  // Verified thumbnail from assets.slotslaunch.com
+  thumb:    "https://assets.slotslaunch.com/16132/conversions/le-bandit-game115.jpg",
+  // Fallback CDN path tried on first onerror before inline SVG
+  thumbAlt: "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
 };
 
 // Direct iframe embed — no launch-API call needed.
-// The token is appended as a query param; SlotsLaunch validates via Origin header.
 const SL_EMBED = (id) =>
   `https://slotslaunch.com/iframe/${id}?token=${encodeURIComponent(SL_TOKEN)}`;
 
@@ -265,7 +263,7 @@ input,select{font:inherit;color:inherit}
 }
 `;
 
-// Le Bandit SVG banner fallback (shown when both CDN thumbnails 404)
+// Le Bandit SVG banner — last-resort fallback if both CDN URLs fail
 const LE_BANDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 210" width="280" height="210">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -326,11 +324,10 @@ function navBar(tag, avatar, bal) {
 }
 
 // ---------------------------------------------------------------------------
-// LOBBY PAGE — Le Bandit card with 3-tier thumbnail fallback
+// LOBBY PAGE — Le Bandit card, 3-tier thumbnail fallback
 // ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
-  // onerror chain: primary CDN → thumbAlt → inline SVG placeholder
   const thumbHtml = `
     <img
       class="game-thumb"
@@ -437,8 +434,10 @@ export class WebServer {
     this.port         = config.webPort             ?? 3420;
     this.clientId     = config.fluxerClientId      ?? config.discordClientId     ?? "";
     this.clientSecret = config.fluxerClientSecret  ?? config.discordClientSecret ?? "";
-    const host        = config.webHost && config.webHost !== "0.0.0.0" ? config.webHost : "localhost";
-    this.baseUrl      = config.webBaseUrl ?? `http://${host}:${this.port}`;
+    // webBaseUrl MUST be set to "https://sirgreen.online" in config.json.
+    // Cloudflare proxies port 443 → your server on port 3420, so the public
+    // URL is always https://sirgreen.online (no port suffix).
+    this.baseUrl      = config.webBaseUrl ?? "https://sirgreen.online";
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
     this._states      = new Map();
   }
@@ -483,7 +482,7 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, avatar));
     }
 
-    // ── GAME VIEWER — direct SlotsLaunch iframe embed ──────────────────────
+    // ── GAME VIEWER ────────────────────────────────────────────────────────
     if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -527,14 +526,6 @@ export class WebServer {
       }
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
-
-      // Build the authorize URL exactly as Fluxer canary expects it:
-      // https://web.canary.fluxer.app/oauth2/authorize
-      //   ?client_id=<id>
-      //   &scope=identify+guilds
-      //   &redirect_uri=<encoded>
-      //   &response_type=code
-      //   &state=<state>
       const authUrl =
         `${FLUXER_AUTH_URL}` +
         `?client_id=${encodeURIComponent(this.clientId)}` +
@@ -542,7 +533,6 @@ export class WebServer {
         `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
         `&response_type=code` +
         `&state=${encodeURIComponent(state)}`;
-
       return this._html(res, 200, loginPage(authUrl));
     }
 
