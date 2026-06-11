@@ -1,48 +1,53 @@
 import { MongoClient } from "mongodb";
 
 /**
- * Compact field names to minimise Atlas free-tier storage (512 MB):
- *   _id  = userId (string, replaces separate userId field)
- *   bal  = balance
- *   tw   = totalWon
- *   tl   = totalLost
- *   gp   = gamesPlayed
- *   ld   = lastDaily (Unix ms)
- *   st   = sessionTokens Map { token -> expiry }
+ * Compact field names to minimise Atlas free-tier storage:
+ *   _id = userId
+ *   bal = balance
+ *   tw  = totalWon
+ *   tl  = totalLost
+ *   gp  = gamesPlayed
+ *   ld  = lastDaily (Unix ms)
+ *   st  = session tokens { token -> expiry }
  */
 
-function dbNameFromUri(uri, fallback) {
-  fallback = fallback || "casino";
+function dbNameFromUri(uri, fallback = "casino") {
   try {
-    const stripped = uri.replace(/^mongodb(\+srv)?:\/\//, "https://");
-    const u = new URL(stripped);
-    const name = u.pathname.replace(/^\//, "").split("?")[0];
-    return name || fallback;
-  } catch (_) { return fallback; }
+    const u = new URL(uri.replace(/^mongodb(\+srv)?:\/\//, "https://"));
+    const n = u.pathname.replace(/^\//, "").split("?")[0];
+    return n || fallback;
+  } catch { return fallback; }
+}
+
+function unwrap(r) {
+  // findOneAndUpdate returns the doc directly in newer drivers,
+  // or nested under .value in older ones.
+  if (!r) return null;
+  return r.value !== undefined ? r.value : r;
 }
 
 export class Database {
   constructor(uri, dbNameOverride) {
-    this._uri = uri;
-    this._dbName = (dbNameOverride && dbNameOverride.trim()) ? dbNameOverride : dbNameFromUri(uri);
+    this._uri    = uri;
+    this._dbName = (dbNameOverride?.trim()) ? dbNameOverride : dbNameFromUri(uri);
   }
 
   async connect() {
     this._client = new MongoClient(this._uri);
     await this._client.connect();
-    this._db = this._client.db(this._dbName);
-    this._users = this._db.collection("u"); // short collection name
+    this._db    = this._client.db(this._dbName);
+    this._users = this._db.collection("u");
+    // Ensure balance never goes below 0 at DB level is handled in app logic.
     console.log(`[DB] Connected → ${this._dbName}.u`);
   }
 
-  // Upsert-on-first-touch; returns compact doc
   async getUser(userId) {
     const r = await this._users.findOneAndUpdate(
       { _id: userId },
-      { $setOnInsert: { _id: userId, bal: 1000, tw: 0, tl: 0, gp: 0, ld: 0 } },
+      { $setOnInsert: { _id: userId, bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 } },
       { upsert: true, returnDocument: "after" }
     );
-    return r.value ?? r;
+    return unwrap(r) ?? { _id: userId, bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 };
   }
 
   async updateBalance(userId, delta) {
@@ -51,7 +56,7 @@ export class Database {
       { $inc: { bal: delta } },
       { upsert: true, returnDocument: "after" }
     );
-    return r.value ?? r;
+    return unwrap(r) ?? { bal: delta };
   }
 
   async setLastDaily(userId, ts) {
@@ -80,9 +85,9 @@ export class Database {
     return this._users.find({}).sort({ [field ?? "bal"]: -1 }).limit(limit ?? 10).toArray();
   }
 
-  // Web session tokens — stored in the user doc as a small object to avoid a separate collection
+  // Sessions stored inside user doc as st.{token} = expiry ms
   async createSession(userId, token, ttlMs) {
-    const expiry = Date.now() + (ttlMs ?? 10 * 60 * 1000);
+    const expiry = Date.now() + (ttlMs ?? 7_200_000);
     await this._users.updateOne(
       { _id: userId },
       { $set: { [`st.${token}`]: expiry } },
@@ -92,25 +97,22 @@ export class Database {
 
   async validateSession(userId, token) {
     const u = await this._users.findOne({ _id: userId });
-    const expiry = u?.st?.[token];
-    if (!expiry || Date.now() > expiry) return false;
-    return true;
+    const exp = u?.st?.[token];
+    return !!(exp && Date.now() <= exp);
   }
 
   async revokeSession(userId, token) {
     await this._users.updateOne({ _id: userId }, { $unset: { [`st.${token}`]: "" } });
   }
 
-  // Prune expired sessions (call periodically)
   async pruneExpiredSessions() {
-    const now = Date.now();
+    const now   = Date.now();
     const users = await this._users.find({ st: { $exists: true } }).toArray();
     for (const u of users) {
       if (!u.st) continue;
       const unset = {};
-      for (const [tok, exp] of Object.entries(u.st)) {
+      for (const [tok, exp] of Object.entries(u.st))
         if (exp < now) unset[`st.${tok}`] = "";
-      }
       if (Object.keys(unset).length)
         await this._users.updateOne({ _id: u._id }, { $unset: unset });
     }

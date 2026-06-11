@@ -3,6 +3,11 @@ import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
 
+// ---------------------------------------------------------------------------
+// Fluxer OAuth2 uses Discord's OAuth infrastructure.
+// Scope: identify — we only need the user's ID and username.
+// ---------------------------------------------------------------------------
+
 const PAGE = (body) => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,35 +20,35 @@ body{background:#0a1a0a;color:#e8f5e9;font-family:'Segoe UI',system-ui,sans-seri
      min-height:100vh;display:flex;flex-direction:column;align-items:center;
      justify-content:center;padding:1rem}
 h1{color:#2ecc71;font-size:2rem;margin-bottom:.5rem}
-h2{color:#27ae60;margin-bottom:1rem;font-size:1.1rem;font-weight:400}
-.card{background:#122012;border:1px solid #2ecc7130;border-radius:14px;
+h2{color:#27ae60;margin-bottom:1rem;font-size:1.05rem;font-weight:400}
+.card{background:#122012;border:1px solid #2ecc7128;border-radius:14px;
       padding:2rem 2.5rem;max-width:500px;width:100%;text-align:center;
       box-shadow:0 8px 40px #00000099}
 .btn{background:#2ecc71;color:#0a1a0a;border:none;padding:.75rem 2rem;
      border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;
      transition:background .18s,transform .1s;margin:.4rem;display:inline-flex;
-     align-items:center;gap:.5rem;text-decoration:none}
-.btn:hover{background:#27ae60}
-.btn:active{transform:scale(.97)}
+     align-items:center;justify-content:center;gap:.5rem;text-decoration:none}
+.btn:hover{background:#27ae60}.btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.btn-discord{background:#5865f2;color:#fff}
-.btn-discord:hover{background:#4752c4}
+.btn-fluxer{background:#2ecc71;color:#0a1a0a}
+.btn-fluxer:hover{background:#27ae60}
 .bal{font-size:1.6rem;color:#2ecc71;font-weight:700;margin:1rem 0}
 .reels{font-size:3.5rem;letter-spacing:.4rem;margin:1.5rem 0;
         display:flex;align-items:center;justify-content:center;gap:.5rem}
 .reel{display:inline-block;width:5rem;height:5rem;line-height:5rem;
-      background:#0d2b0d;border-radius:8px;border:2px solid #2ecc7133;transition:transform .3s}
+      background:#0d2b0d;border-radius:8px;border:2px solid #2ecc7128}
 .spinning .reel{animation:bob .15s linear infinite}
 @keyframes bob{0%{transform:translateY(-4px)}50%{transform:translateY(4px)}100%{transform:translateY(-4px)}}
 .result{font-size:1.1rem;min-height:2rem;margin:.5rem 0;font-weight:600}
 .win{color:#2ecc71}.loss{color:#e74c3c}
-input[type=number]{background:#0d2b0d;border:1px solid #2ecc7133;
+input[type=number]{background:#0d2b0d;border:1px solid #2ecc7128;
   border-radius:8px;color:#e8f5e9;padding:.6rem 1rem;font-size:1rem;
   width:100%;margin:.5rem 0}
 input[type=number]:focus{outline:2px solid #2ecc71;border-color:transparent}
 .footer{margin-top:1.5rem;color:#3a6b3a;font-size:.78rem;line-height:1.6}
 .avatar{width:52px;height:52px;border-radius:50%;border:2px solid #2ecc71;margin-bottom:.6rem}
 .tag{color:#a8d5a8;font-size:.9rem;margin-bottom:.8rem}
+.logo{font-size:2.5rem;margin-bottom:.5rem}
 </style>
 </head>
 <body>${body}</body>
@@ -52,7 +57,7 @@ input[type=number]:focus{outline:2px solid #2ecc71;border-color:transparent}
 const SYMS    = ["🍒","🍋","🍊","🍇","🔔","⭐","💎"];
 const WEIGHTS = [30,   25,   20,   15,    7,   2,    1 ];
 const PAYOUTS = {"🍒":1.5,"🍋":1.8,"🍊":2.2,"🍇":2.5,"🔔":3,"⭐":6,"💎":10};
-const TOTAL_W = WEIGHTS.reduce((a,b) => a+b, 0);
+const TOTAL_W = WEIGHTS.reduce((a, b) => a + b, 0);
 
 function spinReel() {
   let r = Math.random() * TOTAL_W;
@@ -73,9 +78,7 @@ function parseCookies(req) {
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
-    const k = decodeURIComponent(part.slice(0, idx).trim());
-    const v = decodeURIComponent(part.slice(idx + 1).trim());
-    out[k] = v;
+    out[decodeURIComponent(part.slice(0, idx).trim())] = decodeURIComponent(part.slice(idx + 1).trim());
   }
   return out;
 }
@@ -87,8 +90,10 @@ function nodeFetch(url, opts = {}) {
     const body    = opts.body ?? "";
     const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
     const r = mod.request(
-      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      { hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: opts.method ?? "GET", headers },
       res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
     );
     r.on("error", reject);
@@ -100,21 +105,25 @@ function nodeFetch(url, opts = {}) {
 export class WebServer {
   constructor(db, config) {
     this.db           = db;
-    this.port         = config.webPort          ?? 3420;
+    this.port         = config.webPort             ?? 3420;
     this.clientId     = config.discordClientId     ?? "";
     this.clientSecret = config.discordClientSecret ?? "";
-    this.baseUrl      = config.webBaseUrl ??
-      `http://${(config.webHost && config.webHost !== "0.0.0.0") ? config.webHost : "localhost"}:${this.port}`;
+    const host        = config.webHost && config.webHost !== "0.0.0.0" ? config.webHost : "localhost";
+    this.baseUrl      = config.webBaseUrl ?? `http://${host}:${this.port}`;
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
     this._states      = new Map(); // csrf state -> timestamp
   }
 
   async start() {
     this._server = http.createServer((req, res) =>
-      this._handle(req, res).catch(e => { console.error("[Web]", e); res.writeHead(500); res.end("Error"); })
+      this._handle(req, res).catch(e => {
+        console.error("[Web]", e);
+        res.writeHead(500); res.end("Internal error");
+      })
     );
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] Le Bandit running on port ${this.port}`));
+    // Prune stale CSRF states every 10 min
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
       for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
@@ -127,9 +136,9 @@ export class WebServer {
 
     if (path === "/") return this._redirect(res, "/play");
 
-    // ── Slot machine (requires session) ──
+    // ── Slot machine ──
     if (path === "/play" && req.method === "GET") {
-      const uid = this._getSessionUid(req);
+      const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       const user    = await this.db.getUser(uid);
       const cookies = parseCookies(req);
@@ -143,8 +152,15 @@ export class WebServer {
     // ── Login page ──
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
-        return this._html(res, 500, PAGE(`<div class="card"><h1>⚙️ Not Configured</h1>
-          <p style="margin-top:1rem;color:#a8d5a8">Set <code>discordClientId</code>, <code>discordClientSecret</code>, and <code>webBaseUrl</code> in config.json.</p></div>`));
+        return this._html(res, 500, PAGE(`
+          <div class="card">
+            <div class="logo">🎰</div>
+            <h1>Not Configured</h1>
+            <p style="margin-top:1rem;color:#a8d5a8">
+              Add <code>discordClientId</code>, <code>discordClientSecret</code>,
+              and <code>webBaseUrl</code> to <code>config.json</code>.
+            </p>
+          </div>`));
       }
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
@@ -156,14 +172,16 @@ export class WebServer {
       authUrl.searchParams.set("state",          state);
       return this._html(res, 200, PAGE(`
         <div class="card">
-          <h1>🎰 Le Bandit</h1>
+          <div class="logo">🎰</div>
+          <h1>Le Bandit</h1>
           <h2>SirGreen Casino</h2>
-          <p style="margin-bottom:1.5rem;color:#a8d5a8">Sign in with Discord to access your FluxCoins balance.</p>
-          <a class="btn btn-discord" href="${authUrl}">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
-            Login with Discord
+          <p style="margin-bottom:1.5rem;color:#a8d5a8">
+            Login with your <strong>Fluxer</strong> account to access your FluxCoin balance.
+          </p>
+          <a class="btn btn-fluxer" href="${authUrl}">
+            🟢&nbsp; Login with Fluxer
           </a>
-          <p class="footer">Your balance is global across all Discord servers.</p>
+          <p class="footer">Your balance is global across all Fluxer servers.</p>
         </div>`));
     }
 
@@ -171,42 +189,56 @@ export class WebServer {
     if (path === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
+
       if (!code || !state || !this._states.has(state)) {
-        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p style="margin-top:1rem">Invalid or expired state.</p><a class="btn" style="margin-top:1.2rem" href="/login">Try again</a></div>`));
+        return this._html(res, 400, PAGE(`
+          <div class="card"><h1>❌ Login Failed</h1>
+          <p style="margin-top:1rem">Invalid or expired login state.</p>
+          <a class="btn" style="margin-top:1.2rem" href="/login">Try again</a></div>`));
       }
       this._states.delete(state);
 
+      // Exchange code for access token
       let tokenData;
       try {
         const raw = await nodeFetch("https://discord.com/api/oauth2/token", {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ client_id: this.clientId, client_secret: this.clientSecret,
-            grant_type: "authorization_code", code, redirect_uri: this.redirectUri }).toString(),
+          body:    new URLSearchParams({
+            client_id:     this.clientId,
+            client_secret: this.clientSecret,
+            grant_type:    "authorization_code",
+            code,
+            redirect_uri:  this.redirectUri,
+          }).toString(),
         });
         tokenData = JSON.parse(raw);
       } catch (e) {
-        console.error("[OAuth] token exchange", e);
-        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not reach Discord.</p></div>`));
+        console.error("[OAuth] token exchange failed", e);
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not reach Fluxer. Try again.</p></div>`));
       }
 
       if (!tokenData.access_token) {
-        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p>${tokenData.error_description ?? "Unknown OAuth error"}</p></div>`));
+        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p>${tokenData.error_description ?? "Unknown error"}</p><a class="btn" style="margin-top:1rem" href="/login">Try again</a></div>`));
       }
 
+      // Fetch user identity
       let me;
       try {
         me = JSON.parse(await nodeFetch("https://discord.com/api/users/@me", {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         }));
       } catch {
-        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not fetch your Discord profile.</p></div>`));
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not fetch your Fluxer profile.</p></div>`));
       }
 
       const userId = me.id;
       const tag    = me.username + (me.discriminator && me.discriminator !== "0" ? `#${me.discriminator}` : "");
-      const avatar = me.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      const avatar = me.avatar
+        ? `https://cdn.discordapp.com/avatars/${userId}/${me.avatar}.png?size=64`
+        : "";
 
+      // Create 2h session
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
 
@@ -222,26 +254,28 @@ export class WebServer {
 
     // ── Logout ──
     if (path === "/logout") {
-      const uid = this._getSessionUid(req);
+      const uid = this._uid(req);
       if (uid) {
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }
-      res.setHeader("Set-Cookie", ["sid=; Path=/; Max-Age=0","uid=; Path=/; Max-Age=0",
-        "dtag=; Path=/; Max-Age=0","dav=; Path=/; Max-Age=0"]);
+      res.setHeader("Set-Cookie", [
+        "sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0",
+        "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0",
+      ]);
       return this._redirect(res, "/login");
     }
 
-    // ── Spin API ──
+    // ── Spin ──
     if (path === "/spin" && req.method === "POST") {
-      const uid = this._getSessionUid(req);
+      const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const body = await parseBody(req);
       const bet  = parseInt(body.bet);
       const user = await this.db.getUser(uid);
-      if (isNaN(bet) || bet < 1)     return this._json(res, 400, { error: "Invalid bet" });
-      if (bet > (user.bal ?? 0))     return this._json(res, 400, { error: "Insufficient FC" });
-      if (bet > 1_000_000)           return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
+      if (isNaN(bet) || bet < 1)   return this._json(res, 400, { error: "Invalid bet" });
+      if (bet > (user.bal ?? 0))   return this._json(res, 400, { error: "Insufficient FC" });
+      if (bet > 1_000_000)         return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
 
       const reels = [spinReel(), spinReel(), spinReel()];
       const [a, b, c] = reels;
@@ -252,28 +286,27 @@ export class WebServer {
         delta = Math.floor(bet * mult * 0.92);
         msg   = `MATCH! ${mult}×`;
         type  = "win";
-      } else if ((a === b || b === c || a === c) && a !== b) {
-        // pair: partial return
+      } else if (a === b || b === c || a === c) {
         delta = Math.floor(bet * 0.4) - bet;
         msg   = "Pair — partial return";
       }
 
       const upd    = await this.db.updateBalance(uid, delta);
       await this.db.recordGame(uid, delta > 0, Math.abs(delta));
-      const newBal = upd?.bal ?? upd?.value?.bal ?? ((user.bal ?? 0) + delta);
+      const newBal = (upd?.bal ?? (user.bal + delta));
       return this._json(res, 200, { reels, delta, msg, type, bal: newBal });
     }
 
     res.writeHead(404); res.end("Not found");
   }
 
-  _getSessionUid(req) {
+  _uid(req) {
     const c = parseCookies(req);
     return (c.sid && c.uid) ? c.uid : null;
   }
 
   _gamePage(bal, tag, avatar) {
-    const av = avatar ? `<img class="avatar" src="${avatar}" alt="avatar">` : "";
+    const av = avatar ? `<img class="avatar" src="${avatar}" alt="">` : "";
     return `
 <div class="card">
   <h1>🎰 Le Bandit</h1>
@@ -302,16 +335,18 @@ async function doSpin() {
   document.getElementById('result').textContent = '';
   await new Promise(r => setTimeout(r, 700));
   const res = await fetch('/spin', {
-    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'bet='+bet
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'bet=' + bet
   });
   const d = await res.json();
   document.getElementById('reels').classList.remove('spinning');
   if (d.error) {
-    document.getElementById('result').innerHTML = '❌ ' + d.error;
+    document.getElementById('result').textContent = '❌ ' + d.error;
     document.getElementById('result').className = 'result loss';
     btn.disabled = false; return;
   }
-  d.reels.forEach((s,i) => rs[i].textContent = s);
+  d.reels.forEach((s, i) => rs[i].textContent = s);
   document.getElementById('bal').textContent = d.bal.toLocaleString() + ' FC';
   const r = document.getElementById('result');
   r.textContent = (d.delta >= 0 ? '✅ +' : '❌ ') + d.delta.toLocaleString() + ' FC — ' + d.msg;
@@ -321,7 +356,7 @@ async function doSpin() {
 </script>`;
   }
 
-  _html(res, s, b) { res.writeHead(s, {"Content-Type":"text/html;charset=utf-8"}); res.end(b); }
-  _json(res, s, o) { res.writeHead(s, {"Content-Type":"application/json"}); res.end(JSON.stringify(o)); }
+  _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
+  _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
   _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }
 }
