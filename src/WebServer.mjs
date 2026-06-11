@@ -5,13 +5,13 @@ import crypto from "crypto";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2  —  https://api.fluxer.app/v1
-// Authorize : https://fluxer.app/oauth2/authorize
+// Authorize : https://web.canary.fluxer.app/oauth2/authorize
 // Token     : https://api.fluxer.app/v1/oauth2/token
 // Me        : https://api.fluxer.app/v1/users/@me
-// Scope     : identify
+// Scope     : identify guilds
 // ---------------------------------------------------------------------------
 
-const FLUXER_AUTH_URL  = "https://fluxer.app/oauth2/authorize";
+const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
@@ -173,7 +173,7 @@ export class WebServer {
       authUrl.searchParams.set("client_id",     this.clientId);
       authUrl.searchParams.set("redirect_uri",  this.redirectUri);
       authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope",         "identify");
+      authUrl.searchParams.set("scope",         "identify guilds");
       authUrl.searchParams.set("state",          state);
       return this._html(res, 200, PAGE(`
         <div class="card">
