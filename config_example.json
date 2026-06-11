@@ -3,9 +3,11 @@
   "prefix": "&",
   "webPort": 3420,
   "webHost": "YOUR_VPS_IP_OR_DOMAIN",
+  "webBaseUrl": "http://YOUR_VPS_IP_OR_DOMAIN:3420",
+  "discordClientId": "YOUR_DISCORD_APP_CLIENT_ID",
+  "discordClientSecret": "YOUR_DISCORD_APP_CLIENT_SECRET",
   "mongodb": {
     "uri": "YOUR_MONGODB_URI_HERE",
     "database": ""
-  },
-  "fluxer.js": {}
+  }
 }

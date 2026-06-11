@@ -1,199 +1,327 @@
 import http from "http";
+import https from "https";
 import { URL } from "url";
-import { COLORS } from "./theme.mjs";
+import crypto from "crypto";
 
-const HTML = (body, head = "") => `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}<title>Le Bandit — SirGreen Casino</title><style>
-*{box-sizing:border-box;margin:0;padding:0}body{background:#0d1f0d;color:#e8f5e9;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem}
-h1{color:#2ecc71;font-size:2rem;margin-bottom:.5rem}h2{color:#27ae60;margin-bottom:1rem}
-.card{background:#1a2e1a;border:1px solid #2ecc7133;border-radius:12px;padding:2rem;max-width:480px;width:100%;text-align:center;box-shadow:0 8px 32px #00000088}
-.btn{background:#2ecc71;color:#0d1f0d;border:none;padding:.75rem 2rem;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;transition:background .2s;margin:.5rem}
-.btn:hover{background:#27ae60}.btn:disabled{background:#1e8449;cursor:not-allowed;opacity:.6}
-.bal{font-size:1.5rem;color:#2ecc71;font-weight:700;margin:1rem 0}
-.reels{font-size:3.5rem;letter-spacing:.5rem;margin:1.5rem 0;min-height:5rem;display:flex;align-items:center;justify-content:center;gap:.5rem}
-.reel{display:inline-block;width:5rem;height:5rem;line-height:5rem;background:#0d2b0d;border-radius:8px;border:2px solid #2ecc7144;transition:transform .3s}
-.spinning .reel{animation:spin .15s linear infinite}
-@keyframes spin{0%{transform:translateY(-4px)}50%{transform:translateY(4px)}100%{transform:translateY(-4px)}}
-.result{font-size:1.1rem;min-height:2rem;margin-bottom:.5rem;font-weight:600}
-.win{color:#2ecc71}.loss{color:#e74c3c}.push{color:#f39c12}
-input{background:#0d2b0d;border:1px solid #2ecc7144;border-radius:8px;color:#e8f5e9;padding:.6rem 1rem;font-size:1rem;width:100%;margin:.5rem 0}
-.footer{margin-top:2rem;color:#4a7a4a;font-size:.8rem}
-</style></head><body>${body}</body></html>`;
+const PAGE = (body) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Le Bandit — SirGreen Casino</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a1a0a;color:#e8f5e9;font-family:'Segoe UI',system-ui,sans-serif;
+     min-height:100vh;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;padding:1rem}
+h1{color:#2ecc71;font-size:2rem;margin-bottom:.5rem}
+h2{color:#27ae60;margin-bottom:1rem;font-size:1.1rem;font-weight:400}
+.card{background:#122012;border:1px solid #2ecc7130;border-radius:14px;
+      padding:2rem 2.5rem;max-width:500px;width:100%;text-align:center;
+      box-shadow:0 8px 40px #00000099}
+.btn{background:#2ecc71;color:#0a1a0a;border:none;padding:.75rem 2rem;
+     border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;
+     transition:background .18s,transform .1s;margin:.4rem;display:inline-flex;
+     align-items:center;gap:.5rem;text-decoration:none}
+.btn:hover{background:#27ae60}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-discord{background:#5865f2;color:#fff}
+.btn-discord:hover{background:#4752c4}
+.bal{font-size:1.6rem;color:#2ecc71;font-weight:700;margin:1rem 0}
+.reels{font-size:3.5rem;letter-spacing:.4rem;margin:1.5rem 0;
+        display:flex;align-items:center;justify-content:center;gap:.5rem}
+.reel{display:inline-block;width:5rem;height:5rem;line-height:5rem;
+      background:#0d2b0d;border-radius:8px;border:2px solid #2ecc7133;transition:transform .3s}
+.spinning .reel{animation:bob .15s linear infinite}
+@keyframes bob{0%{transform:translateY(-4px)}50%{transform:translateY(4px)}100%{transform:translateY(-4px)}}
+.result{font-size:1.1rem;min-height:2rem;margin:.5rem 0;font-weight:600}
+.win{color:#2ecc71}.loss{color:#e74c3c}
+input[type=number]{background:#0d2b0d;border:1px solid #2ecc7133;
+  border-radius:8px;color:#e8f5e9;padding:.6rem 1rem;font-size:1rem;
+  width:100%;margin:.5rem 0}
+input[type=number]:focus{outline:2px solid #2ecc71;border-color:transparent}
+.footer{margin-top:1.5rem;color:#3a6b3a;font-size:.78rem;line-height:1.6}
+.avatar{width:52px;height:52px;border-radius:50%;border:2px solid #2ecc71;margin-bottom:.6rem}
+.tag{color:#a8d5a8;font-size:.9rem;margin-bottom:.8rem}
+</style>
+</head>
+<body>${body}</body>
+</html>`;
 
-const REELS = ["🍒","🍋","🍊","🍇","💎","7️⃣","🔔","⭐"];
-const WEIGHTS = [30,25,20,15,5,3,1,1];
-const PAYOUTS = {"🍒":1.5,"🍋":1.8,"🍊":2.2,"🍇":2.5,"💎":5,"7️⃣":8,"🔔":6,"⭐":4};
+const SYMS    = ["🍒","🍋","🍊","🍇","🔔","⭐","💎"];
+const WEIGHTS = [30,   25,   20,   15,    7,   2,    1 ];
+const PAYOUTS = {"🍒":1.5,"🍋":1.8,"🍊":2.2,"🍇":2.5,"🔔":3,"⭐":6,"💎":10};
+const TOTAL_W = WEIGHTS.reduce((a,b) => a+b, 0);
 
-function spin() {
-  let r = Math.random() * 100;
-  for (let i = 0; i < REELS.length; i++) { r -= WEIGHTS[i]; if (r <= 0) return REELS[i]; }
-  return REELS[0];
+function spinReel() {
+  let r = Math.random() * TOTAL_W;
+  for (let i = 0; i < SYMS.length; i++) { r -= WEIGHTS[i]; if (r <= 0) return SYMS[i]; }
+  return SYMS[0];
 }
 
 function parseBody(req) {
   return new Promise(resolve => {
     let d = "";
     req.on("data", c => d += c);
-    req.on("end", () => {
-      try { resolve(Object.fromEntries(new URLSearchParams(d))); }
-      catch { resolve({}); }
-    });
+    req.on("end", () => { try { resolve(Object.fromEntries(new URLSearchParams(d))); } catch { resolve({}); } });
+  });
+}
+
+function parseCookies(req) {
+  const out = {};
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const k = decodeURIComponent(part.slice(0, idx).trim());
+    const v = decodeURIComponent(part.slice(idx + 1).trim());
+    out[k] = v;
+  }
+  return out;
+}
+
+function nodeFetch(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed  = new URL(url);
+    const mod     = parsed.protocol === "https:" ? https : http;
+    const body    = opts.body ?? "";
+    const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
+    const r = mod.request(
+      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
+    );
+    r.on("error", reject);
+    if (body) r.write(body);
+    r.end();
   });
 }
 
 export class WebServer {
   constructor(db, config) {
-    this.db = db;
-    this.port = config.webPort ?? 3420;
-    this.host = config.webHost ?? "0.0.0.0";
-    // In-memory map: token -> { userId, expiry }
-    this._tokens = new Map();
-  }
-
-  // Called from &bandit command to pre-register a one-time login token
-  async issueToken(userId) {
-    const token = Buffer.from(`${userId}:${Date.now()}:${Math.random()}`).toString("base64url").slice(0, 32);
-    const expiry = Date.now() + 10 * 60 * 1000; // 10 min
-    this._tokens.set(token, { userId, expiry });
-    return token;
+    this.db           = db;
+    this.port         = config.webPort          ?? 3420;
+    this.clientId     = config.discordClientId     ?? "";
+    this.clientSecret = config.discordClientSecret ?? "";
+    this.baseUrl      = config.webBaseUrl ??
+      `http://${(config.webHost && config.webHost !== "0.0.0.0") ? config.webHost : "localhost"}:${this.port}`;
+    this.redirectUri  = `${this.baseUrl}/oauth/callback`;
+    this._states      = new Map(); // csrf state -> timestamp
   }
 
   async start() {
-    this._server = http.createServer((req, res) => this._handle(req, res));
-    this._server.listen(this.port, this.host, () =>
-      console.log(`[Web] Le Bandit running on port ${this.port}`)
+    this._server = http.createServer((req, res) =>
+      this._handle(req, res).catch(e => { console.error("[Web]", e); res.writeHead(500); res.end("Error"); })
     );
-    // Prune expired tokens every 5 min
+    this._server.listen(this.port, "0.0.0.0", () =>
+      console.log(`[Web] Le Bandit running on port ${this.port}`));
     setInterval(() => {
-      const now = Date.now();
-      for (const [t, v] of this._tokens) if (v.expiry < now) this._tokens.delete(t);
-    }, 5 * 60 * 1000);
+      const cut = Date.now() - 15 * 60 * 1000;
+      for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
+    }, 10 * 60 * 1000);
   }
 
   async _handle(req, res) {
-    const url = new URL(req.url, `http://localhost`);
-    const path = url.pathname;
+    const u    = new URL(req.url, "http://localhost");
+    const path = u.pathname;
 
-    // ── GET /bandit?t=TOKEN  (entry, validates token → sets session cookie) ──
-    if (path === "/bandit" && req.method === "GET") {
-      const t = url.searchParams.get("t");
-      const entry = t && this._tokens.get(t);
-      if (!entry || Date.now() > entry.expiry) {
-        return this._html(res, 403, HTML(`<div class="card"><h1>🔒 Access Denied</h1><p>This link is invalid or has expired.<br>Use <b>&bandit</b> in Discord to get a new one.</p><p class="footer">SirGreen Casino</p></div>`));
-      }
-      this._tokens.delete(t); // single-use
-      const session = Buffer.from(`${entry.userId}:${Date.now()}:${Math.random()}`).toString("base64url").slice(0, 48);
-      const expiry = Date.now() + 2 * 60 * 60 * 1000; // 2h session
-      await this.db.createSession(entry.userId, session, 2 * 60 * 60 * 1000);
-      res.setHeader("Set-Cookie", `sid=${session}; uid=${entry.userId}; HttpOnly; Path=/; Max-Age=7200`);
-      res.setHeader("Location", "/play");
-      res.writeHead(302);
-      return res.end();
-    }
+    if (path === "/") return this._redirect(res, "/play");
 
-    // ── GET /play  (main slot machine page) ──
+    // ── Slot machine (requires session) ──
     if (path === "/play" && req.method === "GET") {
-      const { userId, valid } = await this._auth(req);
-      if (!valid) return this._redirect(res, "/denied");
-      const u = await this.db.getUser(userId);
-      return this._html(res, 200, this._playPage(u.bal ?? 0));
+      const uid = this._getSessionUid(req);
+      if (!uid) return this._redirect(res, "/login");
+      const user    = await this.db.getUser(uid);
+      const cookies = parseCookies(req);
+      return this._html(res, 200, PAGE(this._gamePage(
+        user.bal ?? 0,
+        decodeURIComponent(cookies.dtag ?? "Player"),
+        decodeURIComponent(cookies.dav  ?? "")
+      )));
     }
 
-    // ── POST /spin  (AJAX spin) ──
-    if (path === "/spin" && req.method === "POST") {
-      const { userId, valid } = await this._auth(req);
-      if (!valid) return this._json(res, 401, { error: "Unauthorised" });
-      const body = await parseBody(req);
-      const bet = parseInt(body.bet);
-      const u = await this.db.getUser(userId);
-      if (isNaN(bet) || bet < 1) return this._json(res, 400, { error: "Invalid bet" });
-      if (bet > u.bal) return this._json(res, 400, { error: "Insufficient FC" });
-      if (bet > 1_000_000) return this._json(res, 400, { error: "Max bet 1,000,000 FC" });
+    // ── Login page ──
+    if (path === "/login" && req.method === "GET") {
+      if (!this.clientId) {
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚙️ Not Configured</h1>
+          <p style="margin-top:1rem;color:#a8d5a8">Set <code>discordClientId</code>, <code>discordClientSecret</code>, and <code>webBaseUrl</code> in config.json.</p></div>`));
+      }
+      const state = crypto.randomBytes(16).toString("hex");
+      this._states.set(state, Date.now());
+      const authUrl = new URL("https://discord.com/oauth2/authorize");
+      authUrl.searchParams.set("client_id",     this.clientId);
+      authUrl.searchParams.set("redirect_uri",  this.redirectUri);
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("scope",         "identify");
+      authUrl.searchParams.set("state",          state);
+      return this._html(res, 200, PAGE(`
+        <div class="card">
+          <h1>🎰 Le Bandit</h1>
+          <h2>SirGreen Casino</h2>
+          <p style="margin-bottom:1.5rem;color:#a8d5a8">Sign in with Discord to access your FluxCoins balance.</p>
+          <a class="btn btn-discord" href="${authUrl}">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+            Login with Discord
+          </a>
+          <p class="footer">Your balance is global across all Discord servers.</p>
+        </div>`));
+    }
 
-      const reels = [spin(), spin(), spin()];
+    // ── OAuth callback ──
+    if (path === "/oauth/callback" && req.method === "GET") {
+      const code  = u.searchParams.get("code");
+      const state = u.searchParams.get("state");
+      if (!code || !state || !this._states.has(state)) {
+        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p style="margin-top:1rem">Invalid or expired state.</p><a class="btn" style="margin-top:1.2rem" href="/login">Try again</a></div>`));
+      }
+      this._states.delete(state);
+
+      let tokenData;
+      try {
+        const raw = await nodeFetch("https://discord.com/api/oauth2/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: this.clientId, client_secret: this.clientSecret,
+            grant_type: "authorization_code", code, redirect_uri: this.redirectUri }).toString(),
+        });
+        tokenData = JSON.parse(raw);
+      } catch (e) {
+        console.error("[OAuth] token exchange", e);
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not reach Discord.</p></div>`));
+      }
+
+      if (!tokenData.access_token) {
+        return this._html(res, 400, PAGE(`<div class="card"><h1>❌ Login Failed</h1><p>${tokenData.error_description ?? "Unknown OAuth error"}</p></div>`));
+      }
+
+      let me;
+      try {
+        me = JSON.parse(await nodeFetch("https://discord.com/api/users/@me", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        }));
+      } catch {
+        return this._html(res, 500, PAGE(`<div class="card"><h1>⚠️ Error</h1><p>Could not fetch your Discord profile.</p></div>`));
+      }
+
+      const userId = me.id;
+      const tag    = me.username + (me.discriminator && me.discriminator !== "0" ? `#${me.discriminator}` : "");
+      const avatar = me.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${me.avatar}.png?size=64` : "";
+
+      const session = crypto.randomBytes(32).toString("hex");
+      await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
+
+      const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
+      res.setHeader("Set-Cookie", [
+        `sid=${session}; ${base}`,
+        `uid=${userId}; ${base}`,
+        `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
+        `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
+      ]);
+      return this._redirect(res, "/play");
+    }
+
+    // ── Logout ──
+    if (path === "/logout") {
+      const uid = this._getSessionUid(req);
+      if (uid) {
+        const c = parseCookies(req);
+        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
+      }
+      res.setHeader("Set-Cookie", ["sid=; Path=/; Max-Age=0","uid=; Path=/; Max-Age=0",
+        "dtag=; Path=/; Max-Age=0","dav=; Path=/; Max-Age=0"]);
+      return this._redirect(res, "/login");
+    }
+
+    // ── Spin API ──
+    if (path === "/spin" && req.method === "POST") {
+      const uid = this._getSessionUid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const body = await parseBody(req);
+      const bet  = parseInt(body.bet);
+      const user = await this.db.getUser(uid);
+      if (isNaN(bet) || bet < 1)     return this._json(res, 400, { error: "Invalid bet" });
+      if (bet > (user.bal ?? 0))     return this._json(res, 400, { error: "Insufficient FC" });
+      if (bet > 1_000_000)           return this._json(res, 400, { error: "Max bet: 1,000,000 FC" });
+
+      const reels = [spinReel(), spinReel(), spinReel()];
       const [a, b, c] = reels;
       let delta = -bet, msg = "No match", type = "loss";
 
-      if (a === b && b === c) {
+      if (a === b && b === c && Math.random() > 0.08) {
         const mult = PAYOUTS[a] ?? 2;
         delta = Math.floor(bet * mult * 0.92);
-        msg = `JACKPOT! ${mult}x`; type = "win";
-      } else if (a === b || b === c || a === c) {
-        delta = Math.floor(bet * 0.5);
-        msg = "Partial win — pair!"; type = "win";
+        msg   = `MATCH! ${mult}×`;
+        type  = "win";
+      } else if ((a === b || b === c || a === c) && a !== b) {
+        // pair: partial return
+        delta = Math.floor(bet * 0.4) - bet;
+        msg   = "Pair — partial return";
       }
 
-      const updated = await this.db.updateBalance(userId, delta);
-      await this.db.recordGame(userId, delta > 0, Math.abs(delta));
-      return this._json(res, 200, { reels, delta, msg, type, bal: updated.bal ?? updated.value?.bal });
-    }
-
-    // ── /denied ──
-    if (path === "/denied") {
-      return this._html(res, 403, HTML(`<div class="card"><h1>🔒 Session Expired</h1><p>Use <b>&bandit</b> in Discord to get a fresh link.</p><p class="footer">SirGreen Casino</p></div>`));
+      const upd    = await this.db.updateBalance(uid, delta);
+      await this.db.recordGame(uid, delta > 0, Math.abs(delta));
+      const newBal = upd?.bal ?? upd?.value?.bal ?? ((user.bal ?? 0) + delta);
+      return this._json(res, 200, { reels, delta, msg, type, bal: newBal });
     }
 
     res.writeHead(404); res.end("Not found");
   }
 
-  async _auth(req) {
-    const cookies = Object.fromEntries(
-      (req.headers.cookie ?? "").split(";").map(c => c.trim().split("=").map(decodeURIComponent))
-    );
-    const session = cookies.sid, userId = cookies.uid;
-    if (!session || !userId) return { valid: false };
-    const valid = await this.db.validateSession(userId, session);
-    return { valid, userId };
+  _getSessionUid(req) {
+    const c = parseCookies(req);
+    return (c.sid && c.uid) ? c.uid : null;
   }
 
-  _playPage(bal) {
-    return HTML(`
+  _gamePage(bal, tag, avatar) {
+    const av = avatar ? `<img class="avatar" src="${avatar}" alt="avatar">` : "";
+    return `
 <div class="card">
   <h1>🎰 Le Bandit</h1>
-  <h2>SirGreen Casino</h2>
-  <div class="bal" id="bal">${bal.toLocaleString()} FC</div>
+  ${av}
+  <div class="tag">${tag}</div>
+  <div class="bal" id="bal">${Number(bal).toLocaleString()} FC</div>
   <div class="reels" id="reels">
     <span class="reel" id="r0">🍒</span>
     <span class="reel" id="r1">🍒</span>
     <span class="reel" id="r2">🍒</span>
   </div>
-  <div class="result" id="result"></div>
+  <div class="result" id="result"> </div>
   <input type="number" id="bet" placeholder="Bet amount" min="1" max="1000000" value="100">
   <button class="btn" id="spinBtn" onclick="doSpin()">🎰 SPIN</button>
-  <p class="footer">FluxCoins · House edge applies · SirGreen Casino</p>
+  <a class="btn" style="background:#1a3a1a;color:#4a9a4a;font-size:.85rem;padding:.5rem 1.2rem;margin-top:.8rem" href="/logout">Logout</a>
+  <p class="footer">FluxCoins · Global balance · House edge applies · SirGreen Casino</p>
 </div>
 <script>
-async function doSpin(){
-  const btn=document.getElementById('spinBtn'),betEl=document.getElementById('bet');
-  const bet=parseInt(betEl.value);
-  if(isNaN(bet)||bet<1)return;
-  btn.disabled=true;
-  const reelEls=[document.getElementById('r0'),document.getElementById('r1'),document.getElementById('r2')];
+async function doSpin() {
+  const btn = document.getElementById('spinBtn');
+  const bet = parseInt(document.getElementById('bet').value);
+  if (isNaN(bet) || bet < 1) return;
+  btn.disabled = true;
+  const rs = ['r0','r1','r2'].map(id => document.getElementById(id));
   document.getElementById('reels').classList.add('spinning');
-  document.getElementById('result').textContent='';
-  await new Promise(r=>setTimeout(r,600));
-  const res=await fetch('/spin',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'bet='+bet});
-  const data=await res.json();
+  document.getElementById('result').textContent = '';
+  await new Promise(r => setTimeout(r, 700));
+  const res = await fetch('/spin', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'bet='+bet
+  });
+  const d = await res.json();
   document.getElementById('reels').classList.remove('spinning');
-  if(data.error){document.getElementById('result').textContent='❌ '+data.error;document.getElementById('result').className='result loss';btn.disabled=false;return;}
-  data.reels.forEach((s,i)=>reelEls[i].textContent=s);
-  document.getElementById('bal').textContent=data.bal.toLocaleString()+' FC';
-  const r=document.getElementById('result');
-  r.textContent=(data.delta>0?'✅ +':'')+data.delta.toLocaleString()+' FC — '+data.msg;
-  r.className='result '+(data.type==='win'?'win':'loss');
-  btn.disabled=false;
+  if (d.error) {
+    document.getElementById('result').innerHTML = '❌ ' + d.error;
+    document.getElementById('result').className = 'result loss';
+    btn.disabled = false; return;
+  }
+  d.reels.forEach((s,i) => rs[i].textContent = s);
+  document.getElementById('bal').textContent = d.bal.toLocaleString() + ' FC';
+  const r = document.getElementById('result');
+  r.textContent = (d.delta >= 0 ? '✅ +' : '❌ ') + d.delta.toLocaleString() + ' FC — ' + d.msg;
+  r.className = 'result ' + (d.type === 'win' ? 'win' : 'loss');
+  btn.disabled = false;
 }
-</script>`);
+</script>`;
   }
 
-  _html(res, status, body) {
-    res.writeHead(status, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(body);
-  }
-  _json(res, status, obj) {
-    res.writeHead(status, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(obj));
-  }
-  _redirect(res, loc) {
-    res.setHeader("Location", loc); res.writeHead(302); res.end();
-  }
+  _html(res, s, b) { res.writeHead(s, {"Content-Type":"text/html;charset=utf-8"}); res.end(b); }
+  _json(res, s, o) { res.writeHead(s, {"Content-Type":"application/json"}); res.end(JSON.stringify(o)); }
+  _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }
 }
