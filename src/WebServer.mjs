@@ -14,7 +14,8 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // SlotsLaunch
 // ---------------------------------------------------------------------------
 const SL_API_BASE  = "https://slotslaunch.com/api";
-const SL_TOKEN     = "UdFj4QpSPRGIAoqWLjlqVHmrrBMzmZqCS6DortClSTvLK7Fdf5";
+const SL_TOKEN     = "o37amWKFbEuZURwULDFeShH617DAbBYmtmmkKGg2Ho74c27DIC";
+const SL_HOST      = "82.223.104.166";
 const SL_EMBED     = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // In-memory game cache — refreshed once per day
@@ -31,7 +32,7 @@ async function fetchAllGames() {
     try {
       const raw = await nodeFetch(
         `${SL_API_BASE}/games?per_page=150&page=${page}&published=1&order_by=name&order=asc`,
-        { headers: { "Accept": "application/json" } }
+        { headers: { "Accept": "application/json", "Host": SL_HOST } }
       );
       const json = JSON.parse(raw);
       if (!json.data?.length) break;
