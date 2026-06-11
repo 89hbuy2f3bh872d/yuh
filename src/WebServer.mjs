@@ -15,7 +15,6 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // ---------------------------------------------------------------------------
 const SL_API_BASE  = "https://slotslaunch.com/api";
 const SL_TOKEN     = "o37amWKFbEuZURwULDFeShH617DAbBYmtmmkKGg2Ho74c27DIC";
-const SL_HOST      = "82.223.104.166";
 const SL_EMBED     = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
 
 // In-memory game cache — refreshed once per day
@@ -32,7 +31,7 @@ async function fetchAllGames() {
     try {
       const raw = await nodeFetch(
         `${SL_API_BASE}/games?per_page=150&page=${page}&published=1&order_by=name&order=asc`,
-        { headers: { "Accept": "application/json", "Host": SL_HOST } }
+        { headers: { "Accept": "application/json", "X-License": SL_TOKEN } }
       );
       const json = JSON.parse(raw);
       if (!json.data?.length) break;
@@ -432,7 +431,6 @@ function navBar(tag, avatar, bal) {
 // LOBBY PAGE
 // ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar, games) {
-  // Collect unique types and providers for filter dropdowns
   const types     = [...new Map(games.map(g => [g.type_id, g.type])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   const providers = [...new Map(games.map(g => [g.provider_id, g.provider])).entries()]
@@ -443,7 +441,6 @@ function lobbyPage(bal, tag, avatar, games) {
   const provOpts = providers.map(([id, name]) =>
     `<option value="${id}">${esc(name)}</option>`).join("");
 
-  // Serialize games to JSON for client-side filtering
   const gamesJson = JSON.stringify(games.map(g => ({
     id:       g.id,
     name:     g.name,
@@ -623,7 +620,6 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
 </div>
 
 <script>
-// Hide loading overlay if iframe fires load quickly
 setTimeout(function(){
   var fl = document.getElementById('frameLoading');
   if (fl) fl.classList.add('hidden');
@@ -679,7 +675,6 @@ export class WebServer {
   }
 
   async start() {
-    // Warm the game cache in the background
     fetchAllGames().catch(() => {});
 
     this._server = http.createServer((req, res) =>
@@ -692,10 +687,8 @@ export class WebServer {
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] SirGreen Casino running on port ${this.port}`));
 
-    // Daily game cache refresh
     setInterval(() => fetchAllGames().catch(() => {}), 24 * 60 * 60 * 1000);
 
-    // State & session pruning
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
       for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
@@ -707,10 +700,8 @@ export class WebServer {
     const u    = new URL(req.url, "http://localhost");
     const path = u.pathname;
 
-    // ── Root redirect ──
     if (path === "/") return this._redirect(res, "/lobby");
 
-    // ── Lobby (game list) ──
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -725,12 +716,10 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, avatar, games));
     }
 
-    // ── Legacy /play without game param → lobby ──
     if (path === "/play" && req.method === "GET" && !u.searchParams.get("game")) {
       return this._redirect(res, "/lobby");
     }
 
-    // ── Game viewer ──
     if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -746,7 +735,6 @@ export class WebServer {
       return this._html(res, 200, gamePage(bal, tag, avatar, gameId, gameName, gameProv));
     }
 
-    // ── Balance API (for future JS polling) ──
     if (path === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -754,7 +742,6 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Login page ──
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(
@@ -774,7 +761,6 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl.toString()));
     }
 
-    // ── OAuth callback ──
     if (path === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
@@ -833,7 +819,6 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
-    // ── Logout ──
     if (path === "/logout") {
       const uid = this._uid(req);
       if (uid) {
