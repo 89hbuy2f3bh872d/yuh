@@ -1,0 +1,17 @@
+{
+  "_comment": "Fluxer Casino Bot — copy this to config.json and fill in your values.",
+  "token": "your-fluxer-bot-token",
+  "prefix": "!",
+  "embedColor": "0xf5c518",
+  "owners": ["your-user-id"],
+  "mongodb": {
+    "uri": "mongodb://localhost:27017",
+    "database": "fluxer_casino"
+  },
+  "presenceContents": [
+    { "text": "!help | 🎰 Casino", "emoji_name": "🎰" }
+  ],
+  "fluxer.js": {
+    "rest": { "timeout": 30000, "retries": 3 }
+  }
+}
