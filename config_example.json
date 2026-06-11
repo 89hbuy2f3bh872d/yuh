@@ -1,13 +1,22 @@
 {
-  "token": "YOUR_BOT_TOKEN_HERE",
+  "_comment": "Fluxer Casino Bot — copy this to config.json and fill in your values.",
+  "token": "YOUR_BOT_TOKEN",
   "prefix": "&",
-  "webPort": 3420,
-  "webHost": "YOUR_VPS_IP_OR_DOMAIN",
-  "webBaseUrl": "http://YOUR_VPS_IP_OR_DOMAIN:3420",
-  "discordClientId": "YOUR_DISCORD_APP_CLIENT_ID",
-  "discordClientSecret": "YOUR_DISCORD_APP_CLIENT_SECRET",
+  "embedColor": "0xf5c518",
+  "owners": ["YOUR_FLUXER_USER_ID"],
+  "webBaseUrl": "https://sirgreen.online",
+  "webHost": "0.0.0.0",
+  "webPort": 80,
+  "fluxerClientId":     "YOUR_CLIENT_ID",
+  "fluxerClientSecret": "YOUR_CLIENT_SECRET",
   "mongodb": {
-    "uri": "YOUR_MONGODB_URI_HERE",
-    "database": ""
+    "uri": "mongodb+srv://user:pass@cluster.mongodb.net/casino?retryWrites=true&w=majority",
+    "database": "fluxer_casino"
+  },
+  "presenceContents": [
+    { "text": "!help | \uD83C\uDFB0 Casino", "emoji_name": "\uD83C\uDFB0" }
+  ],
+  "fluxer.js": {
+    "rest": { "timeout": 30000, "retries": 3 }
   }
 }
