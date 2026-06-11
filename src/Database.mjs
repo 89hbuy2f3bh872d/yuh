@@ -1,11 +1,23 @@
 import { MongoClient } from "mongodb";
 
+function dbNameFromUri(uri, fallback) {
+  fallback = fallback || "casino";
+  try {
+    const stripped = uri.replace(/^mongodb(\+srv)?:\/\//, "https://");
+    const u = new URL(stripped);
+    const name = u.pathname.replace(/^\//, "").split("?")[0];
+    return name || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 export class Database {
-  constructor(uri, dbName = "casino") {
+  constructor(uri, dbNameOverride) {
     this._uri = uri;
-    this._dbName = dbName;
-    this._client = null;
-    this._db = null;
+    this._dbName = (dbNameOverride && dbNameOverride.trim())
+      ? dbNameOverride
+      : dbNameFromUri(uri);
   }
 
   async connect() {
@@ -13,22 +25,13 @@ export class Database {
     await this._client.connect();
     this._db = this._client.db(this._dbName);
     this._users = this._db.collection("users");
-    // No createIndex — Atlas free tier restricts it.
-    // Uniqueness is enforced by always filtering on userId as the upsert key.
+    console.log("[DB] Using database: " + this._dbName);
   }
 
   async getUser(userId) {
     const result = await this._users.findOneAndUpdate(
       { userId },
-      {
-        $setOnInsert: {
-          userId,
-          balance: 1000,
-          totalWon: 0,
-          totalLost: 0,
-          gamesPlayed: 0,
-        },
-      },
+      { $setOnInsert: { userId, balance: 1000, totalWon: 0, totalLost: 0, gamesPlayed: 0 } },
       { upsert: true, returnDocument: "after" }
     );
     return result.value ?? result;
@@ -46,13 +49,7 @@ export class Database {
   async recordGame(userId, won, amount) {
     await this._users.updateOne(
       { userId },
-      {
-        $inc: {
-          gamesPlayed: 1,
-          totalWon: won ? amount : 0,
-          totalLost: won ? 0 : amount,
-        },
-      },
+      { $inc: { gamesPlayed: 1, totalWon: won ? amount : 0, totalLost: won ? 0 : amount } },
       { upsert: true }
     );
   }
@@ -65,11 +62,9 @@ export class Database {
     return true;
   }
 
-  async getLeaderboard(field = "balance", limit = 10) {
-    return this._users
-      .find({})
-      .sort({ [field]: -1 })
-      .limit(limit)
-      .toArray();
+  async getLeaderboard(field, limit) {
+    field = field || "balance";
+    limit = limit || 10;
+    return this._users.find({}).sort({ [field]: -1 }).limit(limit).toArray();
   }
 }

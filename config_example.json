@@ -1,9 +1,9 @@
 {
-  "token": "YOUR_BOT_TOKEN",
-  "prefix": "!",
+  "token": "YOUR_BOT_TOKEN_HERE",
+  "prefix": "&",
   "mongodb": {
-    "uri": "mongodb://localhost:27017",
-    "database": "casino"
+    "uri": "YOUR_MONGODB_URI_HERE",
+    "database": ""
   },
   "fluxer.js": {}
 }
