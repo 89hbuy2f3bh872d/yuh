@@ -11,14 +11,24 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch — token + origin read from env vars or config
+// SlotsLaunch — token read from env; origin is auto-derived from webBaseUrl
 // SL_TOKEN:  your API token from slotslaunch.com/account/api-token
-// SL_ORIGIN: the EXACT domain you registered for that token (e.g. "www.example.com")
+// SL_ORIGIN: override if needed, otherwise derived automatically from WEB_BASE_URL / webBaseUrl
 // ---------------------------------------------------------------------------
-const SL_API_BASE    = "https://slotslaunch.com/api";
-const SL_TOKEN       = process.env.SL_TOKEN       ?? "";
-const SL_ORIGIN_HOST = process.env.SL_ORIGIN      ?? "";
-const SL_EMBED       = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
+const SL_API_BASE = "https://slotslaunch.com/api";
+const SL_TOKEN    = process.env.SL_TOKEN ?? "";
+// Derive origin from WEB_BASE_URL env var, falling back to SL_ORIGIN if explicitly set
+const _baseUrlEnv = process.env.WEB_BASE_URL ?? process.env.SL_ORIGIN ?? "";
+const SL_ORIGIN_HOST = _baseUrlEnv
+  ? (() => { try { return new URL(_baseUrlEnv).hostname; } catch { return _baseUrlEnv; } })()
+  : "";
+
+const SL_EMBED = (id) => `https://slotslaunch.com/iframe/${id}?token=${SL_TOKEN}`;
+
+// ---------------------------------------------------------------------------
+// Le Bandit — only game shown in the lobby
+// ---------------------------------------------------------------------------
+const LE_BANDIT_SLUG = "le-bandit";
 
 // In-memory game cache — refreshed once per day
 let _gameCache   = [];
@@ -34,7 +44,9 @@ async function fetchAllGames() {
     return [];
   }
   if (!SL_ORIGIN_HOST) {
-    console.warn("[SlotsLaunch] SL_ORIGIN is not set — API auth will fail. Set it to the domain registered for your token.");
+    console.warn("[SlotsLaunch] SL_ORIGIN could not be derived — set WEB_BASE_URL or SL_ORIGIN env var.");
+  } else {
+    console.log(`[SlotsLaunch] Using origin: ${SL_ORIGIN_HOST}`);
   }
   console.log("[SlotsLaunch] Refreshing game catalogue…");
   const all = [];
@@ -80,6 +92,14 @@ async function fetchAllGames() {
     console.warn("[SlotsLaunch] No games cached — check SL_TOKEN and SL_ORIGIN are valid.");
   }
   return _gameCache;
+}
+
+/** Returns only Le Bandit from the full catalogue */
+async function fetchLobbyGames() {
+  const all = await fetchAllGames();
+  const bandit = all.filter(g => g.slug === LE_BANDIT_SLUG);
+  if (!bandit.length) console.warn("[SlotsLaunch] Le Bandit not found in catalogue — check slug.");
+  return bandit;
 }
 
 // ---------------------------------------------------------------------------
@@ -462,16 +482,6 @@ function navBar(tag, avatar, bal) {
 // LOBBY PAGE
 // ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar, games) {
-  const types     = [...new Map(games.map(g => [g.type_id, g.type])).entries()]
-    .sort((a, b) => a[1].localeCompare(b[1]));
-  const providers = [...new Map(games.map(g => [g.provider_id, g.provider])).entries()]
-    .sort((a, b) => a[1].localeCompare(b[1]));
-
-  const typeOpts = types.map(([id, name]) =>
-    `<option value="${id}">${esc(name)}</option>`).join("");
-  const provOpts = providers.map(([id, name]) =>
-    `<option value="${id}">${esc(name)}</option>`).join("");
-
   const gamesJson = JSON.stringify(games.map(g => ({
     id:       g.id,
     name:     g.name,
@@ -492,41 +502,11 @@ ${navBar(tag, avatar, bal)}
 <div class="wrap">
   <div class="section-title">🎮 Game Library <span class="filter-count" id="countBadge">${games.length} games</span></div>
 
-  <div class="filters">
-    <input class="filter-input" id="searchInput" type="search" placeholder="🔍  Search games…" autocomplete="off">
-    <select class="filter-select" id="typeSelect">
-      <option value="">All Types</option>
-      ${typeOpts}
-    </select>
-    <select class="filter-select" id="provSelect">
-      <option value="">All Providers</option>
-      ${provOpts}
-    </select>
-    <select class="filter-select" id="volSelect">
-      <option value="">Any Volatility</option>
-      <option value="low">Low</option>
-      <option value="medium">Medium</option>
-      <option value="high">High</option>
-    </select>
-    <select class="filter-select" id="featSelect">
-      <option value="">All Features</option>
-      <option value="megaways">Megaways</option>
-      <option value="bonus">Bonus Buy</option>
-      <option value="progressive">Progressive</option>
-    </select>
-  </div>
-
   <div class="game-grid" id="gameGrid"></div>
-  <div class="load-more-wrap" id="loadMoreWrap" style="display:none">
-    <button class="load-more-btn" id="loadMoreBtn" onclick="loadMore()">Load More</button>
-  </div>
 </div>
 
 <script>
 const ALL_GAMES = ${gamesJson};
-const PAGE_SIZE = 60;
-let filtered = ALL_GAMES;
-let shown    = 0;
 
 function buildCard(g) {
   const thumb = g.thumb
@@ -554,59 +534,16 @@ function buildCard(g) {
 </div>\`;
 }
 
-function applyFilters() {
-  const q    = document.getElementById('searchInput').value.toLowerCase().trim();
-  const type = document.getElementById('typeSelect').value;
-  const prov = document.getElementById('provSelect').value;
-  const vol  = document.getElementById('volSelect').value;
-  const feat = document.getElementById('featSelect').value;
-
-  filtered = ALL_GAMES.filter(g => {
-    if (q && !g.name.toLowerCase().includes(q) && !g.provider.toLowerCase().includes(q)) return false;
-    if (type && String(g.type_id) !== type) return false;
-    if (prov && String(g.prov_id) !== prov) return false;
-    if (vol  && g.vol !== vol) return false;
-    if (feat === 'megaways'    && !g.megaways) return false;
-    if (feat === 'bonus'       && !g.bonus)    return false;
-    if (feat === 'progressive' && !g.prog)     return false;
-    return true;
-  });
-  shown = 0;
-  document.getElementById('gameGrid').innerHTML = '';
-  document.getElementById('countBadge').textContent = filtered.length + ' games';
-  loadMore();
-}
-
-function loadMore() {
-  const grid  = document.getElementById('gameGrid');
-  const slice = filtered.slice(shown, shown + PAGE_SIZE);
-  if (!slice.length) {
-    if (!shown) {
-      grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-txt">No games found</div></div>';
-    }
-    document.getElementById('loadMoreWrap').style.display = 'none';
-    return;
-  }
-  grid.insertAdjacentHTML('beforeend', slice.map(buildCard).join(''));
-  shown += slice.length;
-  const hasMore = shown < filtered.length;
-  document.getElementById('loadMoreWrap').style.display = hasMore ? 'block' : 'none';
-  if (hasMore) document.getElementById('loadMoreBtn').textContent =
-    'Load More (' + (filtered.length - shown) + ' remaining)';
-}
-
 function openGame(id, nameEnc, provEnc) {
   window.location.href = '/play?game=' + id + '&name=' + nameEnc + '&provider=' + provEnc;
 }
 
-let debounce;
-['searchInput','typeSelect','provSelect','volSelect','featSelect'].forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    clearTimeout(debounce); debounce = setTimeout(applyFilters, 180);
-  });
-});
-
-loadMore();
+const grid = document.getElementById('gameGrid');
+if (ALL_GAMES.length) {
+  grid.innerHTML = ALL_GAMES.map(buildCard).join('');
+} else {
+  grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-txt">No games found</div></div>';
+}
 </script>
 `);
 }
@@ -738,7 +675,7 @@ export class WebServer {
       if (!uid) return this._redirect(res, "/login");
       const [user, games] = await Promise.all([
         this.db.getUser(uid),
-        fetchAllGames(),
+        fetchLobbyGames(),
       ]);
       const cookies = parseCookies(req);
       const bal     = Number(user?.bal ?? 0);
