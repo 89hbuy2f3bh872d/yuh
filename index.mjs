@@ -1,9 +1,11 @@
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { Client, Events, EmbedBuilder } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
-import { HouseEdge } from "./src/HouseEdge.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let config;
 try {
@@ -31,7 +33,7 @@ const client = new Client({
 });
 
 const handler = new CommandHandler(client, db, config);
-await handler.loadCommands(path.join(import.meta.dirname, "commands"));
+await handler.loadCommands(path.join(__dirname, "commands"));
 
 client.on(Events.Ready, () => {
   console.log(`[Ready] Logged in as ${client.user?.username ?? "bot"}`);
