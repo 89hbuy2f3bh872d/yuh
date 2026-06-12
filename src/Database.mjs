@@ -11,6 +11,8 @@ import { MongoClient } from "mongodb";
  *   st  = session tokens { token -> expiry }
  */
 
+const DEFAULTS = { bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 };
+
 function dbNameFromUri(uri, fallback = "casino") {
   try {
     const u = new URL(uri.replace(/^mongodb(\+srv)?:\/\//, "https://"));
@@ -37,17 +39,35 @@ export class Database {
     await this._client.connect();
     this._db    = this._client.db(this._dbName);
     this._users = this._db.collection("u");
-    // Ensure balance never goes below 0 at DB level is handled in app logic.
     console.log(`[DB] Connected → ${this._dbName}.u`);
   }
 
   async getUser(userId) {
+    // Use $set with $min/$setOnInsert won't help if doc already exists without
+    // bal — so we explicitly $set any missing fields to their defaults here.
+    // This handles the race where createSession creates the doc before getUser.
+    const setIfMissing = {};
+    for (const [k, v] of Object.entries(DEFAULTS)) {
+      // Only set the field if it is missing (null / undefined won't apply for
+      // $setOnInsert on existing docs, so we use a conditional update instead).
+      setIfMissing[k] = v;
+    }
     const r = await this._users.findOneAndUpdate(
       { _id: userId },
-      { $setOnInsert: { _id: userId, bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 } },
+      [
+        // Aggregation pipeline update: set each field only when it doesn't
+        // already exist on the document.
+        { $set: {
+          bal: { $ifNull: ["$bal", DEFAULTS.bal] },
+          tw:  { $ifNull: ["$tw",  DEFAULTS.tw]  },
+          tl:  { $ifNull: ["$tl",  DEFAULTS.tl]  },
+          gp:  { $ifNull: ["$gp",  DEFAULTS.gp]  },
+          ld:  { $ifNull: ["$ld",  DEFAULTS.ld]  },
+        } },
+      ],
       { upsert: true, returnDocument: "after" }
     );
-    return unwrap(r) ?? { _id: userId, bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 };
+    return unwrap(r) ?? { _id: userId, ...DEFAULTS };
   }
 
   async updateBalance(userId, delta) {
@@ -88,11 +108,23 @@ export class Database {
   // Sessions stored inside user doc as st.{token} = expiry ms
   async createSession(userId, token, ttlMs) {
     const expiry = Date.now() + (ttlMs ?? 7_200_000);
-    await this._users.updateOne(
-      { _id: userId },
-      { $set: { [`st.${token}`]: expiry } },
-      { upsert: true }
-    );
+    // Also seed the balance fields if this is a brand-new user doc,
+    // so getUser always finds them pre-populated.
+    const r = await this._users.findOne({ _id: userId });
+    if (!r) {
+      // Doc doesn't exist yet — create it with defaults + session token
+      await this._users.updateOne(
+        { _id: userId },
+        { $setOnInsert: { _id: userId, ...DEFAULTS }, $set: { [`st.${token}`]: expiry } },
+        { upsert: true }
+      );
+    } else {
+      // Doc exists — just write the session token
+      await this._users.updateOne(
+        { _id: userId },
+        { $set: { [`st.${token}`]: expiry } }
+      );
+    }
   }
 
   async validateSession(userId, token) {
