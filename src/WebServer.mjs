@@ -64,24 +64,48 @@ function parseCookies(req) {
   return out;
 }
 
+// zstd is only present on newer Node; guard so older runtimes don't crash.
+const ZSTD = typeof zlib.zstdDecompressSync === "function";
+
+function tryGunzip(b)   { try { return zlib.gunzipSync(b);          } catch { return null; } }
+function tryBrotli(b)   { try { return zlib.brotliDecompressSync(b);} catch { return null; } }
+function tryZstd(b)     { if (!ZSTD) return null; try { return zlib.zstdDecompressSync(b); } catch { return null; } }
+function tryInflate(b)  { try { return zlib.inflateSync(b); } catch { try { return zlib.inflateRawSync(b); } catch { return null; } } }
+
 /**
- * Decompress a Buffer according to a Content-Encoding value.
- * Returns the original buffer if the encoding is unknown or decoding fails.
+ * Decompress a Buffer regardless of how the origin labelled it.
+ * Strategy: trust the declared Content-Encoding first, then fall back to
+ * magic-byte sniffing, then a last-ditch Brotli attempt (Brotli has no magic,
+ * so a stripped/incorrect header otherwise leaves it undetectable). If a buffer
+ * is already plain text, every decoder throws and we return it untouched.
  */
 function decodeBody(buf, contentEncoding) {
+  if (!buf || buf.length === 0) return buf;
   const enc = (contentEncoding || "").toLowerCase().trim();
-  try {
-    if (enc === "gzip" || enc === "x-gzip") return zlib.gunzipSync(buf);
-    if (enc === "deflate")                  return zlib.inflateSync(buf);
-    if (enc === "br")                       return zlib.brotliDecompressSync(buf);
-  } catch (e) {
-    // Some servers label deflate as raw; retry inflateRaw as a fallback.
-    if (enc === "deflate") {
-      try { return zlib.inflateRawSync(buf); } catch {}
-    }
-    console.error("[decodeBody] failed for encoding", enc, e.message);
+
+  // 1) Declared encoding.
+  let out = null;
+  if (enc === "gzip" || enc === "x-gzip") out = tryGunzip(buf);
+  else if (enc === "br")                  out = tryBrotli(buf);
+  else if (enc === "zstd")                out = tryZstd(buf);
+  else if (enc === "deflate")             out = tryInflate(buf);
+  if (out) return out;
+
+  // 2) Magic-byte sniff (header missing or wrong).
+  const b0 = buf[0], b1 = buf[1], b2 = buf[2], b3 = buf[3];
+  if (b0 === 0x1f && b1 === 0x8b)                                  { out = tryGunzip(buf); if (out) return out; } // gzip
+  if (b0 === 0x28 && b1 === 0xb5 && b2 === 0x2f && b3 === 0xfd)    { out = tryZstd(buf);   if (out) return out; } // zstd
+  if (b0 === 0x78 && (b1 === 0x01 || b1 === 0x9c || b1 === 0xda))  { out = tryInflate(buf);if (out) return out; } // zlib/deflate
+
+  // 3) Brotli has no magic. If the body still doesn't look like text
+  //    (control bytes / replacement-char territory), try Brotli anyway.
+  const looksBinary = b0 === 0x1b || b0 === 0x00 || b0 > 0x7f;
+  if (looksBinary || enc === "br" || !enc) {
+    out = tryBrotli(buf);
+    if (out) return out;
   }
-  return buf;
+
+  return buf; // genuinely uncompressed (or undecodable)
 }
 
 /**
@@ -586,6 +610,19 @@ export class WebServer {
 
     const status      = fetched.statusCode || 502;
     const contentType = fetched.headers["content-type"] || "application/octet-stream";
+
+    // Diagnostic: if a JS/CSS asset still starts with non-text bytes after
+    // decoding, log the real encoding + first bytes so the cause is visible.
+    if (!isMainHTML && /javascript|css|json|text/i.test(contentType)) {
+      const b0 = fetched.body[0];
+      if (b0 !== undefined && (b0 === 0x1b || b0 === 0x00 || b0 > 0x7f)) {
+        console.warn(
+          "[GameProxy] possible undecoded asset:", subPath,
+          "| content-encoding:", JSON.stringify(fetched.headers["content-encoding"] ?? null),
+          "| first bytes:", [...fetched.body.slice(0, 4)].map(x => x.toString(16).padStart(2, "0")).join(" ")
+        );
+      }
+    }
 
     if (isMainHTML) {
       const baseDir = "/game/1309/1.23.2/";
