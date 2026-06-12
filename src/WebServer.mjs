@@ -1,11 +1,12 @@
 // WebServer.mjs — SirGreen Casino
 // Transparent reverse proxy for Hacksaw Gaming Le Bandit, injecting FluxCoin economy.
-// Forces uncompressed responses to avoid corruption.
+// Properly handles compression and strips SRI to avoid broken hashes.
 
 import http from "http";
 import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
+import zlib from "zlib";   // needed to decompress responses
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -62,22 +63,37 @@ function parseCookies(req) {
   return out;
 }
 
-// Fetch with forced uncompressed response
+/**
+ * Fetch a URL and return its body as a UTF‑8 string.
+ * Handles gzip, deflate, and brotli transparently.
+ */
 function nodeFetch(url, opts = {}) {
   return new Promise((resolve, reject) => {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
     const body    = opts.body ?? "";
-    // Force uncompressed – we don't handle gzip in this fetch
     const headers = {
       ...(opts.headers ?? {}),
-      "Accept-Encoding": "identity",
-      "Content-Length": Buffer.byteLength(body)
+      "Accept-Encoding": "gzip, deflate, br",   // we'll decompress ourselves
+      "Content-Length": Buffer.byteLength(body),
     };
     const r = mod.request(
       { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
         path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
-      res => { let d = ""; res.setEncoding("utf8"); res.on("data", c => d += c); res.on("end", () => resolve(d)); }
+      res => {
+        const chunks = [];
+        res.on("data", c => chunks.push(c));
+        res.on("end", () => {
+          let buf = Buffer.concat(chunks);
+          const enc = (res.headers["content-encoding"] || "").toLowerCase();
+          try {
+            if (enc === "gzip")          buf = zlib.gunzipSync(buf);
+            else if (enc === "deflate")  buf = zlib.inflateSync(buf);
+            else if (enc === "br")       buf = zlib.brotliDecompressSync(buf);
+          } catch (e) { return reject(e); }
+          resolve(buf.toString("utf8"));
+        });
+      }
     );
     r.on("error", reject);
     if (body) r.write(body);
@@ -510,7 +526,9 @@ export class WebServer {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Proxy for all game files: HTML gets our injection, others stream uncompressed
+  // Proxy for all game files:
+  //   - HTML: decompress, inject FluxCoin script, strip integrity attributes
+  //   - Others: stream untouched but preserve Content-Encoding header
   // ──────────────────────────────────────────────────────────────────────────
   async _handleGameProxy(req, res, path, search) {
     const subPath = path.replace(/^\/game/, "");
@@ -528,10 +546,14 @@ export class WebServer {
 
     if (isMainHTML) {
       try {
-        // Fetch original HTML with forced uncompressed response
+        // Decompress the original HTML using our improved nodeFetch
         const originalHtml = await nodeFetch(targetUrl);
         const baseDir = "/game/1309/1.23.2/";
-        const injected = originalHtml
+
+        // Strip integrity attributes (they would break after injection)
+        const cleaned = originalHtml.replace(/\s+integrity="[^"]*"/gi, '');
+
+        const injected = cleaned
           .replace("<head>", `<head>\n<base href="${baseDir}">`)
           .replace("</head>", `
             <script>
@@ -618,7 +640,7 @@ export class WebServer {
         return res.end("Bad gateway");
       }
     } else {
-      // Stream other assets (JS, CSS, images) – tell origin not to compress
+      // Stream other assets (JS, CSS, images) – keep Content-Encoding intact
       try {
         const parsed = new URL(targetUrl);
         const mod = parsed.protocol === "https:" ? https : http;
@@ -627,17 +649,20 @@ export class WebServer {
           path: parsed.pathname + parsed.search,
           method: "GET",
           headers: {
-            "Accept-Encoding": "identity",  // force uncompressed
+            "Accept-Encoding": "gzip, deflate, br",
             "User-Agent": "SirGreen/1.0",
             "Accept": "*/*"
           }
         };
         const proxyReq = mod.request(options, (proxyRes) => {
-          // Build safe headers – omit Content-Encoding because we forced identity
           const safeHeaders = {
             "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
             "Cache-Control": "public, max-age=3600",
           };
+          // Pass the real Content-Encoding so the browser can decode it
+          if (proxyRes.headers["content-encoding"]) {
+            safeHeaders["Content-Encoding"] = proxyRes.headers["content-encoding"];
+          }
           res.writeHead(proxyRes.statusCode, safeHeaders);
           proxyRes.pipe(res);
         });
