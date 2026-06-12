@@ -1,6 +1,6 @@
 // WebServer.mjs — SirGreen Casino
-// Uses a proxy to inject FluxCoin economy into Hacksaw Gaming's Le Bandit.
-// All visual demo currency is replaced in real time.
+// Uses a transparent reverse proxy for the Hacksaw Gaming Le Bandit game,
+// injecting FluxCoin economy controls. Every asset is served same‑origin.
 
 import http from "http";
 import https from "https";
@@ -15,15 +15,12 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Le Bandit — Hacksaw Gaming original embed (used as source for proxy)
+// Le Bandit – base URL we proxy to
 // ---------------------------------------------------------------------------
-const LE_BANDIT_ORIGIN = 
-  "https://static-live.hacksawgaming.com/1309/1.23.2/index.html" +
-  "?language=en&channel=desktop&gameid=1309&mode=2&token=123131" +
-  "&lobbyurl=https%3A%2F%2Fwww.hacksawgaming.com" +
-  "&currency=EUR&partner=sirgreen" +                      // renamed partner
-  "&env=https://rgs-demo.hacksawgaming.com/api" +          // backend still demo, but visuals overwritten
-  "&realmoneyenv=https://rgs-demo.hacksawgaming.com/api";
+const GAME_ORIGIN = "https://static-live.hacksawgaming.com";
+
+// The subpath inside GAME_ORIGIN that contains the game files
+const GAME_PATH   = "/1309/1.23.2";
 
 // ---------------------------------------------------------------------------
 // Server‑side spin engine — house‑edge RNG, FluxCoin deduction/credit
@@ -81,23 +78,6 @@ function nodeFetch(url, opts = {}) {
     r.on("error", reject);
     if (body) r.write(body);
     r.end();
-  });
-}
-
-// Proxy an external asset to the client (streaming, preserves binary)
-function proxyAsset(url, res) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const mod = parsed.protocol === "https:" ? https : http;
-    mod.get(parsed, (proxyRes) => {
-      // Copy status and headers except problematic ones
-      res.writeHead(proxyRes.statusCode, {
-        "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
-        "Cache-Control": "public, max-age=3600"
-      });
-      proxyRes.pipe(res);
-      proxyRes.on("end", resolve);
-    }).on("error", reject);
   });
 }
 
@@ -226,10 +206,19 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Game page — now loads via /proxy-game (same‑origin), so our injected script
-// can overwrite all demo currency DOM elements with real FluxCoin values.
+// Game page — iframe now loads from our own /game/... (transparent proxy)
 // ---------------------------------------------------------------------------
 function gamePage(bal, tag, avatar) {
+  // We preserve the exact query parameters the original game expects,
+  // but we'll load it through our proxy, so everything is same‑origin.
+  const gameURL =
+    `/game/1309/1.23.2/index.html` +
+    `?language=en&channel=desktop&gameid=1309&mode=2&token=123131` +
+    `&lobbyurl=${encodeURIComponent("https://www.hacksawgaming.com")}` +
+    `&currency=EUR&partner=sirgreen` +
+    `&env=${encodeURIComponent("https://rgs-demo.hacksawgaming.com/api")}` +
+    `&realmoneyenv=${encodeURIComponent("https://rgs-demo.hacksawgaming.com/api")}`;
+
   return shellPage(`
 <style>
 .play-layout{display:flex;flex-direction:column;height:100vh;overflow:hidden}
@@ -266,12 +255,10 @@ function gamePage(bal, tag, avatar) {
       <div class="frame-spinner"></div>
       <div class="frame-loading-txt">Loading Le Bandit…</div>
     </div>
-
-    <!-- Same‑origin proxy iframe — our injected script takes full control -->
     <iframe
       class="game-frame"
       id="gameFrame"
-      src="/proxy-game"
+      src="${gameURL}"
       allowfullscreen
       allow="autoplay; fullscreen"
       onload="document.getElementById('frameLoading').classList.add('hidden')"
@@ -280,7 +267,7 @@ function gamePage(bal, tag, avatar) {
 </div>
 
 <script>
-// Keep header balance synced (non‑invasive)
+// Keep our top-bar balance in sync (non‑invasive polling)
 (async function headerBalanceLoop() {
   const navVal = document.getElementById('navBalVal');
   if (!navVal) return;
@@ -371,7 +358,7 @@ export class WebServer {
       ));
     }
 
-    // ── GAME PAGE (Le Bandit) ─────────────────────────────────────────────────
+    // ── GAME PAGE ────────────────────────────────────────────────────────────
     if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -384,175 +371,9 @@ export class WebServer {
       ));
     }
 
-    // ── PROXY‑GAME: inject FluxCoin control script into Hacksaw’s HTML ────────
-    if (path === "/proxy-game" && req.method === "GET") {
-      try {
-        const gameHtml = await nodeFetch(LE_BANDIT_ORIGIN);
-        // Rewrite all resource URLs to go through our proxy-asset route (same‑origin)
-        const rewrote = gameHtml
-          .replace(/(href|src)=["'](https?:)?\/\/(static-live\.hacksawgaming\.com)/g,
-                   '$1="/proxy-asset?url=https://$3')
-          .replace(/(href|src)=["']\/(?!\/)/g,
-                   '$1="/proxy-asset?url=https://static-live.hacksawgaming.com/')
-          .replace('</head>', `
-            <script>
-              // ── FluxCoin integration – SirGreen Casino ──────────────────────
-              (function() {
-                const BALANCE_API = '/api/balance';
-                const SPIN_API    = '/api/spin';
-                let realBal       = 0;
-                let realBet       = 10;            // default FC bet
-                let busy          = false;
-
-                // Preset bet steps
-                const PRESETS = [10, 25, 50, 100, 250, 500, 1000];
-
-                // --- DOM helpers -------------------------------------------------
-                function getBalanceEl()   { return document.querySelector('#BalanceValue'); }
-                function getBetValueEl()  { return document.querySelector('#BetAmountValue'); }
-                function getWinValueEl()  { return document.querySelector('#WinAmountValue'); }
-                function getPlaceBetBtn() { return document.querySelector('#PlaceBetBtn'); }
-                function getBetIncBtn()   { return document.querySelector('#BetAmountIncrease'); }
-                function getBetDecBtn()   { return document.querySelector('#BetAmountDecrease'); }
-                function getStopBtn()     { return document.querySelector('#StopBtn'); }
-                function getSuperTurbo()  { return document.querySelector('#SuperTurboToggle'); }
-
-                // --- Fetch real FluxCoin balance ---------------------------------
-                async function fetchBalance() {
-                  try {
-                    const r = await fetch(BALANCE_API);
-                    const d = await r.json();
-                    if (d.bal !== undefined) realBal = d.bal;
-                  } catch(e) { console.error('balance fetch error', e); }
-                }
-
-                // --- Overwrite the demo UI ---------------------------------------
-                function updateUI() {
-                  const balEl = getBalanceEl();
-                  if (balEl) balEl.innerText = realBal.toLocaleString() + ' FC';
-                  const betEl = getBetValueEl();
-                  if (betEl) betEl.innerText = realBet.toLocaleString();
-                }
-
-                // --- Hijack the spin button --------------------------------------
-                function hijackSpinButton() {
-                  const btn = getPlaceBetBtn();
-                  if (!btn) { setTimeout(hijackSpinButton, 200); return; }
-                  // Remove all existing listeners by cloning (simple approach)
-                  const newBtn = btn.cloneNode(true);
-                  btn.parentNode.replaceChild(newBtn, btn);
-
-                  newBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (busy) return;
-                    if (realBet > realBal) {
-                      alert('Not enough FluxCoins!');
-                      return;
-                    }
-                    busy = true;
-                    try {
-                      const r = await fetch(SPIN_API, {
-                        method: 'POST',
-                        headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({ bet: realBet })
-                      });
-                      const data = await r.json();
-                      // Update balance
-                      realBal = data.newBal;
-                      // Show win/loss on the in‑game win field
-                      const winEl = getWinValueEl();
-                      if (winEl) {
-                        if (data.gross > 0) {
-                          winEl.innerText = '+' + data.gross.toLocaleString() + ' FC';
-                        } else {
-                          winEl.innerText = '–' + realBet.toLocaleString() + ' FC';
-                        }
-                      }
-                      updateUI();
-                    } catch(e) {
-                      console.error('spin error', e);
-                    } finally {
-                      busy = false;
-                    }
-                  });
-                }
-
-                // --- Hijack bet change buttons -----------------------------------
-                function hijackBetButtons() {
-                  const inc = getBetIncBtn();
-                  const dec = getBetDecBtn();
-                  if (inc) {
-                    const newInc = inc.cloneNode(true);
-                    inc.parentNode.replaceChild(newInc, inc);
-                    newInc.addEventListener('click', () => {
-                      const idx = PRESETS.indexOf(realBet);
-                      realBet = idx >= 0 && idx < PRESETS.length-1 ? PRESETS[idx+1] : realBet+1;
-                      updateUI();
-                    });
-                  }
-                  if (dec) {
-                    const newDec = dec.cloneNode(true);
-                    dec.parentNode.replaceChild(newDec, dec);
-                    newDec.addEventListener('click', () => {
-                      const idx = PRESETS.indexOf(realBet);
-                      realBet = idx > 0 ? PRESETS[idx-1] : Math.max(1, realBet-1);
-                      updateUI();
-                    });
-                  }
-                }
-
-                // --- Disable unwanted features (SuperTurbo, AutoSpin) ------------
-                function disableFeatures() {
-                  // Hide/remove SuperTurbo toggle
-                  const st = getSuperTurbo();
-                  if (st) st.style.display = 'none';
-                  // Hide AutoSpin stop button
-                  const sb = getStopBtn();
-                  if (sb) sb.style.display = 'none';
-
-                  // Also watch for dynamic additions (simple polling)
-                  setInterval(() => {
-                    const stNow = getSuperTurbo();
-                    if (stNow && stNow.style.display !== 'none') stNow.style.display = 'none';
-                    const sbNow = getStopBtn();
-                    if (sbNow && sbNow.style.display !== 'none') sbNow.style.display = 'none';
-                  }, 2000);
-                }
-
-                // --- Initialize everything ----------------------------------------
-                (async function init() {
-                  await fetchBalance();
-                  updateUI();
-                  hijackSpinButton();
-                  hijackBetButtons();
-                  disableFeatures();
-                  // Keep balance updated periodically (also after spin it updates instantly)
-                  setInterval(async () => {
-                    if (!busy) { await fetchBalance(); updateUI(); }
-                  }, 5000);
-                })();
-              })();
-            </script>
-          </head>`);
-        return this._html(res, 200, rewrote);
-      } catch (e) {
-        console.error("[ProxyGame]", e);
-        return this._html(res, 500, "Could not load game");
-      }
-    }
-
-    // ── PROXY‑ASSET: serve game resources (JS, CSS, images) same‑origin ──────
-    if (path === "/proxy-asset" && req.method === "GET") {
-      const assetUrl = u.searchParams.get("url");
-      if (!assetUrl) { res.writeHead(400); return res.end("Missing url"); }
-      try {
-        await proxyAsset(decodeURIComponent(assetUrl), res);
-      } catch (e) {
-        res.writeHead(404);
-        res.end("Asset not found");
-      }
-      return;
+    // ── GAME PROXY (everything under /game/) ─────────────────────────────────
+    if (path.startsWith("/game/")) {
+      return this._handleGameProxy(req, res, path, u.search);
     }
 
     // ── SPIN API — real FluxCoin deduction + house‑edge RNG ──────────────────
@@ -685,6 +506,149 @@ export class WebServer {
 
     res.writeHead(404);
     res.end("Not found");
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Proxy for all game files: HTML gets our injection, others are passed through
+  // ──────────────────────────────────────────────────────────────────────────
+  async _handleGameProxy(req, res, path, search) {
+    // Construct the target URL on the real Hacksaw server
+    const subPath = path.replace(/^\/game/, ""); // e.g. "/1309/1.23.2/index.html"
+    const targetUrl = GAME_ORIGIN + subPath + (search ? `?${search}` : "");
+
+    // Only GET is supported for the proxy
+    if (req.method !== "GET") {
+      res.writeHead(405);
+      return res.end("Method not allowed");
+    }
+
+    // Decide if this is the main HTML file (the one we need to inject)
+    const isMainHTML = subPath.endsWith(".html") ||
+                       subPath.endsWith("/") ||
+                       subPath === "" ||
+                       subPath === "/index.html";
+
+    if (isMainHTML) {
+      try {
+        const originalHtml = await nodeFetch(targetUrl);
+        // Determine the base directory for relative URLs so they still work through our proxy
+        const baseDir = "/game/1309/1.23.2/";
+        // Inject our control script and the <base> tag
+        const injected = originalHtml
+          .replace("<head>", `<head>\n<base href="${baseDir}">`)
+          .replace("</head>", `
+            <script>
+              // ── FluxCoin integration – SirGreen Casino ──────────────────
+              (function() {
+                const BALANCE_API = '/api/balance';
+                const SPIN_API    = '/api/spin';
+                let realBal       = 0;
+                let realBet       = 10;
+                let busy          = false;
+                const PRESETS     = [10, 25, 50, 100, 250, 500, 1000];
+
+                const getEl = (sel) => document.querySelector(sel);
+                const cloneAndReplace = (sel) => {
+                  const el = getEl(sel);
+                  if (!el) return null;
+                  const newEl = el.cloneNode(true);
+                  el.parentNode.replaceChild(newEl, el);
+                  return newEl;
+                };
+
+                async function fetchBalance() {
+                  try { const r = await fetch(BALANCE_API); const d = await r.json(); if(d.bal!==undefined) realBal=d.bal; } catch(e){}
+                }
+                function updateUI() {
+                  const balEl = getEl('#BalanceValue');
+                  if (balEl) balEl.innerText = realBal.toLocaleString() + ' FC';
+                  const betEl = getEl('#BetAmountValue');
+                  if (betEl) betEl.innerText = realBet.toLocaleString();
+                }
+                function hijackSpin() {
+                  const btn = cloneAndReplace('#PlaceBetBtn');
+                  if (!btn) { setTimeout(hijackSpin, 200); return; }
+                  btn.addEventListener('click', async (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (busy) return;
+                    if (realBet > realBal) { alert('Not enough FluxCoins!'); return; }
+                    busy = true;
+                    try {
+                      const r = await fetch(SPIN_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bet:realBet}) });
+                      const data = await r.json();
+                      realBal = data.newBal;
+                      const winEl = getEl('#WinAmountValue');
+                      if (winEl) winEl.innerText = (data.gross > 0 ? '+' : '–') + (data.gross || realBet).toLocaleString() + ' FC';
+                      updateUI();
+                    } catch(e){} finally { busy = false; }
+                  });
+                }
+                function hijackBetButtons() {
+                  const inc = cloneAndReplace('#BetAmountIncrease');
+                  if (inc) inc.addEventListener('click', () => {
+                    const idx = PRESETS.indexOf(realBet);
+                    realBet = idx>=0 && idx<PRESETS.length-1 ? PRESETS[idx+1] : realBet+1;
+                    updateUI();
+                  });
+                  const dec = cloneAndReplace('#BetAmountDecrease');
+                  if (dec) dec.addEventListener('click', () => {
+                    const idx = PRESETS.indexOf(realBet);
+                    realBet = idx>0 ? PRESETS[idx-1] : Math.max(1, realBet-1);
+                    updateUI();
+                  });
+                }
+                function disableFeatures() {
+                  const hide = (sel) => { const el = getEl(sel); if (el) el.style.display = 'none'; };
+                  hide('#SuperTurboToggle');
+                  hide('#StopBtn');
+                  setInterval(() => { hide('#SuperTurboToggle'); hide('#StopBtn'); }, 2000);
+                }
+                (async function init() {
+                  await fetchBalance();
+                  updateUI();
+                  hijackSpin();
+                  hijackBetButtons();
+                  disableFeatures();
+                  setInterval(async () => { if(!busy){ await fetchBalance(); updateUI(); } }, 5000);
+                })();
+              })();
+            </script>
+          </head>`);
+        return this._html(res, 200, injected);
+      } catch (e) {
+        console.error("[GameProxy] HTML fetch error:", e);
+        res.writeHead(502);
+        return res.end("Bad gateway");
+      }
+    } else {
+      // For all other assets – stream them directly from the origin
+      try {
+        const parsed = new URL(targetUrl);
+        const mod = parsed.protocol === "https:" ? https : http;
+        const proxyReq = mod.request(
+          { hostname: parsed.hostname,
+            path: parsed.pathname + parsed.search,
+            method: "GET",
+            headers: { ...req.headers, host: parsed.hostname } },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode, {
+              "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
+              "Cache-Control": "public, max-age=3600"
+            });
+            proxyRes.pipe(res);
+          }
+        );
+        proxyReq.on("error", (err) => {
+          console.error("[GameProxy] Asset stream error:", err);
+          res.writeHead(502);
+          res.end("Bad gateway");
+        });
+        proxyReq.end();
+      } catch (e) {
+        res.writeHead(500);
+        res.end("Proxy error");
+      }
+    }
   }
 
   _uid(req) {
