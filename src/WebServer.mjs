@@ -16,6 +16,7 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // ---------------------------------------------------------------------------
 const HACKSAW_STATIC  = "https://static-live.hacksawgaming.com";
 const HACKSAW_RGS     = "https://rgs-demo.hacksawgaming.com";
+const HACKSAW_PLAY    = "https://play.hacksawgaming.com";   // ← partnerSettings / authenticate
 
 // Query-string params forwarded to the proxied game root
 const GAME_PARAMS =
@@ -136,16 +137,18 @@ const LE_BANDIT = {
 // ---------------------------------------------------------------------------
 // Reverse-proxy URL rewriting
 //
-// All absolute URLs pointing at HACKSAW_STATIC become /proxy/<path>
-// All absolute URLs pointing at HACKSAW_RGS  become /proxy-api/<path>
+// All absolute URLs pointing at HACKSAW_STATIC  become /proxy/<path>
+// All absolute URLs pointing at HACKSAW_RGS     become /proxy-api/<path>
+// All absolute URLs pointing at HACKSAW_PLAY    become /proxy-api/play/<path>
 // Relative URLs inside HTML/JS/CSS stay relative (the proxy path provides base).
 // ---------------------------------------------------------------------------
 function rewriteUrl(url, base) {
   if (!url) return url;
   let full;
   try { full = new URL(url, base).toString(); } catch { return url; }
-  if (full.startsWith(HACKSAW_STATIC)) return "/proxy" + full.slice(HACKSAW_STATIC.length);
-  if (full.startsWith(HACKSAW_RGS))   return "/proxy-api" + full.slice(HACKSAW_RGS.length);
+  if (full.startsWith(HACKSAW_STATIC)) return "/proxy"     + full.slice(HACKSAW_STATIC.length);
+  if (full.startsWith(HACKSAW_RGS))   return "/proxy-api"  + full.slice(HACKSAW_RGS.length);
+  if (full.startsWith(HACKSAW_PLAY))  return "/proxy-api"  + full.slice(HACKSAW_PLAY.length);
   return url; // leave external links (CDN fonts etc.) untouched
 }
 
@@ -153,21 +156,25 @@ function rewriteUrl(url, base) {
 function rewriteHtml(html, base) {
   // src / href / action / data-src / srcset attributes
   html = html.replace(
-    /(\s(?:src|href|action|data-src)\s*=\s*)(["'])([^"']+)\2/gi,
+    /(\s(?:src|href|action|data-src)\s*=\s*)([\"'])([^\"']+)\2/gi,
     (_, attr, q, url) => `${attr}${q}${rewriteUrl(url, base)}${q}`
   );
   // url() in inline style / <style> blocks
   html = html.replace(
-    /url\((['"]?)([^)'"]+)\1\)/gi,
+    /url\((['\"]?)([^)'\"]+)\1\)/gi,
     (_, q, url) => `url(${q}${rewriteUrl(url, base)}${q})`
   );
-  // JS string literals pointing at upstream (catches bundled fetch calls)
+  // JS string literals pointing at upstreams (catches bundled fetch calls)
   html = html.replace(
-    new RegExp(`["']${escapeRegex(HACKSAW_STATIC)}([^"']*)`, "g"),
+    new RegExp(`[\"']${escapeRegex(HACKSAW_STATIC)}([^\"']*)`, "g"),
     (_, p) => `"/proxy${p}"`
   );
   html = html.replace(
-    new RegExp(`["']${escapeRegex(HACKSAW_RGS)}([^"']*)`, "g"),
+    new RegExp(`[\"']${escapeRegex(HACKSAW_RGS)}([^\"']*)`, "g"),
+    (_, p) => `"/proxy-api${p}"`
+  );
+  html = html.replace(
+    new RegExp(`[\"']${escapeRegex(HACKSAW_PLAY)}([^\"']*)`, "g"),
     (_, p) => `"/proxy-api${p}"`
   );
   return html;
@@ -176,7 +183,7 @@ function rewriteHtml(html, base) {
 /** Rewrite CSS text */
 function rewriteCss(css, base) {
   return css.replace(
-    /url\((['"]?)([^)'"]+)\1\)/gi,
+    /url\((['\"]?)([^)'\"]+)\1\)/gi,
     (_, q, url) => `url(${q}${rewriteUrl(url, base)}${q})`
   );
 }
@@ -184,11 +191,15 @@ function rewriteCss(css, base) {
 /** Rewrite JS text: string literals pointing at upstreams */
 function rewriteJs(js) {
   js = js.replace(
-    new RegExp(`(["'])${escapeRegex(HACKSAW_STATIC)}([^"']*)\\1`, "g"),
+    new RegExp(`([\"'])${escapeRegex(HACKSAW_STATIC)}([^\"']*)\\1`, "g"),
     (_, q, p) => `${q}/proxy${p}${q}`
   );
   js = js.replace(
-    new RegExp(`(["'])${escapeRegex(HACKSAW_RGS)}([^"']*)\\1`, "g"),
+    new RegExp(`([\"'])${escapeRegex(HACKSAW_RGS)}([^\"']*)\\1`, "g"),
+    (_, q, p) => `${q}/proxy-api${p}${q}`
+  );
+  js = js.replace(
+    new RegExp(`([\"'])${escapeRegex(HACKSAW_PLAY)}([^\"']*)\\1`, "g"),
     (_, q, p) => `${q}/proxy-api${p}${q}`
   );
   return js;
@@ -825,6 +836,39 @@ async function proxyRgs(rgsPath, req, res) {
   res.end(upstream.body);
 }
 
+/**
+ * Tunnel a request to the Hacksaw Play API (partnerSettings, authenticate, etc.)
+ * These live at https://play.hacksawgaming.com — a separate upstream from rgs-demo.
+ */
+async function proxyPlay(playPath, req, res) {
+  let body = "";
+  await new Promise(r => { req.on("data", c => body += c); req.on("end", r); });
+  const targetUrl = HACKSAW_PLAY + playPath;
+  let upstream;
+  try {
+    upstream = await rawFetch(targetUrl, {
+      method:  req.method,
+      headers: {
+        "Content-Type":  req.headers["content-type"] ?? "application/json",
+        "Accept":        req.headers["accept"] ?? "application/json",
+        "Authorization": req.headers["authorization"] ?? "",
+        "Origin":        HACKSAW_PLAY,
+        "Referer":       HACKSAW_STATIC + "/",
+      },
+      body,
+    });
+  } catch (e) {
+    res.writeHead(502);
+    return res.end("Play proxy error: " + e.message);
+  }
+  const ct = upstream.headers["content-type"] ?? "application/json";
+  res.writeHead(upstream.statusCode, {
+    "Content-Type":                ct,
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(upstream.body);
+}
+
 // ===========================================================================
 // WEB SERVER
 // ===========================================================================
@@ -877,6 +921,17 @@ export class WebServer {
         bridgeHtml = buildBridgeScript(bal, 10);
       }
       return proxyStatic(upstreamPath, req, res, bridgeHtml);
+    }
+
+    // ── HACKSAW PLAY API TUNNEL ──────────────────────────────────────────────
+    // /proxy-api/play/<rest> → https://play.hacksawgaming.com/play/<rest>
+    // Must be checked BEFORE the generic /proxy-api/ catch-all below.
+    if (path.startsWith("/proxy-api/play/")) {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      // Strip /proxy-api prefix; keep /play/... intact so upstream path is correct
+      const playPath = path.slice("/proxy-api".length) + u.search;
+      return proxyPlay(playPath, req, res);
     }
 
     // ── HACKSAW RGS TUNNEL ───────────────────────────────────────────────────
