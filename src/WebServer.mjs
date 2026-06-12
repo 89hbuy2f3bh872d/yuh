@@ -2,6 +2,7 @@ import http from "http";
 import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
+import zlib from "zlib";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -11,16 +12,20 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Le Bandit — direct Hacksaw Gaming demo embed (no API key required)
-// Real FluxCoin economy is handled by /api/spin below.
+// Hacksaw upstream origins
 // ---------------------------------------------------------------------------
-const LE_BANDIT_EMBED =
-  "https://static-live.hacksawgaming.com/1309/1.23.2/index.html" +
-  "?language=en&channel=desktop&gameid=1309&mode=2&token=123131" +
-  "&lobbyurl=https%3A%2F%2Fwww.hacksawgaming.com" +
+const HACKSAW_STATIC  = "https://static-live.hacksawgaming.com";
+const HACKSAW_RGS     = "https://rgs-demo.hacksawgaming.com";
+
+// Query-string params forwarded to the proxied game root
+const GAME_PARAMS =
+  "language=en&channel=desktop&gameid=1309&mode=2&token=123131" +
+  "&lobbyurl=%2Flobby" +                    // keep lobby link on-origin
   "&currency=EUR&partner=demo" +
-  "&env=https://rgs-demo.hacksawgaming.com/api" +
-  "&realmoneyenv=https://rgs-demo.hacksawgaming.com/api";
+  "&env=%2Fproxy-api" +                      // rewrite RGS env to our tunnel
+  "&realmoneyenv=%2Fproxy-api";
+
+const GAME_PROXY_ROOT = `/proxy/1309/1.23.2/index.html?${GAME_PARAMS}`;
 
 // ---------------------------------------------------------------------------
 // Server-side spin engine — house-edge RNG, real FluxCoin deduction/credit
@@ -64,21 +69,55 @@ function parseCookies(req) {
   return out;
 }
 
-function nodeFetch(url, opts = {}) {
+/**
+ * Low-level HTTP/HTTPS fetch that returns { statusCode, headers, body:Buffer }.
+ * Follows up to `maxRedirects` Location redirects.
+ */
+function rawFetch(url, opts = {}, maxRedirects = 4) {
   return new Promise((resolve, reject) => {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
-    const body    = opts.body ?? "";
-    const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
+    const bodyBuf = opts.body ? Buffer.from(opts.body) : Buffer.alloc(0);
+    const headers = {
+      "User-Agent":      "Mozilla/5.0 (compatible; SirGreenProxy/1.0)",
+      "Accept":          "*/*",
+      "Accept-Encoding": "gzip, deflate, br",
+      ...(opts.headers ?? {}),
+      "Content-Length":  bodyBuf.length,
+    };
     const r = mod.request(
-      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
-      res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
+      { hostname: parsed.hostname,
+        port:     parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path:     parsed.pathname + parsed.search,
+        method:   opts.method ?? "GET",
+        headers },
+      res => {
+        // Follow redirects
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+          const next = new URL(res.headers.location, url).toString();
+          return resolve(rawFetch(next, opts, maxRedirects - 1));
+        }
+        const chunks = [];
+        res.on("data", c => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks);
+          const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
+          const decomp = enc === "br"     ? zlib.brotliDecompressSync(raw)
+                       : enc === "gzip"   ? zlib.gunzipSync(raw)
+                       : enc === "deflate"? zlib.inflateSync(raw)
+                       : raw;
+          resolve({ statusCode: res.statusCode, headers: res.headers, body: decomp });
+        });
+      }
     );
     r.on("error", reject);
-    if (body) r.write(body);
+    if (bodyBuf.length) r.write(bodyBuf);
     r.end();
   });
+}
+
+function nodeFetch(url, opts = {}) {
+  return rawFetch(url, opts).then(r => r.body.toString("utf8"));
 }
 
 function esc(s) {
@@ -93,6 +132,388 @@ const LE_BANDIT = {
   thumb:    "https://assets.slotslaunch.com/16132/conversions/le-bandit-game115.jpg",
   thumbAlt: "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
 };
+
+// ---------------------------------------------------------------------------
+// Reverse-proxy URL rewriting
+//
+// All absolute URLs pointing at HACKSAW_STATIC become /proxy/<path>
+// All absolute URLs pointing at HACKSAW_RGS  become /proxy-api/<path>
+// Relative URLs inside HTML/JS/CSS stay relative (the proxy path provides base).
+// ---------------------------------------------------------------------------
+function rewriteUrl(url, base) {
+  if (!url) return url;
+  let full;
+  try { full = new URL(url, base).toString(); } catch { return url; }
+  if (full.startsWith(HACKSAW_STATIC)) return "/proxy" + full.slice(HACKSAW_STATIC.length);
+  if (full.startsWith(HACKSAW_RGS))   return "/proxy-api" + full.slice(HACKSAW_RGS.length);
+  return url; // leave external links (CDN fonts etc.) untouched
+}
+
+/** Rewrite HTML: src, href, action, url() in inline styles, import()  */
+function rewriteHtml(html, base) {
+  // src / href / action / data-src / srcset attributes
+  html = html.replace(
+    /(\s(?:src|href|action|data-src)\s*=\s*)(["'])([^"']+)\2/gi,
+    (_, attr, q, url) => `${attr}${q}${rewriteUrl(url, base)}${q}`
+  );
+  // url() in inline style / <style> blocks
+  html = html.replace(
+    /url\((['"]?)([^)'"]+)\1\)/gi,
+    (_, q, url) => `url(${q}${rewriteUrl(url, base)}${q})`
+  );
+  // JS string literals pointing at upstream (catches bundled fetch calls)
+  html = html.replace(
+    new RegExp(`["']${escapeRegex(HACKSAW_STATIC)}([^"']*)`, "g"),
+    (_, p) => `"/proxy${p}"`
+  );
+  html = html.replace(
+    new RegExp(`["']${escapeRegex(HACKSAW_RGS)}([^"']*)`, "g"),
+    (_, p) => `"/proxy-api${p}"`
+  );
+  return html;
+}
+
+/** Rewrite CSS text */
+function rewriteCss(css, base) {
+  return css.replace(
+    /url\((['"]?)([^)'"]+)\1\)/gi,
+    (_, q, url) => `url(${q}${rewriteUrl(url, base)}${q})`
+  );
+}
+
+/** Rewrite JS text: string literals pointing at upstreams */
+function rewriteJs(js) {
+  js = js.replace(
+    new RegExp(`(["'])${escapeRegex(HACKSAW_STATIC)}([^"']*)\\1`, "g"),
+    (_, q, p) => `${q}/proxy${p}${q}`
+  );
+  js = js.replace(
+    new RegExp(`(["'])${escapeRegex(HACKSAW_RGS)}([^"']*)\\1`, "g"),
+    (_, q, p) => `${q}/proxy-api${p}${q}`
+  );
+  return js;
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ---------------------------------------------------------------------------
+// Bridge script injected into the game HTML (same-origin, full DOM access)
+//
+// Waits for the Hacksaw React app to mount (MutationObserver + retries),
+// then:
+//  1. Overwrites #BalanceValue / #BalanceLabel with real FC values
+//  2. Overwrites #BetAmountValue / #BetAmountLabel
+//  3. Hooks #PlaceBetBtn click → calls /api/spin → updates DOM + win display
+//  4. Hooks #BetAmountIncrease / #BetAmountDecrease → adjusts FC bet
+//  5. Disables #StopBtn  (AutoSpin)
+//  6. Disables #SuperTurboToggle
+//  7. Updates #WinAmountValue after each spin
+//  8. Feature buy buttons (+Bonus Buy amount controls) post to /api/spin
+//     with the multiplied bet amount derived from the displayed price text.
+// ---------------------------------------------------------------------------
+function buildBridgeScript(initialBal, initialBet) {
+  return `
+<script data-fc-bridge>
+(function(){
+  var FC_BAL  = ${Number(initialBal)};
+  var FC_BET  = ${Number(initialBet)};
+  var FC_BUSY = false;
+  var FC_PRESETS = [10,25,50,100,250,500,1000,2500,5000];
+
+  /* ── Toast ──────────────────────────────────────────────────────── */
+  var _toast, _toastTO;
+  function getToast(){
+    if(_toast) return _toast;
+    _toast = document.createElement('div');
+    _toast.id = 'fc-bridge-toast';
+    Object.assign(_toast.style, {
+      position:'fixed', top:'8%', left:'50%', transform:'translateX(-50%)',
+      background:'rgba(6,14,6,.93)', border:'1px solid #2ecc7133',
+      borderRadius:'10px', padding:'.4rem .9rem', fontSize:'.82rem',
+      fontWeight:'900', color:'#2ecc71', zIndex:'999999',
+      pointerEvents:'none', opacity:'0', transition:'opacity .25s',
+      whiteSpace:'nowrap', fontFamily:'system-ui,sans-serif'
+    });
+    document.body.appendChild(_toast);
+    return _toast;
+  }
+  function showToast(msg, cls){
+    var t = getToast();
+    clearTimeout(_toastTO);
+    t.textContent = msg;
+    t.style.color = cls === 'lose' ? '#c0392b' : cls === 'bigwin' ? '#f1c40f' : '#2ecc71';
+    t.style.borderColor = cls === 'lose' ? '#c0392b33' : cls === 'bigwin' ? '#f1c40f44' : '#2ecc7133';
+    t.style.opacity = '1';
+    _toastTO = setTimeout(function(){ t.style.opacity='0'; }, 2800);
+  }
+
+  /* ── Format FC ──────────────────────────────────────────────────── */
+  function fmtFC(n){ return Number(n).toLocaleString('en-US') + ' FC'; }
+
+  /* ── Wait for element ────────────────────────────────────────────── */
+  function waitFor(sel, cb, tries){
+    tries = tries || 60;
+    var el = document.querySelector(sel);
+    if(el){ cb(el); return; }
+    if(tries <= 0){ console.warn('[FC Bridge] element not found:', sel); return; }
+    setTimeout(function(){ waitFor(sel, cb, tries-1); }, 300);
+  }
+
+  /* ── Observe for element appearance ─────────────────────────────── */
+  function onAppear(sel, cb){
+    var existing = document.querySelector(sel);
+    if(existing){ cb(existing); return; }
+    var obs = new MutationObserver(function(){
+      var el = document.querySelector(sel);
+      if(el){ obs.disconnect(); cb(el); }
+    });
+    obs.observe(document.body, { childList:true, subtree:true });
+  }
+
+  /* ── Force React controlled input value ─────────────────────────── */
+  function forceValue(el, val){
+    var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+    if(nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val);
+    el.value = val;
+    el.dispatchEvent(new Event('input',  { bubbles:true }));
+    el.dispatchEvent(new Event('change', { bubbles:true }));
+  }
+
+  /* ── Click a React-managed button safely ────────────────────────── */
+  function reactClick(el){
+    if(!el || el.disabled) return;
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles:true }));
+    el.dispatchEvent(new MouseEvent('mouseup',   { bubbles:true }));
+    el.dispatchEvent(new MouseEvent('click',     { bubbles:true }));
+  }
+
+  /* ── Sync balance display ────────────────────────────────────────── */
+  function syncBalance(){
+    var el = document.getElementById('BalanceValue');
+    if(el) el.textContent = fmtFC(FC_BAL);
+    var lbl = document.getElementById('BalanceLabel');
+    if(lbl && lbl.textContent.trim().toLowerCase() !== 'balance') lbl.textContent = 'Balance';
+    /* also patch any WinAmountValue to 0 on fresh mount */
+    var wv = document.getElementById('WinAmountValue');
+    if(wv && wv.textContent.trim() === '' ) wv.textContent = '0 FC';
+  }
+
+  /* ── Sync bet display ────────────────────────────────────────────── */
+  function syncBet(){
+    var el = document.getElementById('BetAmountValue');
+    if(el) el.textContent = fmtFC(FC_BET);
+    var lbl = document.getElementById('BetAmountLabel');
+    if(lbl && lbl.textContent.trim().toLowerCase() !== 'bet') lbl.textContent = 'Bet';
+  }
+
+  /* ── Handle a spin result ────────────────────────────────────────── */
+  function applyResult(data){
+    FC_BAL = data.newBal;
+    syncBalance();
+    var wv = document.getElementById('WinAmountValue');
+    if(wv){
+      if(data.gross > 0){
+        wv.textContent = '+' + fmtFC(data.gross);
+        wv.style.color = data.gross >= FC_BET * 10 ? '#f1c40f' : '#2ecc71';
+      } else {
+        wv.textContent = '0 FC';
+        wv.style.color = '';
+      }
+    }
+    if(data.mult === 0){
+      showToast('\u2717 No win — lost ' + fmtFC(FC_BET), 'lose');
+    } else if(data.gross >= FC_BET * 10){
+      showToast('\uD83C\uDF89 BIG WIN! \xd7' + data.mult + ' — +' + fmtFC(data.gross), 'bigwin');
+    } else {
+      showToast('\u2714 \xd7' + data.mult + ' — +' + fmtFC(data.gross));
+    }
+  }
+
+  /* ── POST /api/spin ─────────────────────────────────────────────── */
+  async function doSpin(bet){
+    if(FC_BUSY) return;
+    bet = bet || FC_BET;
+    if(bet > FC_BAL){ showToast('\u2717 Insufficient FluxCoins!','lose'); return; }
+    FC_BUSY = true;
+    showToast('Spinning\u2026');
+    try{
+      var r = await fetch('/api/spin', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ bet })
+      });
+      var data = await r.json();
+      if(!r.ok) throw new Error(data.error || 'spin failed');
+      applyResult(data);
+    } catch(e){
+      showToast('\u26a0 ' + e.message, 'lose');
+    } finally {
+      FC_BUSY = false;
+    }
+  }
+
+  /* ── Hook PlaceBetBtn ────────────────────────────────────────────── */
+  function hookSpinBtn(btn){
+    /* We intercept at capture phase so we run BEFORE Hacksaw's listener */
+    btn.addEventListener('click', function(e){
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      doSpin();
+    }, true);
+    console.log('[FC Bridge] hooked #PlaceBetBtn');
+  }
+
+  /* ── Hook BetAmountIncrease / Decrease ──────────────────────────── */
+  function hookBetChangers(){
+    var inc = document.getElementById('BetAmountIncrease');
+    var dec = document.getElementById('BetAmountDecrease');
+    if(inc){
+      inc.addEventListener('click', function(e){
+        e.stopImmediatePropagation(); e.preventDefault();
+        var idx = FC_PRESETS.indexOf(FC_BET);
+        FC_BET = idx >= 0 && idx < FC_PRESETS.length-1 ? FC_PRESETS[idx+1] : Math.min(FC_BAL, FC_BET+10);
+        syncBet();
+      }, true);
+    }
+    if(dec){
+      dec.addEventListener('click', function(e){
+        e.stopImmediatePropagation(); e.preventDefault();
+        var idx = FC_PRESETS.indexOf(FC_BET);
+        FC_BET = idx > 0 ? FC_PRESETS[idx-1] : Math.max(1, FC_BET-10);
+        syncBet();
+      }, true);
+    }
+  }
+
+  /* ── Disable StopBtn (AutoSpin) ─────────────────────────────────── */
+  function disableAutoSpin(btn){
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled','true');
+    btn.style.opacity = '0.3';
+    btn.style.pointerEvents = 'none';
+    /* Re-assert on any attribute changes (game tries to re-enable) */
+    var obs = new MutationObserver(function(){
+      btn.disabled = true;
+      btn.style.opacity = '0.3';
+      btn.style.pointerEvents = 'none';
+    });
+    obs.observe(btn, { attributes:true });
+    console.log('[FC Bridge] disabled #StopBtn');
+  }
+
+  /* ── Disable SuperTurboToggle ────────────────────────────────────── */
+  function disableSuperTurbo(el){
+    el.style.pointerEvents = 'none';
+    el.style.opacity = '0.3';
+    el.setAttribute('aria-disabled','true');
+    el.classList.add('super-turbo-off');
+    el.classList.remove('super-turbo-on');
+    var obs = new MutationObserver(function(){
+      el.style.pointerEvents = 'none';
+      el.classList.remove('super-turbo-on');
+      el.classList.add('super-turbo-off');
+    });
+    obs.observe(el, { attributes:true, attributeFilter:['class'] });
+    console.log('[FC Bridge] disabled #SuperTurboToggle');
+  }
+
+  /* ── Hook Feature Buy buttons ────────────────────────────────────── */
+  /*   Items appear inside a modal; observe for it opening             */
+  function hookFeatureBuy(){
+    onAppear('#FeatureBuyWindow', function(){
+      /* hook each buy button — price text tells us the multiplier */
+      document.querySelectorAll('.FeatureBuyGridCard__button').forEach(function(btn,i){
+        btn.addEventListener('click', function(e){
+          e.stopImmediatePropagation(); e.preventDefault();
+          /* Try to read price from sibling element */
+          var card = btn.closest('.FeatureBuyGridCard');
+          var priceEl = card && card.querySelector('.FeatureBuyGridCard__price, .FeatureBuyGridCard__amount, [class*="price"], [class*="amount"]');
+          var mult = 100; /* safe default if we can't parse */
+          if(priceEl){
+            var m = priceEl.textContent.replace(/[^0-9.]/g,'');
+            if(m) mult = Math.round(parseFloat(m));
+          }
+          var betAmt = FC_BET * mult;
+          if(betAmt > FC_BAL){ showToast('\u2717 Not enough FluxCoins for Feature Buy!','lose'); return; }
+          doSpin(betAmt);
+        }, true);
+      });
+      /* Bonus Buy amount changers */
+      var fbInc = document.getElementById('FeatureBuyAmountIncrease');
+      var fbDec = document.getElementById('FeatureBuyAmountDecrease');
+      if(fbInc) fbInc.addEventListener('click', function(e){
+        e.stopImmediatePropagation(); e.preventDefault();
+        var idx = FC_PRESETS.indexOf(FC_BET);
+        FC_BET = idx >= 0 && idx < FC_PRESETS.length-1 ? FC_PRESETS[idx+1] : FC_BET+10;
+        syncBet();
+      }, true);
+      if(fbDec) fbDec.addEventListener('click', function(e){
+        e.stopImmediatePropagation(); e.preventDefault();
+        var idx = FC_PRESETS.indexOf(FC_BET);
+        FC_BET = idx > 0 ? FC_PRESETS[idx-1] : Math.max(1, FC_BET-10);
+        syncBet();
+      }, true);
+    });
+  }
+
+  /* ── Poll /api/balance every 30s ────────────────────────────────── */
+  setInterval(async function(){
+    if(FC_BUSY) return;
+    try{
+      var r = await fetch('/api/balance', { credentials:'same-origin' });
+      var d = await r.json();
+      if(typeof d.bal === 'number'){ FC_BAL = d.bal; syncBalance(); }
+    }catch(e){}
+  }, 30000);
+
+  /* ── MutationObserver to catch React re-renders resetting values ── */
+  var _syncTO;
+  function scheduleSync(){
+    clearTimeout(_syncTO);
+    _syncTO = setTimeout(function(){ syncBalance(); syncBet(); }, 80);
+  }
+
+  /* ── Main init — wait for game shell to mount ────────────────────── */
+  function init(){
+    /* Balance */
+    waitFor('#BalanceValue', function(el){
+      syncBalance();
+      new MutationObserver(function(muts){
+        muts.forEach(function(m){ if(m.target !== el) return;
+          /* If game reset it to demo value, override back */
+          if(!el.textContent.endsWith('FC')) scheduleSync();
+        });
+      }).observe(el, { characterData:true, childList:true });
+    });
+    /* Bet display */
+    waitFor('#BetAmountValue', function(){ syncBet(); });
+    /* Spin button */
+    waitFor('#PlaceBetBtn', hookSpinBtn);
+    /* Bet changers */
+    waitFor('#BetAmountIncrease', function(){ hookBetChangers(); });
+    /* AutoSpin stop */
+    onAppear('#StopBtn', disableAutoSpin);
+    /* SuperTurbo */
+    onAppear('#SuperTurboToggle', disableSuperTurbo);
+    /* Feature buy */
+    hookFeatureBuy();
+    /* Keep balance label sane across game state changes */
+    setInterval(function(){ syncBalance(); syncBet(); }, 5000);
+    console.log('[FC Bridge] initialised — balance:', FC_BAL, 'bet:', FC_BET);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    /* DOM already loaded; game might still be mounting */
+    setTimeout(init, 500);
+  }
+})();
+</script>
+`;
+}
 
 // ---------------------------------------------------------------------------
 // SHARED CSS
@@ -186,7 +607,7 @@ function navBar(tag, avatar, bal) {
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
   const thumbHtml = `<img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy"
-    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`  ;
+    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`;
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
@@ -206,24 +627,15 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Game page — Hacksaw iframe + FluxCoin DOM bridge
+// Game page
 //
-// Strategy: The iframe is cross-origin so we CANNOT access its contentDocument
-// directly. Instead we overlay a transparent interaction layer that:
-//   1. Polls /api/balance and writes the FC value into a custom HUD.
-//   2. Intercepts pointer events on the iframe's known button regions via
-//      a transparent click-capture overlay mapped to the exact CSS selectors
-//      (#PlaceBetBtn, #BetAmountIncrease, #BetAmountDecrease).
-//   3. On each spin intercept → calls /api/spin → updates HUD balance + win.
-//
-// The iframe still renders normally for visuals / animations.
-// BET SIZE shown in the iframe is preserved as-is (demo currency),
-// but only FluxCoins are actually deducted via our server-side RNG.
-//
-// SuperTurbo (#SuperTurboToggle) and AutoSpin (#StopBtn) are set to
-// disabled class by CSS pointer-events injection on the overlay.
+// The game now loads from /proxy/... (same origin) inside a full-page iframe.
+// The bridge script is injected server-side into the proxied HTML,
+// so it runs inside the game's own document with full DOM access.
+// We still show a thin header (balance, back button) outside the iframe.
 // ---------------------------------------------------------------------------
 function gamePage(bal, tag, avatar) {
+  const initBet = 10;
   return shellPage(`
 <style>
 .play-layout{display:flex;flex-direction:column;height:100vh;overflow:hidden}
@@ -234,71 +646,13 @@ function gamePage(bal, tag, avatar) {
 .viewer-provider{font-size:.7rem;color:#4a9a4a}
 .nav-bal-viewer{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal-viewer strong{color:#2ecc71;font-size:.9rem}
-
-/* ── iframe + overlay wrapper ─────────────────────────────────────── */
 .play-top{flex:1;position:relative;min-height:0}
 .game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
-.frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;pointer-events:none;transition:opacity .3s;z-index:10}
+.frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;pointer-events:none;z-index:10;transition:opacity .3s}
 .frame-loading.hidden{opacity:0;pointer-events:none}
 .frame-spinner{width:48px;height:48px;border:3px solid #2ecc7122;border-top-color:#2ecc71;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .frame-loading-txt{font-size:.85rem;color:#4a9a4a}
-
-/* ── FluxCoin HUD — sits above iframe, bottom-aligned ─────────────── */
-.fc-hud{
-  position:absolute;bottom:0;left:0;right:0;z-index:20;
-  background:linear-gradient(0deg,rgba(6,14,6,.98) 70%,transparent 100%);
-  padding:.5rem 1rem .65rem;
-  display:flex;flex-direction:column;gap:.35rem;
-  pointer-events:none; /* let iframe receive normal clicks except spin btn */
-}
-.fc-hud-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;justify-content:center}
-.fc-stat{display:flex;flex-direction:column;align-items:center;gap:.05rem}
-.fc-stat-label{font-size:.55rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
-.fc-stat-val{font-size:.88rem;font-weight:900;color:#2ecc71;font-variant-numeric:tabular-nums}
-.fc-stat-val.dim{color:#a8e6a8}
-.fc-stat-val.win{color:#f1c40f;text-shadow:0 0 8px #f1c40faa}
-.fc-stat-val.lose{color:#c0392b}
-
-/* ── spin intercept button — sits over Hacksaw PlaceBetBtn ────────── */
-/*   Hacksaw's button sits bottom-centre of the game frame.            */
-/*   We place our transparent capture zone there.                      */
-.spin-capture{
-  position:absolute;
-  /* approximate Hacksaw bottom-centre action area — adjust if needed */
-  bottom:10%;left:50%;transform:translateX(-50%);
-  width:120px;height:120px;border-radius:50%;
-  background:transparent;
-  cursor:pointer;z-index:30;
-  pointer-events:all;
-  border:none;outline:none;
-}
-.spin-capture:disabled{pointer-events:none;opacity:0}
-
-/* ── block zones — SuperTurbo + AutoSpin stop button ─────────────── */
-/* These sit over the known toggle areas and swallow clicks silently   */
-.block-zone{
-  position:absolute;background:transparent;
-  pointer-events:all;z-index:30;cursor:not-allowed;
-}
-/* SuperTurbo toggle: right side, mid-panel — rough estimate */
-.block-superturbo{bottom:38%;right:5%;width:72px;height:40px}
-/* AutoSpin stop button: left side of action panel */
-.block-autostop{bottom:8%;left:calc(50% - 120px);width:80px;height:80px;border-radius:50%}
-
-/* ── result toast ─────────────────────────────────────────────────── */
-.fc-toast{
-  position:absolute;top:12%;left:50%;transform:translateX(-50%);
-  background:rgba(6,14,6,.92);border:1px solid #2ecc7133;border-radius:10px;
-  padding:.4rem .9rem;font-size:.82rem;font-weight:700;color:#2ecc71;
-  z-index:40;pointer-events:none;
-  opacity:0;transition:opacity .25s;white-space:nowrap;
-}
-.fc-toast.show{opacity:1}
-.fc-toast.lose{color:#c0392b;border-color:#c0392b33}
-.fc-toast.bigwin{color:#f1c40f;border-color:#f1c40f44;font-size:1rem}
-
-@media(max-width:600px){.fc-hud{padding:.4rem .6rem .5rem}.fc-stat-val{font-size:.78rem}}
 </style>
 `, `
 <div class="play-layout">
@@ -306,193 +660,37 @@ function gamePage(bal, tag, avatar) {
     <button class="viewer-back" onclick="history.back()">&#8592; Lobby</button>
     <div style="flex:1;min-width:0">
       <div class="viewer-title">Le Bandit</div>
-      <div class="viewer-provider">Hacksaw Gaming</div>
+      <div class="viewer-provider">Hacksaw Gaming (proxied)</div>
     </div>
-    <div class="nav-bal-viewer" id="navBal">Balance: <strong id="navBalVal">${Number(bal).toLocaleString()} FC</strong></div>
+    <div class="nav-bal-viewer">Balance: <strong id="outerBal">${Number(bal).toLocaleString()} FC</strong></div>
     <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
   </div>
-
   <div class="play-top">
-    <!-- loading screen -->
     <div class="frame-loading" id="frameLoading">
       <div class="frame-spinner"></div>
       <div class="frame-loading-txt">Loading Le Bandit&#8230;</div>
     </div>
-
-    <!-- actual Hacksaw iframe -->
+    <!-- same-origin src: bridge script was injected server-side -->
     <iframe
       class="game-frame"
       id="gameFrame"
-      src="${LE_BANDIT_EMBED}"
+      src="/proxy/1309/1.23.2/index.html?${GAME_PARAMS}"
       allowfullscreen
       allow="autoplay; fullscreen"
       onload="document.getElementById('frameLoading').classList.add('hidden')"
     ></iframe>
-
-    <!-- transparent spin interceptor over PlaceBetBtn -->
-    <button class="spin-capture" id="spinCapture" aria-label="Spin with FluxCoins"></button>
-
-    <!-- silent block zones -->
-    <div class="block-zone block-superturbo" title="Super Turbo disabled"></div>
-    <div class="block-zone block-autostop"   title="Auto Spin disabled"></div>
-
-    <!-- result toast -->
-    <div class="fc-toast" id="fcToast"></div>
-
-    <!-- FluxCoin HUD -->
-    <div class="fc-hud">
-      <div class="fc-hud-row">
-        <div class="fc-stat">
-          <span class="fc-stat-label">FC Balance</span>
-          <span class="fc-stat-val" id="hudBal">${Number(bal).toLocaleString()}</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">FC Bet</span>
-          <span class="fc-stat-val dim" id="hudBet">10</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Last Win</span>
-          <span class="fc-stat-val" id="hudWin">—</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Spins</span>
-          <span class="fc-stat-val dim" id="hudSpins">0</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Net</span>
-          <span class="fc-stat-val dim" id="hudNet">0</span>
-        </div>
-      </div>
-      <!-- inline bet controls so player can adjust FC bet without touching Hacksaw UI -->
-      <div class="fc-hud-row" style="pointer-events:all;gap:.4rem">
-        <span class="fc-stat-label" style="align-self:center">FC Bet:</span>
-        <button id="betDec" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">−</button>
-        <input id="betInput" type="number" min="1" max="10000" value="10"
-          style="width:70px;padding:.2rem .4rem;background:#040d04;border:1px solid #2ecc7133;border-radius:6px;font-size:.8rem;color:#e2ffe2;text-align:center;outline:none">
-        <button id="betInc" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
-        <button id="betMax" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer">MAX</button>
-      </div>
-    </div>
   </div>
 </div>
-
 <script>
-(function(){
-  // ── state ─────────────────────────────────────────────────────────────────
-  var bal     = ${Number(bal)};
-  var bet     = 10;
-  var busy    = false;
-  var spins   = 0;
-  var netFC   = 0;
-
-  // ── DOM refs ──────────────────────────────────────────────────────────────
-  var hudBal   = document.getElementById('hudBal');
-  var hudBet   = document.getElementById('hudBet');
-  var hudWin   = document.getElementById('hudWin');
-  var hudSpins = document.getElementById('hudSpins');
-  var hudNet   = document.getElementById('hudNet');
-  var navBalV  = document.getElementById('navBalVal');
-  var betInput = document.getElementById('betInput');
-  var spinBtn  = document.getElementById('spinCapture');
-  var toast    = document.getElementById('fcToast');
-  var toastTO;
-
-  // ── auto-hide loading after 9s fallback ──────────────────────────────────
-  setTimeout(function(){ var f=document.getElementById('frameLoading'); if(f) f.classList.add('hidden'); }, 9000);
-
-  // ── bet controls ─────────────────────────────────────────────────────────
-  var PRESETS = [10,25,50,100,250,500,1000];
-  function setBet(v){
-    bet = Math.max(1, Math.min(10000, parseInt(v)||1));
-    betInput.value = bet;
-    hudBet.textContent = bet.toLocaleString();
+/* Sync outer header balance from postMessage bridge */
+window.addEventListener('message', function(e){
+  if(e.data && e.data.type === 'FC_BAL_UPDATE'){
+    var el = document.getElementById('outerBal');
+    if(el) el.textContent = Number(e.data.bal).toLocaleString() + ' FC';
   }
-  betInput.addEventListener('change', function(){ setBet(betInput.value); });
-  document.getElementById('betDec').addEventListener('click', function(){
-    var idx = PRESETS.indexOf(bet);
-    setBet(idx > 0 ? PRESETS[idx-1] : Math.max(1, bet-1));
-  });
-  document.getElementById('betInc').addEventListener('click', function(){
-    var idx = PRESETS.indexOf(bet);
-    setBet(idx >= 0 && idx < PRESETS.length-1 ? PRESETS[idx+1] : bet+1);
-  });
-  document.getElementById('betMax').addEventListener('click', function(){
-    setBet(Math.min(10000, bal));
-  });
-
-  // ── update HUD ────────────────────────────────────────────────────────────
-  function updateHUD(newBal, gross, net){
-    bal = newBal;
-    hudBal.textContent  = bal.toLocaleString();
-    navBalV.textContent = bal.toLocaleString() + ' FC';
-    spins++;
-    netFC += net;
-    hudSpins.textContent = spins;
-    hudNet.textContent   = (netFC >= 0 ? '+' : '') + netFC.toLocaleString();
-    hudNet.className     = 'fc-stat-val ' + (netFC >= 0 ? 'win' : 'lose');
-    if(gross > 0){
-      hudWin.textContent = '+' + gross.toLocaleString() + ' FC';
-      hudWin.className   = gross >= bet*10 ? 'fc-stat-val bigwin' : 'fc-stat-val win';
-    } else {
-      hudWin.textContent = '\u2212' + bet.toLocaleString() + ' FC';
-      hudWin.className   = 'fc-stat-val lose';
-    }
-  }
-
-  // ── toast ─────────────────────────────────────────────────────────────────
-  function showToast(msg, cls){
-    clearTimeout(toastTO);
-    toast.textContent = msg;
-    toast.className   = 'fc-toast show ' + (cls||'');
-    toastTO = setTimeout(function(){ toast.className='fc-toast'; }, 2800);
-  }
-
-  // ── spin ──────────────────────────────────────────────────────────────────
-  async function doSpin(){
-    if(busy) return;
-    if(bet > bal){ showToast('\u2717 Not enough FluxCoins!','lose'); return; }
-    busy = true;
-    spinBtn.disabled = true;
-    showToast('Spinning\u2026');
-    var data;
-    try{
-      var r = await fetch('/api/spin',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({bet})
-      });
-      data = await r.json();
-      if(!r.ok) throw new Error(data.error||'spin failed');
-    } catch(e){
-      showToast('\u26a0 ' + e.message,'lose');
-      busy=false; spinBtn.disabled=false; return;
-    }
-    updateHUD(data.newBal, data.gross, data.net);
-    if(data.mult === 0){
-      showToast('\u2717 No win — lost ' + bet.toLocaleString() + ' FC','lose');
-    } else if(data.gross >= bet*10){
-      showToast('\uD83C\uDF89 BIG WIN! \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC!','bigwin');
-    } else {
-      showToast('\u2714 \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC');
-    }
-    busy=false; spinBtn.disabled=false;
-  }
-
-  spinBtn.addEventListener('click', doSpin);
-
-  // ── poll /api/balance every 30s to stay in sync ───────────────────────────
-  setInterval(async function(){
-    try{
-      var r = await fetch('/api/balance');
-      var d = await r.json();
-      if(d.bal !== undefined && !busy){
-        bal = d.bal;
-        hudBal.textContent  = bal.toLocaleString();
-        navBalV.textContent = bal.toLocaleString() + ' FC';
-      }
-    }catch(e){}
-  }, 30000);
-})();
+});
+/* Fallback hide loading */
+setTimeout(function(){ var f=document.getElementById('frameLoading'); if(f) f.classList.add('hidden'); }, 12000);
 </script>
 `);
 }
@@ -518,6 +716,113 @@ function errPage(title, msg, btnHref, btnLabel) {
 <div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(btnHref ?? "/login")}">${esc(btnLabel ?? "Back to login")}</a></div>
 </div>
 `);
+}
+
+// ===========================================================================
+// Reverse proxy handlers
+// ===========================================================================
+
+/**
+ * Proxy a Hacksaw static asset.
+ * HTML: decompress, rewrite URLs, inject bridge script before </head>
+ * JS / CSS: rewrite URL literals
+ * Binary (images, fonts, wasm): stream as-is
+ */
+async function proxyStatic(upstreamPath, req, res, bridgeHtml) {
+  const targetUrl = HACKSAW_STATIC + upstreamPath;
+  let upstream;
+  try {
+    upstream = await rawFetch(targetUrl, {
+      method:  req.method,
+      headers: {
+        "Referer": HACKSAW_STATIC + "/",
+      },
+    });
+  } catch (e) {
+    res.writeHead(502);
+    return res.end("Proxy fetch error: " + e.message);
+  }
+
+  const ct     = (upstream.headers["content-type"] ?? "").toLowerCase();
+  const isHtml = ct.includes("html");
+  const isJs   = ct.includes("javascript") || upstreamPath.endsWith(".js");
+  const isCss  = ct.includes("css") || upstreamPath.endsWith(".css");
+
+  // Strip headers that would block framing or scripts
+  const safeHeaders = { "Content-Type": upstream.headers["content-type"] ?? "application/octet-stream" };
+  // Deliberately omit: X-Frame-Options, Content-Security-Policy,
+  // Strict-Transport-Security, X-Content-Type-Options (would break our rewrites)
+
+  if (!isHtml && !isJs && !isCss) {
+    // Binary pass-through (images, wasm, fonts, audio)
+    safeHeaders["Cache-Control"] = "public, max-age=3600";
+    res.writeHead(upstream.statusCode, safeHeaders);
+    return res.end(upstream.body);
+  }
+
+  let text = upstream.body.toString("utf8");
+  const base = targetUrl;
+
+  if (isHtml) {
+    text = rewriteHtml(text, base);
+    if (bridgeHtml) {
+      text = text.replace(/<\/head>/i, bridgeHtml + "</head>");
+    }
+    // Also post balance to parent frame on change
+    const parentSync = `
+<script data-fc-parent-sync>
+(function(){
+  var lastBal;
+  setInterval(function(){
+    var el = document.getElementById('BalanceValue');
+    if(el && el.textContent !== lastBal){
+      lastBal = el.textContent;
+      try{ window.parent.postMessage({ type:'FC_BAL_UPDATE', bal: el.textContent.replace(/[^0-9]/g,'') }, '*'); }catch(e){}
+    }
+  }, 1000);
+})();
+</script>`;
+    text = text.replace(/<\/body>/i, parentSync + "</body>");
+  } else if (isJs) {
+    text = rewriteJs(text);
+  } else if (isCss) {
+    text = rewriteCss(text, base);
+  }
+
+  res.writeHead(upstream.statusCode, safeHeaders);
+  res.end(text);
+}
+
+/**
+ * Tunnel a request to the Hacksaw RGS API (XHR/fetch from the game).
+ * We pass through method, body, and relevant headers.
+ */
+async function proxyRgs(rgsPath, req, res) {
+  let body = "";
+  await new Promise(r => { req.on("data", c => body += c); req.on("end", r); });
+  const targetUrl = HACKSAW_RGS + rgsPath;
+  let upstream;
+  try {
+    upstream = await rawFetch(targetUrl, {
+      method:  req.method,
+      headers: {
+        "Content-Type":  req.headers["content-type"] ?? "application/json",
+        "Accept":        req.headers["accept"] ?? "application/json",
+        "Authorization": req.headers["authorization"] ?? "",
+        "Referer":       HACKSAW_STATIC + "/",
+      },
+      body,
+    });
+  } catch (e) {
+    res.writeHead(502);
+    return res.end("RGS proxy error: " + e.message);
+  }
+  const ct = upstream.headers["content-type"] ?? "application/json";
+  res.writeHead(upstream.statusCode, {
+    "Content-Type":                ct,
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(upstream.body);
 }
 
 // ===========================================================================
@@ -556,6 +861,32 @@ export class WebServer {
     const path = u.pathname;
 
     if (path === "/") return this._redirect(res, "/lobby");
+
+    // ── HACKSAW STATIC PROXY ─────────────────────────────────────────────────
+    // /proxy/<rest> → https://static-live.hacksawgaming.com/<rest>
+    if (path.startsWith("/proxy/")) {
+      const uid = this._uid(req);
+      if (!uid) return this._redirect(res, "/login");
+      const upstreamPath = path.slice("/proxy".length) + u.search;
+      // Inject bridge only into the game's root HTML
+      const isRoot = path.match(/\/proxy\/1309\/.*\/index\.html/);
+      let bridgeHtml = null;
+      if (isRoot) {
+        const user = await this.db.getUser(uid);
+        const bal  = Number(user?.bal ?? 0);
+        bridgeHtml = buildBridgeScript(bal, 10);
+      }
+      return proxyStatic(upstreamPath, req, res, bridgeHtml);
+    }
+
+    // ── HACKSAW RGS TUNNEL ───────────────────────────────────────────────────
+    // /proxy-api/<rest> → https://rgs-demo.hacksawgaming.com/<rest>
+    if (path.startsWith("/proxy-api/")) {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const rgsPath = path.slice("/proxy-api".length) + u.search;
+      return proxyRgs(rgsPath, req, res);
+    }
 
     // ── LOBBY ────────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
