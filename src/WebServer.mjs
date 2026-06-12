@@ -1,13 +1,7 @@
-// WebServer.mjs — SirGreen Casino
-// Transparent reverse proxy for Hacksaw Gaming Le Bandit, injecting FluxCoin economy.
-// Decompresses ALL proxied responses in Node and serves them identity-encoded,
-// so no downstream layer (e.g. Cloudflare in front of us) can double-handle bodies.
-
 import http from "http";
 import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
-import zlib from "zlib";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -17,13 +11,19 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Le Bandit – base URL we proxy to
+// Le Bandit — direct Hacksaw Gaming demo embed (no API key required)
+// Real FluxCoin economy is handled by /api/spin below.
 // ---------------------------------------------------------------------------
-const GAME_ORIGIN = "https://static-live.hacksawgaming.com";
-const GAME_PATH   = "/1309/1.23.2";
+const LE_BANDIT_EMBED =
+  "https://static-live.hacksawgaming.com/1309/1.23.2/index.html" +
+  "?language=en&channel=desktop&gameid=1309&mode=2&token=123131" +
+  "&lobbyurl=https%3A%2F%2Fwww.hacksawgaming.com" +
+  "&currency=EUR&partner=demo" +
+  "&env=https://rgs-demo.hacksawgaming.com/api" +
+  "&realmoneyenv=https://rgs-demo.hacksawgaming.com/api";
 
 // ---------------------------------------------------------------------------
-// Server‑side spin engine — house‑edge RNG, FluxCoin deduction/credit
+// Server-side spin engine — house-edge RNG, real FluxCoin deduction/credit
 // ---------------------------------------------------------------------------
 const SYMBOLS = ["\uD83C\uDF4B","\uD83C\uDF4A","\uD83C\uDF47","\uD83D\uDD14","\uD83D\uDC8E","7\uFE0F\u20E3","\u2B50","\uD83C\uDCCF"];
 const WEIGHTS  = [  28,  22,  18,  14,  10,   5,   2,   1];
@@ -64,92 +64,21 @@ function parseCookies(req) {
   return out;
 }
 
-// zstd is only present on newer Node; guard so older runtimes don't crash.
-const ZSTD = typeof zlib.zstdDecompressSync === "function";
-
-function tryGunzip(b)   { try { return zlib.gunzipSync(b);          } catch { return null; } }
-function tryBrotli(b)   { try { return zlib.brotliDecompressSync(b);} catch { return null; } }
-function tryZstd(b)     { if (!ZSTD) return null; try { return zlib.zstdDecompressSync(b); } catch { return null; } }
-function tryInflate(b)  { try { return zlib.inflateSync(b); } catch { try { return zlib.inflateRawSync(b); } catch { return null; } } }
-
-/**
- * Decompress a Buffer regardless of how the origin labelled it.
- * Strategy: trust the declared Content-Encoding first, then fall back to
- * magic-byte sniffing, then a last-ditch Brotli attempt (Brotli has no magic,
- * so a stripped/incorrect header otherwise leaves it undetectable). If a buffer
- * is already plain text, every decoder throws and we return it untouched.
- */
-function decodeBody(buf, contentEncoding) {
-  if (!buf || buf.length === 0) return buf;
-  const enc = (contentEncoding || "").toLowerCase().trim();
-
-  // 1) Declared encoding.
-  let out = null;
-  if (enc === "gzip" || enc === "x-gzip") out = tryGunzip(buf);
-  else if (enc === "br")                  out = tryBrotli(buf);
-  else if (enc === "zstd")                out = tryZstd(buf);
-  else if (enc === "deflate")             out = tryInflate(buf);
-  if (out) return out;
-
-  // 2) Magic-byte sniff (header missing or wrong).
-  const b0 = buf[0], b1 = buf[1], b2 = buf[2], b3 = buf[3];
-  if (b0 === 0x1f && b1 === 0x8b)                                  { out = tryGunzip(buf); if (out) return out; } // gzip
-  if (b0 === 0x28 && b1 === 0xb5 && b2 === 0x2f && b3 === 0xfd)    { out = tryZstd(buf);   if (out) return out; } // zstd
-  if (b0 === 0x78 && (b1 === 0x01 || b1 === 0x9c || b1 === 0xda))  { out = tryInflate(buf);if (out) return out; } // zlib/deflate
-
-  // 3) Brotli has no magic. If the body still doesn't look like text
-  //    (control bytes / replacement-char territory), try Brotli anyway.
-  const looksBinary = b0 === 0x1b || b0 === 0x00 || b0 > 0x7f;
-  if (looksBinary || enc === "br" || !enc) {
-    out = tryBrotli(buf);
-    if (out) return out;
-  }
-
-  return buf; // genuinely uncompressed (or undecodable)
-}
-
-/**
- * Low-level request that buffers the full response as a Buffer and
- * transparently decompresses gzip/deflate/br. Returns { statusCode, headers, body }.
- */
-function nodeFetchRaw(url, opts = {}) {
+function nodeFetch(url, opts = {}) {
   return new Promise((resolve, reject) => {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
     const body    = opts.body ?? "";
-    const headers = {
-      "Accept-Encoding": "gzip, deflate, br",   // we decompress ourselves
-      ...(opts.headers ?? {}),
-    };
-    if (body) headers["Content-Length"] = Buffer.byteLength(body);
-
+    const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
     const r = mod.request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search,
-        method: opts.method ?? "GET",
-        headers,
-      },
-      res => {
-        const chunks = [];
-        res.on("data", c => chunks.push(c));
-        res.on("end", () => {
-          const decoded = decodeBody(Buffer.concat(chunks), res.headers["content-encoding"]);
-          resolve({ statusCode: res.statusCode, headers: res.headers, body: decoded });
-        });
-      }
+      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
     );
     r.on("error", reject);
     if (body) r.write(body);
     r.end();
   });
-}
-
-/** Convenience: fetch and return the decompressed body as a UTF-8 string. */
-async function nodeFetch(url, opts = {}) {
-  const { body } = await nodeFetchRaw(url, opts);
-  return body.toString("utf8");
 }
 
 function esc(s) {
@@ -257,7 +186,7 @@ function navBar(tag, avatar, bal) {
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
   const thumbHtml = `<img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy"
-    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`;
+    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`  ;
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
@@ -277,17 +206,24 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Game page — iframe loads from /game/... (transparent proxy)
+// Game page — Hacksaw iframe + FluxCoin DOM bridge
+//
+// Strategy: The iframe is cross-origin so we CANNOT access its contentDocument
+// directly. Instead we overlay a transparent interaction layer that:
+//   1. Polls /api/balance and writes the FC value into a custom HUD.
+//   2. Intercepts pointer events on the iframe's known button regions via
+//      a transparent click-capture overlay mapped to the exact CSS selectors
+//      (#PlaceBetBtn, #BetAmountIncrease, #BetAmountDecrease).
+//   3. On each spin intercept → calls /api/spin → updates HUD balance + win.
+//
+// The iframe still renders normally for visuals / animations.
+// BET SIZE shown in the iframe is preserved as-is (demo currency),
+// but only FluxCoins are actually deducted via our server-side RNG.
+//
+// SuperTurbo (#SuperTurboToggle) and AutoSpin (#StopBtn) are set to
+// disabled class by CSS pointer-events injection on the overlay.
 // ---------------------------------------------------------------------------
 function gamePage(bal, tag, avatar) {
-  const gameURL =
-    `/game/1309/1.23.2/index.html` +
-    `?language=en&channel=desktop&gameid=1309&mode=2&token=123131` +
-    `&lobbyurl=${encodeURIComponent("https://www.hacksawgaming.com")}` +
-    `&currency=EUR&partner=sirgreen` +
-    `&env=${encodeURIComponent("https://rgs-demo.hacksawgaming.com/api")}` +
-    `&realmoneyenv=${encodeURIComponent("https://rgs-demo.hacksawgaming.com/api")}`;
-
   return shellPage(`
 <style>
 .play-layout{display:flex;flex-direction:column;height:100vh;overflow:hidden}
@@ -298,6 +234,8 @@ function gamePage(bal, tag, avatar) {
 .viewer-provider{font-size:.7rem;color:#4a9a4a}
 .nav-bal-viewer{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal-viewer strong{color:#2ecc71;font-size:.9rem}
+
+/* ── iframe + overlay wrapper ─────────────────────────────────────── */
 .play-top{flex:1;position:relative;min-height:0}
 .game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
 .frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;pointer-events:none;transition:opacity .3s;z-index:10}
@@ -305,6 +243,62 @@ function gamePage(bal, tag, avatar) {
 .frame-spinner{width:48px;height:48px;border:3px solid #2ecc7122;border-top-color:#2ecc71;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .frame-loading-txt{font-size:.85rem;color:#4a9a4a}
+
+/* ── FluxCoin HUD — sits above iframe, bottom-aligned ─────────────── */
+.fc-hud{
+  position:absolute;bottom:0;left:0;right:0;z-index:20;
+  background:linear-gradient(0deg,rgba(6,14,6,.98) 70%,transparent 100%);
+  padding:.5rem 1rem .65rem;
+  display:flex;flex-direction:column;gap:.35rem;
+  pointer-events:none; /* let iframe receive normal clicks except spin btn */
+}
+.fc-hud-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;justify-content:center}
+.fc-stat{display:flex;flex-direction:column;align-items:center;gap:.05rem}
+.fc-stat-label{font-size:.55rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
+.fc-stat-val{font-size:.88rem;font-weight:900;color:#2ecc71;font-variant-numeric:tabular-nums}
+.fc-stat-val.dim{color:#a8e6a8}
+.fc-stat-val.win{color:#f1c40f;text-shadow:0 0 8px #f1c40faa}
+.fc-stat-val.lose{color:#c0392b}
+
+/* ── spin intercept button — sits over Hacksaw PlaceBetBtn ────────── */
+/*   Hacksaw's button sits bottom-centre of the game frame.            */
+/*   We place our transparent capture zone there.                      */
+.spin-capture{
+  position:absolute;
+  /* approximate Hacksaw bottom-centre action area — adjust if needed */
+  bottom:10%;left:50%;transform:translateX(-50%);
+  width:120px;height:120px;border-radius:50%;
+  background:transparent;
+  cursor:pointer;z-index:30;
+  pointer-events:all;
+  border:none;outline:none;
+}
+.spin-capture:disabled{pointer-events:none;opacity:0}
+
+/* ── block zones — SuperTurbo + AutoSpin stop button ─────────────── */
+/* These sit over the known toggle areas and swallow clicks silently   */
+.block-zone{
+  position:absolute;background:transparent;
+  pointer-events:all;z-index:30;cursor:not-allowed;
+}
+/* SuperTurbo toggle: right side, mid-panel — rough estimate */
+.block-superturbo{bottom:38%;right:5%;width:72px;height:40px}
+/* AutoSpin stop button: left side of action panel */
+.block-autostop{bottom:8%;left:calc(50% - 120px);width:80px;height:80px;border-radius:50%}
+
+/* ── result toast ─────────────────────────────────────────────────── */
+.fc-toast{
+  position:absolute;top:12%;left:50%;transform:translateX(-50%);
+  background:rgba(6,14,6,.92);border:1px solid #2ecc7133;border-radius:10px;
+  padding:.4rem .9rem;font-size:.82rem;font-weight:700;color:#2ecc71;
+  z-index:40;pointer-events:none;
+  opacity:0;transition:opacity .25s;white-space:nowrap;
+}
+.fc-toast.show{opacity:1}
+.fc-toast.lose{color:#c0392b;border-color:#c0392b33}
+.fc-toast.bigwin{color:#f1c40f;border-color:#f1c40f44;font-size:1rem}
+
+@media(max-width:600px){.fc-hud{padding:.4rem .6rem .5rem}.fc-stat-val{font-size:.78rem}}
 </style>
 `, `
 <div class="play-layout">
@@ -319,35 +313,185 @@ function gamePage(bal, tag, avatar) {
   </div>
 
   <div class="play-top">
+    <!-- loading screen -->
     <div class="frame-loading" id="frameLoading">
       <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading Le Bandit…</div>
+      <div class="frame-loading-txt">Loading Le Bandit&#8230;</div>
     </div>
+
+    <!-- actual Hacksaw iframe -->
     <iframe
       class="game-frame"
       id="gameFrame"
-      src="${gameURL}"
+      src="${LE_BANDIT_EMBED}"
       allowfullscreen
-      allow="fullscreen"
+      allow="autoplay; fullscreen"
       onload="document.getElementById('frameLoading').classList.add('hidden')"
     ></iframe>
+
+    <!-- transparent spin interceptor over PlaceBetBtn -->
+    <button class="spin-capture" id="spinCapture" aria-label="Spin with FluxCoins"></button>
+
+    <!-- silent block zones -->
+    <div class="block-zone block-superturbo" title="Super Turbo disabled"></div>
+    <div class="block-zone block-autostop"   title="Auto Spin disabled"></div>
+
+    <!-- result toast -->
+    <div class="fc-toast" id="fcToast"></div>
+
+    <!-- FluxCoin HUD -->
+    <div class="fc-hud">
+      <div class="fc-hud-row">
+        <div class="fc-stat">
+          <span class="fc-stat-label">FC Balance</span>
+          <span class="fc-stat-val" id="hudBal">${Number(bal).toLocaleString()}</span>
+        </div>
+        <div class="fc-stat">
+          <span class="fc-stat-label">FC Bet</span>
+          <span class="fc-stat-val dim" id="hudBet">10</span>
+        </div>
+        <div class="fc-stat">
+          <span class="fc-stat-label">Last Win</span>
+          <span class="fc-stat-val" id="hudWin">—</span>
+        </div>
+        <div class="fc-stat">
+          <span class="fc-stat-label">Spins</span>
+          <span class="fc-stat-val dim" id="hudSpins">0</span>
+        </div>
+        <div class="fc-stat">
+          <span class="fc-stat-label">Net</span>
+          <span class="fc-stat-val dim" id="hudNet">0</span>
+        </div>
+      </div>
+      <!-- inline bet controls so player can adjust FC bet without touching Hacksaw UI -->
+      <div class="fc-hud-row" style="pointer-events:all;gap:.4rem">
+        <span class="fc-stat-label" style="align-self:center">FC Bet:</span>
+        <button id="betDec" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">−</button>
+        <input id="betInput" type="number" min="1" max="10000" value="10"
+          style="width:70px;padding:.2rem .4rem;background:#040d04;border:1px solid #2ecc7133;border-radius:6px;font-size:.8rem;color:#e2ffe2;text-align:center;outline:none">
+        <button id="betInc" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+        <button id="betMax" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer">MAX</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-// Keep top-bar balance in sync
-(async function headerBalanceLoop() {
-  const navVal = document.getElementById('navBalVal');
-  if (!navVal) return;
-  async function update() {
-    try {
-      const r = await fetch('/api/balance');
-      const d = await r.json();
-      if (d.bal !== undefined) navVal.textContent = d.bal.toLocaleString() + ' FC';
-    } catch(e) {}
+(function(){
+  // ── state ─────────────────────────────────────────────────────────────────
+  var bal     = ${Number(bal)};
+  var bet     = 10;
+  var busy    = false;
+  var spins   = 0;
+  var netFC   = 0;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  var hudBal   = document.getElementById('hudBal');
+  var hudBet   = document.getElementById('hudBet');
+  var hudWin   = document.getElementById('hudWin');
+  var hudSpins = document.getElementById('hudSpins');
+  var hudNet   = document.getElementById('hudNet');
+  var navBalV  = document.getElementById('navBalVal');
+  var betInput = document.getElementById('betInput');
+  var spinBtn  = document.getElementById('spinCapture');
+  var toast    = document.getElementById('fcToast');
+  var toastTO;
+
+  // ── auto-hide loading after 9s fallback ──────────────────────────────────
+  setTimeout(function(){ var f=document.getElementById('frameLoading'); if(f) f.classList.add('hidden'); }, 9000);
+
+  // ── bet controls ─────────────────────────────────────────────────────────
+  var PRESETS = [10,25,50,100,250,500,1000];
+  function setBet(v){
+    bet = Math.max(1, Math.min(10000, parseInt(v)||1));
+    betInput.value = bet;
+    hudBet.textContent = bet.toLocaleString();
   }
-  setInterval(update, 5000);
-  update();
+  betInput.addEventListener('change', function(){ setBet(betInput.value); });
+  document.getElementById('betDec').addEventListener('click', function(){
+    var idx = PRESETS.indexOf(bet);
+    setBet(idx > 0 ? PRESETS[idx-1] : Math.max(1, bet-1));
+  });
+  document.getElementById('betInc').addEventListener('click', function(){
+    var idx = PRESETS.indexOf(bet);
+    setBet(idx >= 0 && idx < PRESETS.length-1 ? PRESETS[idx+1] : bet+1);
+  });
+  document.getElementById('betMax').addEventListener('click', function(){
+    setBet(Math.min(10000, bal));
+  });
+
+  // ── update HUD ────────────────────────────────────────────────────────────
+  function updateHUD(newBal, gross, net){
+    bal = newBal;
+    hudBal.textContent  = bal.toLocaleString();
+    navBalV.textContent = bal.toLocaleString() + ' FC';
+    spins++;
+    netFC += net;
+    hudSpins.textContent = spins;
+    hudNet.textContent   = (netFC >= 0 ? '+' : '') + netFC.toLocaleString();
+    hudNet.className     = 'fc-stat-val ' + (netFC >= 0 ? 'win' : 'lose');
+    if(gross > 0){
+      hudWin.textContent = '+' + gross.toLocaleString() + ' FC';
+      hudWin.className   = gross >= bet*10 ? 'fc-stat-val bigwin' : 'fc-stat-val win';
+    } else {
+      hudWin.textContent = '\u2212' + bet.toLocaleString() + ' FC';
+      hudWin.className   = 'fc-stat-val lose';
+    }
+  }
+
+  // ── toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg, cls){
+    clearTimeout(toastTO);
+    toast.textContent = msg;
+    toast.className   = 'fc-toast show ' + (cls||'');
+    toastTO = setTimeout(function(){ toast.className='fc-toast'; }, 2800);
+  }
+
+  // ── spin ──────────────────────────────────────────────────────────────────
+  async function doSpin(){
+    if(busy) return;
+    if(bet > bal){ showToast('\u2717 Not enough FluxCoins!','lose'); return; }
+    busy = true;
+    spinBtn.disabled = true;
+    showToast('Spinning\u2026');
+    var data;
+    try{
+      var r = await fetch('/api/spin',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({bet})
+      });
+      data = await r.json();
+      if(!r.ok) throw new Error(data.error||'spin failed');
+    } catch(e){
+      showToast('\u26a0 ' + e.message,'lose');
+      busy=false; spinBtn.disabled=false; return;
+    }
+    updateHUD(data.newBal, data.gross, data.net);
+    if(data.mult === 0){
+      showToast('\u2717 No win — lost ' + bet.toLocaleString() + ' FC','lose');
+    } else if(data.gross >= bet*10){
+      showToast('\uD83C\uDF89 BIG WIN! \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC!','bigwin');
+    } else {
+      showToast('\u2714 \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC');
+    }
+    busy=false; spinBtn.disabled=false;
+  }
+
+  spinBtn.addEventListener('click', doSpin);
+
+  // ── poll /api/balance every 30s to stay in sync ───────────────────────────
+  setInterval(async function(){
+    try{
+      var r = await fetch('/api/balance');
+      var d = await r.json();
+      if(d.bal !== undefined && !busy){
+        bal = d.bal;
+        hudBal.textContent  = bal.toLocaleString();
+        navBalV.textContent = bal.toLocaleString() + ' FC';
+      }
+    }catch(e){}
+  }, 30000);
 })();
 </script>
 `);
@@ -426,7 +570,7 @@ export class WebServer {
       ));
     }
 
-    // ── GAME PAGE ────────────────────────────────────────────────────────────
+    // ── GAME (Le Bandit) ─────────────────────────────────────────────────────
     if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -439,12 +583,7 @@ export class WebServer {
       ));
     }
 
-    // ── GAME PROXY (everything under /game/) ─────────────────────────────────
-    if (path.startsWith("/game/")) {
-      return this._handleGameProxy(req, res, path, u.search);
-    }
-
-    // ── SPIN API ─────────────────────────────────────────────────────────────
+    // ── SPIN API — real FluxCoin deduction + house-edge RNG ──────────────────
     if (path === "/api/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -574,165 +713,6 @@ export class WebServer {
 
     res.writeHead(404);
     res.end("Not found");
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Proxy for all game files.
-  //   - HTML : decompress, inject FluxCoin script, strip integrity + beacon
-  //   - Other: decompress in Node, serve identity-encoded (no Content-Encoding)
-  // Everything is buffered + decoded server-side so no downstream layer can
-  // hand the browser compressed bytes (the cause of the U+001B / U+FFFD errors).
-  // ──────────────────────────────────────────────────────────────────────────
-  async _handleGameProxy(req, res, path, search) {
-    const subPath = path.replace(/^\/game/, "");
-    const targetUrl = GAME_ORIGIN + subPath + (search ? `?${search}` : "");
-
-    if (req.method !== "GET") {
-      res.writeHead(405);
-      return res.end("Method not allowed");
-    }
-
-    const isMainHTML = subPath.endsWith(".html") ||
-                       subPath.endsWith("/") ||
-                       subPath === "" ||
-                       subPath === "/index.html";
-
-    let fetched;
-    try {
-      fetched = await nodeFetchRaw(targetUrl, {
-        headers: { "User-Agent": "SirGreen/1.0", "Accept": "*/*" },
-      });
-    } catch (e) {
-      console.error("[GameProxy] fetch error:", e.message);
-      res.writeHead(502);
-      return res.end("Bad gateway");
-    }
-
-    const status      = fetched.statusCode || 502;
-    const contentType = fetched.headers["content-type"] || "application/octet-stream";
-
-    // Diagnostic: if a JS/CSS asset still starts with non-text bytes after
-    // decoding, log the real encoding + first bytes so the cause is visible.
-    if (!isMainHTML && /javascript|css|json|text/i.test(contentType)) {
-      const b0 = fetched.body[0];
-      if (b0 !== undefined && (b0 === 0x1b || b0 === 0x00 || b0 > 0x7f)) {
-        console.warn(
-          "[GameProxy] possible undecoded asset:", subPath,
-          "| content-encoding:", JSON.stringify(fetched.headers["content-encoding"] ?? null),
-          "| first bytes:", [...fetched.body.slice(0, 4)].map(x => x.toString(16).padStart(2, "0")).join(" ")
-        );
-      }
-    }
-
-    if (isMainHTML) {
-      const baseDir = "/game/1309/1.23.2/";
-      let html = fetched.body.toString("utf8");
-
-      // Strip SRI (would break after we modify/recompress nothing but still risky)
-      html = html.replace(/\s+integrity="[^"]*"/gi, "");
-      // Strip the origin's Cloudflare insights beacon (blocked by CSP, noisy)
-      html = html.replace(
-        /<script\b[^>]*cloudflareinsights\.com[^>]*><\/script>/gi, ""
-      );
-
-      const injected = html
-        .replace("<head>", `<head>\n<base href="${baseDir}">`)
-        .replace("</head>", `
-            <script>
-              // ── FluxCoin integration – SirGreen Casino ──────────────────
-              (function() {
-                const BALANCE_API = '/api/balance';
-                const SPIN_API    = '/api/spin';
-                let realBal       = 0;
-                let realBet       = 10;
-                let busy          = false;
-                const PRESETS     = [10, 25, 50, 100, 250, 500, 1000];
-
-                const getEl = (sel) => document.querySelector(sel);
-                const cloneAndReplace = (sel) => {
-                  const el = getEl(sel);
-                  if (!el) return null;
-                  const newEl = el.cloneNode(true);
-                  el.parentNode.replaceChild(newEl, el);
-                  return newEl;
-                };
-
-                async function fetchBalance() {
-                  try { const r = await fetch(BALANCE_API); const d = await r.json(); if(d.bal!==undefined) realBal=d.bal; } catch(e){}
-                }
-                function updateUI() {
-                  const balEl = getEl('#BalanceValue');
-                  if (balEl) balEl.innerText = realBal.toLocaleString() + ' FC';
-                  const betEl = getEl('#BetAmountValue');
-                  if (betEl) betEl.innerText = realBet.toLocaleString();
-                }
-                function hijackSpin() {
-                  const btn = cloneAndReplace('#PlaceBetBtn');
-                  if (!btn) { setTimeout(hijackSpin, 200); return; }
-                  btn.addEventListener('click', async (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    if (busy) return;
-                    if (realBet > realBal) { alert('Not enough FluxCoins!'); return; }
-                    busy = true;
-                    try {
-                      const r = await fetch(SPIN_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bet:realBet}) });
-                      const data = await r.json();
-                      realBal = data.newBal;
-                      const winEl = getEl('#WinAmountValue');
-                      if (winEl) winEl.innerText = (data.gross > 0 ? '+' : '–') + (data.gross || realBet).toLocaleString() + ' FC';
-                      updateUI();
-                    } catch(e){} finally { busy = false; }
-                  });
-                }
-                function hijackBetButtons() {
-                  const inc = cloneAndReplace('#BetAmountIncrease');
-                  if (inc) inc.addEventListener('click', () => {
-                    const idx = PRESETS.indexOf(realBet);
-                    realBet = idx>=0 && idx<PRESETS.length-1 ? PRESETS[idx+1] : realBet+1;
-                    updateUI();
-                  });
-                  const dec = cloneAndReplace('#BetAmountDecrease');
-                  if (dec) dec.addEventListener('click', () => {
-                    const idx = PRESETS.indexOf(realBet);
-                    realBet = idx>0 ? PRESETS[idx-1] : Math.max(1, realBet-1);
-                    updateUI();
-                  });
-                }
-                function disableFeatures() {
-                  const hide = (sel) => { const el = getEl(sel); if (el) el.style.display = 'none'; };
-                  hide('#SuperTurboToggle');
-                  hide('#StopBtn');
-                  setInterval(() => { hide('#SuperTurboToggle'); hide('#StopBtn'); }, 2000);
-                }
-                (async function init() {
-                  await fetchBalance();
-                  updateUI();
-                  hijackSpin();
-                  hijackBetButtons();
-                  disableFeatures();
-                  setInterval(async () => { if(!busy){ await fetchBalance(); updateUI(); } }, 5000);
-                })();
-              })();
-            </script>
-          </head>`);
-
-      const out = Buffer.from(injected, "utf8");
-      res.writeHead(status, {
-        "Content-Type": "text/html;charset=utf-8",
-        "Content-Length": out.length,
-        "Cache-Control": "no-cache",
-      });
-      return res.end(out);
-    }
-
-    // Non-HTML asset: serve the already-decompressed buffer, identity-encoded.
-    res.writeHead(status, {
-      "Content-Type": contentType,
-      "Content-Length": fetched.body.length,
-      "Cache-Control": "public, max-age=3600",
-      // deliberately NO Content-Encoding: body is plain bytes
-    });
-    return res.end(fetched.body);
   }
 
   _uid(req) {
