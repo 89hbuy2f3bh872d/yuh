@@ -434,10 +434,9 @@ export class WebServer {
     this.port         = config.webPort             ?? 3420;
     this.clientId     = config.fluxerClientId      ?? config.discordClientId     ?? "";
     this.clientSecret = config.fluxerClientSecret  ?? config.discordClientSecret ?? "";
-    // webBaseUrl MUST be set to "https://sirgreen.online" in config.json.
-    // Cloudflare proxies port 443 → your server on port 3420, so the public
-    // URL is always https://sirgreen.online (no port suffix).
-    this.baseUrl      = config.webBaseUrl ?? "https://sirgreen.online";
+    // webBaseUrl must match the redirect_uri registered in your Fluxer OAuth app.
+    // Using www.sirgreen.online — make sure Cloudflare has a CNAME for www → sirgreen.online.
+    this.baseUrl      = config.webBaseUrl ?? "https://www.sirgreen.online";
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
     this._states      = new Map();
   }
@@ -529,7 +528,7 @@ export class WebServer {
       const authUrl =
         `${FLUXER_AUTH_URL}` +
         `?client_id=${encodeURIComponent(this.clientId)}` +
-        `&scope=identify+guilds` +
+        `&scope=identify+guilds+connections` +
         `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
         `&response_type=code` +
         `&state=${encodeURIComponent(state)}`;
