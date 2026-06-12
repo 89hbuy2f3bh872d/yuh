@@ -1,12 +1,13 @@
 // WebServer.mjs — SirGreen Casino
 // Transparent reverse proxy for Hacksaw Gaming Le Bandit, injecting FluxCoin economy.
-// Properly handles compression and strips SRI to avoid broken hashes.
+// Decompresses ALL proxied responses in Node and serves them identity-encoded,
+// so no downstream layer (e.g. Cloudflare in front of us) can double-handle bodies.
 
 import http from "http";
 import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
-import zlib from "zlib";   // needed to decompress responses
+import zlib from "zlib";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -64,34 +65,54 @@ function parseCookies(req) {
 }
 
 /**
- * Fetch a URL and return its body as a UTF‑8 string.
- * Handles gzip, deflate, and brotli transparently.
+ * Decompress a Buffer according to a Content-Encoding value.
+ * Returns the original buffer if the encoding is unknown or decoding fails.
  */
-function nodeFetch(url, opts = {}) {
+function decodeBody(buf, contentEncoding) {
+  const enc = (contentEncoding || "").toLowerCase().trim();
+  try {
+    if (enc === "gzip" || enc === "x-gzip") return zlib.gunzipSync(buf);
+    if (enc === "deflate")                  return zlib.inflateSync(buf);
+    if (enc === "br")                       return zlib.brotliDecompressSync(buf);
+  } catch (e) {
+    // Some servers label deflate as raw; retry inflateRaw as a fallback.
+    if (enc === "deflate") {
+      try { return zlib.inflateRawSync(buf); } catch {}
+    }
+    console.error("[decodeBody] failed for encoding", enc, e.message);
+  }
+  return buf;
+}
+
+/**
+ * Low-level request that buffers the full response as a Buffer and
+ * transparently decompresses gzip/deflate/br. Returns { statusCode, headers, body }.
+ */
+function nodeFetchRaw(url, opts = {}) {
   return new Promise((resolve, reject) => {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
     const body    = opts.body ?? "";
     const headers = {
+      "Accept-Encoding": "gzip, deflate, br",   // we decompress ourselves
       ...(opts.headers ?? {}),
-      "Accept-Encoding": "gzip, deflate, br",   // we'll decompress ourselves
-      "Content-Length": Buffer.byteLength(body),
     };
+    if (body) headers["Content-Length"] = Buffer.byteLength(body);
+
     const r = mod.request(
-      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: opts.method ?? "GET",
+        headers,
+      },
       res => {
         const chunks = [];
         res.on("data", c => chunks.push(c));
         res.on("end", () => {
-          let buf = Buffer.concat(chunks);
-          const enc = (res.headers["content-encoding"] || "").toLowerCase();
-          try {
-            if (enc === "gzip")          buf = zlib.gunzipSync(buf);
-            else if (enc === "deflate")  buf = zlib.inflateSync(buf);
-            else if (enc === "br")       buf = zlib.brotliDecompressSync(buf);
-          } catch (e) { return reject(e); }
-          resolve(buf.toString("utf8"));
+          const decoded = decodeBody(Buffer.concat(chunks), res.headers["content-encoding"]);
+          resolve({ statusCode: res.statusCode, headers: res.headers, body: decoded });
         });
       }
     );
@@ -99,6 +120,12 @@ function nodeFetch(url, opts = {}) {
     if (body) r.write(body);
     r.end();
   });
+}
+
+/** Convenience: fetch and return the decompressed body as a UTF-8 string. */
+async function nodeFetch(url, opts = {}) {
+  const { body } = await nodeFetchRaw(url, opts);
+  return body.toString("utf8");
 }
 
 function esc(s) {
@@ -277,7 +304,7 @@ function gamePage(bal, tag, avatar) {
       id="gameFrame"
       src="${gameURL}"
       allowfullscreen
-      allow="autoplay; fullscreen"
+      allow="fullscreen"
       onload="document.getElementById('frameLoading').classList.add('hidden')"
     ></iframe>
   </div>
@@ -526,9 +553,11 @@ export class WebServer {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Proxy for all game files:
-  //   - HTML: decompress, inject FluxCoin script, strip integrity attributes
-  //   - Others: stream untouched but preserve Content-Encoding header
+  // Proxy for all game files.
+  //   - HTML : decompress, inject FluxCoin script, strip integrity + beacon
+  //   - Other: decompress in Node, serve identity-encoded (no Content-Encoding)
+  // Everything is buffered + decoded server-side so no downstream layer can
+  // hand the browser compressed bytes (the cause of the U+001B / U+FFFD errors).
   // ──────────────────────────────────────────────────────────────────────────
   async _handleGameProxy(req, res, path, search) {
     const subPath = path.replace(/^\/game/, "");
@@ -544,18 +573,34 @@ export class WebServer {
                        subPath === "" ||
                        subPath === "/index.html";
 
+    let fetched;
+    try {
+      fetched = await nodeFetchRaw(targetUrl, {
+        headers: { "User-Agent": "SirGreen/1.0", "Accept": "*/*" },
+      });
+    } catch (e) {
+      console.error("[GameProxy] fetch error:", e.message);
+      res.writeHead(502);
+      return res.end("Bad gateway");
+    }
+
+    const status      = fetched.statusCode || 502;
+    const contentType = fetched.headers["content-type"] || "application/octet-stream";
+
     if (isMainHTML) {
-      try {
-        // Decompress the original HTML using our improved nodeFetch
-        const originalHtml = await nodeFetch(targetUrl);
-        const baseDir = "/game/1309/1.23.2/";
+      const baseDir = "/game/1309/1.23.2/";
+      let html = fetched.body.toString("utf8");
 
-        // Strip integrity attributes (they would break after injection)
-        const cleaned = originalHtml.replace(/\s+integrity="[^"]*"/gi, '');
+      // Strip SRI (would break after we modify/recompress nothing but still risky)
+      html = html.replace(/\s+integrity="[^"]*"/gi, "");
+      // Strip the origin's Cloudflare insights beacon (blocked by CSP, noisy)
+      html = html.replace(
+        /<script\b[^>]*cloudflareinsights\.com[^>]*><\/script>/gi, ""
+      );
 
-        const injected = cleaned
-          .replace("<head>", `<head>\n<base href="${baseDir}">`)
-          .replace("</head>", `
+      const injected = html
+        .replace("<head>", `<head>\n<base href="${baseDir}">`)
+        .replace("</head>", `
             <script>
               // ── FluxCoin integration – SirGreen Casino ──────────────────
               (function() {
@@ -633,50 +678,24 @@ export class WebServer {
               })();
             </script>
           </head>`);
-        return this._html(res, 200, injected);
-      } catch (e) {
-        console.error("[GameProxy] HTML fetch error:", e);
-        res.writeHead(502);
-        return res.end("Bad gateway");
-      }
-    } else {
-      // Stream other assets (JS, CSS, images) – keep Content-Encoding intact
-      try {
-        const parsed = new URL(targetUrl);
-        const mod = parsed.protocol === "https:" ? https : http;
-        const options = {
-          hostname: parsed.hostname,
-          path: parsed.pathname + parsed.search,
-          method: "GET",
-          headers: {
-            "Accept-Encoding": "gzip, deflate, br",
-            "User-Agent": "SirGreen/1.0",
-            "Accept": "*/*"
-          }
-        };
-        const proxyReq = mod.request(options, (proxyRes) => {
-          const safeHeaders = {
-            "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
-            "Cache-Control": "public, max-age=3600",
-          };
-          // Pass the real Content-Encoding so the browser can decode it
-          if (proxyRes.headers["content-encoding"]) {
-            safeHeaders["Content-Encoding"] = proxyRes.headers["content-encoding"];
-          }
-          res.writeHead(proxyRes.statusCode, safeHeaders);
-          proxyRes.pipe(res);
-        });
-        proxyReq.on("error", (err) => {
-          console.error("[GameProxy] Asset stream error:", err);
-          res.writeHead(502);
-          res.end("Bad gateway");
-        });
-        proxyReq.end();
-      } catch (e) {
-        res.writeHead(500);
-        res.end("Proxy error");
-      }
+
+      const out = Buffer.from(injected, "utf8");
+      res.writeHead(status, {
+        "Content-Type": "text/html;charset=utf-8",
+        "Content-Length": out.length,
+        "Cache-Control": "no-cache",
+      });
+      return res.end(out);
     }
+
+    // Non-HTML asset: serve the already-decompressed buffer, identity-encoded.
+    res.writeHead(status, {
+      "Content-Type": contentType,
+      "Content-Length": fetched.body.length,
+      "Cache-Control": "public, max-age=3600",
+      // deliberately NO Content-Encoding: body is plain bytes
+    });
+    return res.end(fetched.body);
   }
 
   _uid(req) {
