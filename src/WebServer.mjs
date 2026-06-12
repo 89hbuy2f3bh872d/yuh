@@ -1,6 +1,6 @@
 // WebServer.mjs — SirGreen Casino
-// Uses a transparent reverse proxy for the Hacksaw Gaming Le Bandit game,
-// injecting FluxCoin economy controls. Every asset is served same‑origin.
+// Transparent reverse proxy for Hacksaw Gaming Le Bandit, injecting FluxCoin economy.
+// Forces uncompressed responses to avoid corruption.
 
 import http from "http";
 import https from "https";
@@ -18,8 +18,6 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 // Le Bandit – base URL we proxy to
 // ---------------------------------------------------------------------------
 const GAME_ORIGIN = "https://static-live.hacksawgaming.com";
-
-// The subpath inside GAME_ORIGIN that contains the game files
 const GAME_PATH   = "/1309/1.23.2";
 
 // ---------------------------------------------------------------------------
@@ -64,16 +62,22 @@ function parseCookies(req) {
   return out;
 }
 
+// Fetch with forced uncompressed response
 function nodeFetch(url, opts = {}) {
   return new Promise((resolve, reject) => {
     const parsed  = new URL(url);
     const mod     = parsed.protocol === "https:" ? https : http;
     const body    = opts.body ?? "";
-    const headers = { ...(opts.headers ?? {}), "Content-Length": Buffer.byteLength(body) };
+    // Force uncompressed – we don't handle gzip in this fetch
+    const headers = {
+      ...(opts.headers ?? {}),
+      "Accept-Encoding": "identity",
+      "Content-Length": Buffer.byteLength(body)
+    };
     const r = mod.request(
       { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
         path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
-      res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d)); }
+      res => { let d = ""; res.setEncoding("utf8"); res.on("data", c => d += c); res.on("end", () => resolve(d)); }
     );
     r.on("error", reject);
     if (body) r.write(body);
@@ -186,7 +190,7 @@ function navBar(tag, avatar, bal) {
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
   const thumbHtml = `<img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy"
-    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`  ;
+    onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';}">`;
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
@@ -206,11 +210,9 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Game page — iframe now loads from our own /game/... (transparent proxy)
+// Game page — iframe loads from /game/... (transparent proxy)
 // ---------------------------------------------------------------------------
 function gamePage(bal, tag, avatar) {
-  // We preserve the exact query parameters the original game expects,
-  // but we'll load it through our proxy, so everything is same‑origin.
   const gameURL =
     `/game/1309/1.23.2/index.html` +
     `?language=en&channel=desktop&gameid=1309&mode=2&token=123131` +
@@ -229,7 +231,6 @@ function gamePage(bal, tag, avatar) {
 .viewer-provider{font-size:.7rem;color:#4a9a4a}
 .nav-bal-viewer{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal-viewer strong{color:#2ecc71;font-size:.9rem}
-
 .play-top{flex:1;position:relative;min-height:0}
 .game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
 .frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;pointer-events:none;transition:opacity .3s;z-index:10}
@@ -267,7 +268,7 @@ function gamePage(bal, tag, avatar) {
 </div>
 
 <script>
-// Keep our top-bar balance in sync (non‑invasive polling)
+// Keep top-bar balance in sync
 (async function headerBalanceLoop() {
   const navVal = document.getElementById('navBalVal');
   if (!navVal) return;
@@ -376,7 +377,7 @@ export class WebServer {
       return this._handleGameProxy(req, res, path, u.search);
     }
 
-    // ── SPIN API — real FluxCoin deduction + house‑edge RNG ──────────────────
+    // ── SPIN API ─────────────────────────────────────────────────────────────
     if (path === "/api/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -509,20 +510,17 @@ export class WebServer {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Proxy for all game files: HTML gets our injection, others are passed through
+  // Proxy for all game files: HTML gets our injection, others stream uncompressed
   // ──────────────────────────────────────────────────────────────────────────
   async _handleGameProxy(req, res, path, search) {
-    // Construct the target URL on the real Hacksaw server
-    const subPath = path.replace(/^\/game/, ""); // e.g. "/1309/1.23.2/index.html"
+    const subPath = path.replace(/^\/game/, "");
     const targetUrl = GAME_ORIGIN + subPath + (search ? `?${search}` : "");
 
-    // Only GET is supported for the proxy
     if (req.method !== "GET") {
       res.writeHead(405);
       return res.end("Method not allowed");
     }
 
-    // Decide if this is the main HTML file (the one we need to inject)
     const isMainHTML = subPath.endsWith(".html") ||
                        subPath.endsWith("/") ||
                        subPath === "" ||
@@ -530,10 +528,9 @@ export class WebServer {
 
     if (isMainHTML) {
       try {
+        // Fetch original HTML with forced uncompressed response
         const originalHtml = await nodeFetch(targetUrl);
-        // Determine the base directory for relative URLs so they still work through our proxy
         const baseDir = "/game/1309/1.23.2/";
-        // Inject our control script and the <base> tag
         const injected = originalHtml
           .replace("<head>", `<head>\n<base href="${baseDir}">`)
           .replace("</head>", `
@@ -621,23 +618,29 @@ export class WebServer {
         return res.end("Bad gateway");
       }
     } else {
-      // For all other assets – stream them directly from the origin
+      // Stream other assets (JS, CSS, images) – tell origin not to compress
       try {
         const parsed = new URL(targetUrl);
         const mod = parsed.protocol === "https:" ? https : http;
-        const proxyReq = mod.request(
-          { hostname: parsed.hostname,
-            path: parsed.pathname + parsed.search,
-            method: "GET",
-            headers: { ...req.headers, host: parsed.hostname } },
-          (proxyRes) => {
-            res.writeHead(proxyRes.statusCode, {
-              "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
-              "Cache-Control": "public, max-age=3600"
-            });
-            proxyRes.pipe(res);
+        const options = {
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          method: "GET",
+          headers: {
+            "Accept-Encoding": "identity",  // force uncompressed
+            "User-Agent": "SirGreen/1.0",
+            "Accept": "*/*"
           }
-        );
+        };
+        const proxyReq = mod.request(options, (proxyRes) => {
+          // Build safe headers – omit Content-Encoding because we forced identity
+          const safeHeaders = {
+            "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
+            "Cache-Control": "public, max-age=3600",
+          };
+          res.writeHead(proxyRes.statusCode, safeHeaders);
+          proxyRes.pipe(res);
+        });
         proxyReq.on("error", (err) => {
           console.error("[GameProxy] Asset stream error:", err);
           res.writeHead(502);
