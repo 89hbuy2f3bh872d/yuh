@@ -1,3 +1,7 @@
+// WebServer.mjs — SirGreen Casino
+// Uses a proxy to inject FluxCoin economy into Hacksaw Gaming's Le Bandit.
+// All visual demo currency is replaced in real time.
+
 import http from "http";
 import https from "https";
 import { URL } from "url";
@@ -11,19 +15,18 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Le Bandit — direct Hacksaw Gaming demo embed (no API key required)
-// Real FluxCoin economy is handled by /api/spin below.
+// Le Bandit — Hacksaw Gaming original embed (used as source for proxy)
 // ---------------------------------------------------------------------------
-const LE_BANDIT_EMBED =
+const LE_BANDIT_ORIGIN = 
   "https://static-live.hacksawgaming.com/1309/1.23.2/index.html" +
   "?language=en&channel=desktop&gameid=1309&mode=2&token=123131" +
   "&lobbyurl=https%3A%2F%2Fwww.hacksawgaming.com" +
-  "&currency=EUR&partner=demo" +
-  "&env=https://rgs-demo.hacksawgaming.com/api" +
+  "&currency=EUR&partner=sirgreen" +                      // renamed partner
+  "&env=https://rgs-demo.hacksawgaming.com/api" +          // backend still demo, but visuals overwritten
   "&realmoneyenv=https://rgs-demo.hacksawgaming.com/api";
 
 // ---------------------------------------------------------------------------
-// Server-side spin engine — house-edge RNG, real FluxCoin deduction/credit
+// Server‑side spin engine — house‑edge RNG, FluxCoin deduction/credit
 // ---------------------------------------------------------------------------
 const SYMBOLS = ["\uD83C\uDF4B","\uD83C\uDF4A","\uD83C\uDF47","\uD83D\uDD14","\uD83D\uDC8E","7\uFE0F\u20E3","\u2B50","\uD83C\uDCCF"];
 const WEIGHTS  = [  28,  22,  18,  14,  10,   5,   2,   1];
@@ -78,6 +81,23 @@ function nodeFetch(url, opts = {}) {
     r.on("error", reject);
     if (body) r.write(body);
     r.end();
+  });
+}
+
+// Proxy an external asset to the client (streaming, preserves binary)
+function proxyAsset(url, res) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === "https:" ? https : http;
+    mod.get(parsed, (proxyRes) => {
+      // Copy status and headers except problematic ones
+      res.writeHead(proxyRes.statusCode, {
+        "Content-Type": proxyRes.headers["content-type"] || "application/octet-stream",
+        "Cache-Control": "public, max-age=3600"
+      });
+      proxyRes.pipe(res);
+      proxyRes.on("end", resolve);
+    }).on("error", reject);
   });
 }
 
@@ -206,22 +226,8 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Game page — Hacksaw iframe + FluxCoin DOM bridge
-//
-// Strategy: The iframe is cross-origin so we CANNOT access its contentDocument
-// directly. Instead we overlay a transparent interaction layer that:
-//   1. Polls /api/balance and writes the FC value into a custom HUD.
-//   2. Intercepts pointer events on the iframe's known button regions via
-//      a transparent click-capture overlay mapped to the exact CSS selectors
-//      (#PlaceBetBtn, #BetAmountIncrease, #BetAmountDecrease).
-//   3. On each spin intercept → calls /api/spin → updates HUD balance + win.
-//
-// The iframe still renders normally for visuals / animations.
-// BET SIZE shown in the iframe is preserved as-is (demo currency),
-// but only FluxCoins are actually deducted via our server-side RNG.
-//
-// SuperTurbo (#SuperTurboToggle) and AutoSpin (#StopBtn) are set to
-// disabled class by CSS pointer-events injection on the overlay.
+// Game page — now loads via /proxy-game (same‑origin), so our injected script
+// can overwrite all demo currency DOM elements with real FluxCoin values.
 // ---------------------------------------------------------------------------
 function gamePage(bal, tag, avatar) {
   return shellPage(`
@@ -235,7 +241,6 @@ function gamePage(bal, tag, avatar) {
 .nav-bal-viewer{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal-viewer strong{color:#2ecc71;font-size:.9rem}
 
-/* ── iframe + overlay wrapper ─────────────────────────────────────── */
 .play-top{flex:1;position:relative;min-height:0}
 .game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
 .frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;pointer-events:none;transition:opacity .3s;z-index:10}
@@ -243,62 +248,6 @@ function gamePage(bal, tag, avatar) {
 .frame-spinner{width:48px;height:48px;border:3px solid #2ecc7122;border-top-color:#2ecc71;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .frame-loading-txt{font-size:.85rem;color:#4a9a4a}
-
-/* ── FluxCoin HUD — sits above iframe, bottom-aligned ─────────────── */
-.fc-hud{
-  position:absolute;bottom:0;left:0;right:0;z-index:20;
-  background:linear-gradient(0deg,rgba(6,14,6,.98) 70%,transparent 100%);
-  padding:.5rem 1rem .65rem;
-  display:flex;flex-direction:column;gap:.35rem;
-  pointer-events:none; /* let iframe receive normal clicks except spin btn */
-}
-.fc-hud-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;justify-content:center}
-.fc-stat{display:flex;flex-direction:column;align-items:center;gap:.05rem}
-.fc-stat-label{font-size:.55rem;color:#4a9a4a;text-transform:uppercase;letter-spacing:.1em}
-.fc-stat-val{font-size:.88rem;font-weight:900;color:#2ecc71;font-variant-numeric:tabular-nums}
-.fc-stat-val.dim{color:#a8e6a8}
-.fc-stat-val.win{color:#f1c40f;text-shadow:0 0 8px #f1c40faa}
-.fc-stat-val.lose{color:#c0392b}
-
-/* ── spin intercept button — sits over Hacksaw PlaceBetBtn ────────── */
-/*   Hacksaw's button sits bottom-centre of the game frame.            */
-/*   We place our transparent capture zone there.                      */
-.spin-capture{
-  position:absolute;
-  /* approximate Hacksaw bottom-centre action area — adjust if needed */
-  bottom:10%;left:50%;transform:translateX(-50%);
-  width:120px;height:120px;border-radius:50%;
-  background:transparent;
-  cursor:pointer;z-index:30;
-  pointer-events:all;
-  border:none;outline:none;
-}
-.spin-capture:disabled{pointer-events:none;opacity:0}
-
-/* ── block zones — SuperTurbo + AutoSpin stop button ─────────────── */
-/* These sit over the known toggle areas and swallow clicks silently   */
-.block-zone{
-  position:absolute;background:transparent;
-  pointer-events:all;z-index:30;cursor:not-allowed;
-}
-/* SuperTurbo toggle: right side, mid-panel — rough estimate */
-.block-superturbo{bottom:38%;right:5%;width:72px;height:40px}
-/* AutoSpin stop button: left side of action panel */
-.block-autostop{bottom:8%;left:calc(50% - 120px);width:80px;height:80px;border-radius:50%}
-
-/* ── result toast ─────────────────────────────────────────────────── */
-.fc-toast{
-  position:absolute;top:12%;left:50%;transform:translateX(-50%);
-  background:rgba(6,14,6,.92);border:1px solid #2ecc7133;border-radius:10px;
-  padding:.4rem .9rem;font-size:.82rem;font-weight:700;color:#2ecc71;
-  z-index:40;pointer-events:none;
-  opacity:0;transition:opacity .25s;white-space:nowrap;
-}
-.fc-toast.show{opacity:1}
-.fc-toast.lose{color:#c0392b;border-color:#c0392b33}
-.fc-toast.bigwin{color:#f1c40f;border-color:#f1c40f44;font-size:1rem}
-
-@media(max-width:600px){.fc-hud{padding:.4rem .6rem .5rem}.fc-stat-val{font-size:.78rem}}
 </style>
 `, `
 <div class="play-layout">
@@ -313,185 +262,37 @@ function gamePage(bal, tag, avatar) {
   </div>
 
   <div class="play-top">
-    <!-- loading screen -->
     <div class="frame-loading" id="frameLoading">
       <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading Le Bandit&#8230;</div>
+      <div class="frame-loading-txt">Loading Le Bandit…</div>
     </div>
 
-    <!-- actual Hacksaw iframe -->
+    <!-- Same‑origin proxy iframe — our injected script takes full control -->
     <iframe
       class="game-frame"
       id="gameFrame"
-      src="${LE_BANDIT_EMBED}"
+      src="/proxy-game"
       allowfullscreen
       allow="autoplay; fullscreen"
       onload="document.getElementById('frameLoading').classList.add('hidden')"
     ></iframe>
-
-    <!-- transparent spin interceptor over PlaceBetBtn -->
-    <button class="spin-capture" id="spinCapture" aria-label="Spin with FluxCoins"></button>
-
-    <!-- silent block zones -->
-    <div class="block-zone block-superturbo" title="Super Turbo disabled"></div>
-    <div class="block-zone block-autostop"   title="Auto Spin disabled"></div>
-
-    <!-- result toast -->
-    <div class="fc-toast" id="fcToast"></div>
-
-    <!-- FluxCoin HUD -->
-    <div class="fc-hud">
-      <div class="fc-hud-row">
-        <div class="fc-stat">
-          <span class="fc-stat-label">FC Balance</span>
-          <span class="fc-stat-val" id="hudBal">${Number(bal).toLocaleString()}</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">FC Bet</span>
-          <span class="fc-stat-val dim" id="hudBet">10</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Last Win</span>
-          <span class="fc-stat-val" id="hudWin">—</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Spins</span>
-          <span class="fc-stat-val dim" id="hudSpins">0</span>
-        </div>
-        <div class="fc-stat">
-          <span class="fc-stat-label">Net</span>
-          <span class="fc-stat-val dim" id="hudNet">0</span>
-        </div>
-      </div>
-      <!-- inline bet controls so player can adjust FC bet without touching Hacksaw UI -->
-      <div class="fc-hud-row" style="pointer-events:all;gap:.4rem">
-        <span class="fc-stat-label" style="align-self:center">FC Bet:</span>
-        <button id="betDec" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">−</button>
-        <input id="betInput" type="number" min="1" max="10000" value="10"
-          style="width:70px;padding:.2rem .4rem;background:#040d04;border:1px solid #2ecc7133;border-radius:6px;font-size:.8rem;color:#e2ffe2;text-align:center;outline:none">
-        <button id="betInc" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;width:26px;height:26px;border-radius:6px;font-size:.85rem;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
-        <button id="betMax" style="background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer">MAX</button>
-      </div>
-    </div>
   </div>
 </div>
 
 <script>
-(function(){
-  // ── state ─────────────────────────────────────────────────────────────────
-  var bal     = ${Number(bal)};
-  var bet     = 10;
-  var busy    = false;
-  var spins   = 0;
-  var netFC   = 0;
-
-  // ── DOM refs ──────────────────────────────────────────────────────────────
-  var hudBal   = document.getElementById('hudBal');
-  var hudBet   = document.getElementById('hudBet');
-  var hudWin   = document.getElementById('hudWin');
-  var hudSpins = document.getElementById('hudSpins');
-  var hudNet   = document.getElementById('hudNet');
-  var navBalV  = document.getElementById('navBalVal');
-  var betInput = document.getElementById('betInput');
-  var spinBtn  = document.getElementById('spinCapture');
-  var toast    = document.getElementById('fcToast');
-  var toastTO;
-
-  // ── auto-hide loading after 9s fallback ──────────────────────────────────
-  setTimeout(function(){ var f=document.getElementById('frameLoading'); if(f) f.classList.add('hidden'); }, 9000);
-
-  // ── bet controls ─────────────────────────────────────────────────────────
-  var PRESETS = [10,25,50,100,250,500,1000];
-  function setBet(v){
-    bet = Math.max(1, Math.min(10000, parseInt(v)||1));
-    betInput.value = bet;
-    hudBet.textContent = bet.toLocaleString();
+// Keep header balance synced (non‑invasive)
+(async function headerBalanceLoop() {
+  const navVal = document.getElementById('navBalVal');
+  if (!navVal) return;
+  async function update() {
+    try {
+      const r = await fetch('/api/balance');
+      const d = await r.json();
+      if (d.bal !== undefined) navVal.textContent = d.bal.toLocaleString() + ' FC';
+    } catch(e) {}
   }
-  betInput.addEventListener('change', function(){ setBet(betInput.value); });
-  document.getElementById('betDec').addEventListener('click', function(){
-    var idx = PRESETS.indexOf(bet);
-    setBet(idx > 0 ? PRESETS[idx-1] : Math.max(1, bet-1));
-  });
-  document.getElementById('betInc').addEventListener('click', function(){
-    var idx = PRESETS.indexOf(bet);
-    setBet(idx >= 0 && idx < PRESETS.length-1 ? PRESETS[idx+1] : bet+1);
-  });
-  document.getElementById('betMax').addEventListener('click', function(){
-    setBet(Math.min(10000, bal));
-  });
-
-  // ── update HUD ────────────────────────────────────────────────────────────
-  function updateHUD(newBal, gross, net){
-    bal = newBal;
-    hudBal.textContent  = bal.toLocaleString();
-    navBalV.textContent = bal.toLocaleString() + ' FC';
-    spins++;
-    netFC += net;
-    hudSpins.textContent = spins;
-    hudNet.textContent   = (netFC >= 0 ? '+' : '') + netFC.toLocaleString();
-    hudNet.className     = 'fc-stat-val ' + (netFC >= 0 ? 'win' : 'lose');
-    if(gross > 0){
-      hudWin.textContent = '+' + gross.toLocaleString() + ' FC';
-      hudWin.className   = gross >= bet*10 ? 'fc-stat-val bigwin' : 'fc-stat-val win';
-    } else {
-      hudWin.textContent = '\u2212' + bet.toLocaleString() + ' FC';
-      hudWin.className   = 'fc-stat-val lose';
-    }
-  }
-
-  // ── toast ─────────────────────────────────────────────────────────────────
-  function showToast(msg, cls){
-    clearTimeout(toastTO);
-    toast.textContent = msg;
-    toast.className   = 'fc-toast show ' + (cls||'');
-    toastTO = setTimeout(function(){ toast.className='fc-toast'; }, 2800);
-  }
-
-  // ── spin ──────────────────────────────────────────────────────────────────
-  async function doSpin(){
-    if(busy) return;
-    if(bet > bal){ showToast('\u2717 Not enough FluxCoins!','lose'); return; }
-    busy = true;
-    spinBtn.disabled = true;
-    showToast('Spinning\u2026');
-    var data;
-    try{
-      var r = await fetch('/api/spin',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({bet})
-      });
-      data = await r.json();
-      if(!r.ok) throw new Error(data.error||'spin failed');
-    } catch(e){
-      showToast('\u26a0 ' + e.message,'lose');
-      busy=false; spinBtn.disabled=false; return;
-    }
-    updateHUD(data.newBal, data.gross, data.net);
-    if(data.mult === 0){
-      showToast('\u2717 No win — lost ' + bet.toLocaleString() + ' FC','lose');
-    } else if(data.gross >= bet*10){
-      showToast('\uD83C\uDF89 BIG WIN! \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC!','bigwin');
-    } else {
-      showToast('\u2714 \xd7' + data.mult + ' — +' + data.gross.toLocaleString() + ' FC');
-    }
-    busy=false; spinBtn.disabled=false;
-  }
-
-  spinBtn.addEventListener('click', doSpin);
-
-  // ── poll /api/balance every 30s to stay in sync ───────────────────────────
-  setInterval(async function(){
-    try{
-      var r = await fetch('/api/balance');
-      var d = await r.json();
-      if(d.bal !== undefined && !busy){
-        bal = d.bal;
-        hudBal.textContent  = bal.toLocaleString();
-        navBalV.textContent = bal.toLocaleString() + ' FC';
-      }
-    }catch(e){}
-  }, 30000);
+  setInterval(update, 5000);
+  update();
 })();
 </script>
 `);
@@ -570,7 +371,7 @@ export class WebServer {
       ));
     }
 
-    // ── GAME (Le Bandit) ─────────────────────────────────────────────────────
+    // ── GAME PAGE (Le Bandit) ─────────────────────────────────────────────────
     if (path === "/play" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -583,7 +384,178 @@ export class WebServer {
       ));
     }
 
-    // ── SPIN API — real FluxCoin deduction + house-edge RNG ──────────────────
+    // ── PROXY‑GAME: inject FluxCoin control script into Hacksaw’s HTML ────────
+    if (path === "/proxy-game" && req.method === "GET") {
+      try {
+        const gameHtml = await nodeFetch(LE_BANDIT_ORIGIN);
+        // Rewrite all resource URLs to go through our proxy-asset route (same‑origin)
+        const rewrote = gameHtml
+          .replace(/(href|src)=["'](https?:)?\/\/(static-live\.hacksawgaming\.com)/g,
+                   '$1="/proxy-asset?url=https://$3')
+          .replace(/(href|src)=["']\/(?!\/)/g,
+                   '$1="/proxy-asset?url=https://static-live.hacksawgaming.com/')
+          .replace('</head>', `
+            <script>
+              // ── FluxCoin integration – SirGreen Casino ──────────────────────
+              (function() {
+                const BALANCE_API = '/api/balance';
+                const SPIN_API    = '/api/spin';
+                let realBal       = 0;
+                let realBet       = 10;            // default FC bet
+                let busy          = false;
+
+                // Preset bet steps
+                const PRESETS = [10, 25, 50, 100, 250, 500, 1000];
+
+                // --- DOM helpers -------------------------------------------------
+                function getBalanceEl()   { return document.querySelector('#BalanceValue'); }
+                function getBetValueEl()  { return document.querySelector('#BetAmountValue'); }
+                function getWinValueEl()  { return document.querySelector('#WinAmountValue'); }
+                function getPlaceBetBtn() { return document.querySelector('#PlaceBetBtn'); }
+                function getBetIncBtn()   { return document.querySelector('#BetAmountIncrease'); }
+                function getBetDecBtn()   { return document.querySelector('#BetAmountDecrease'); }
+                function getStopBtn()     { return document.querySelector('#StopBtn'); }
+                function getSuperTurbo()  { return document.querySelector('#SuperTurboToggle'); }
+
+                // --- Fetch real FluxCoin balance ---------------------------------
+                async function fetchBalance() {
+                  try {
+                    const r = await fetch(BALANCE_API);
+                    const d = await r.json();
+                    if (d.bal !== undefined) realBal = d.bal;
+                  } catch(e) { console.error('balance fetch error', e); }
+                }
+
+                // --- Overwrite the demo UI ---------------------------------------
+                function updateUI() {
+                  const balEl = getBalanceEl();
+                  if (balEl) balEl.innerText = realBal.toLocaleString() + ' FC';
+                  const betEl = getBetValueEl();
+                  if (betEl) betEl.innerText = realBet.toLocaleString();
+                }
+
+                // --- Hijack the spin button --------------------------------------
+                function hijackSpinButton() {
+                  const btn = getPlaceBetBtn();
+                  if (!btn) { setTimeout(hijackSpinButton, 200); return; }
+                  // Remove all existing listeners by cloning (simple approach)
+                  const newBtn = btn.cloneNode(true);
+                  btn.parentNode.replaceChild(newBtn, btn);
+
+                  newBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (busy) return;
+                    if (realBet > realBal) {
+                      alert('Not enough FluxCoins!');
+                      return;
+                    }
+                    busy = true;
+                    try {
+                      const r = await fetch(SPIN_API, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({ bet: realBet })
+                      });
+                      const data = await r.json();
+                      // Update balance
+                      realBal = data.newBal;
+                      // Show win/loss on the in‑game win field
+                      const winEl = getWinValueEl();
+                      if (winEl) {
+                        if (data.gross > 0) {
+                          winEl.innerText = '+' + data.gross.toLocaleString() + ' FC';
+                        } else {
+                          winEl.innerText = '–' + realBet.toLocaleString() + ' FC';
+                        }
+                      }
+                      updateUI();
+                    } catch(e) {
+                      console.error('spin error', e);
+                    } finally {
+                      busy = false;
+                    }
+                  });
+                }
+
+                // --- Hijack bet change buttons -----------------------------------
+                function hijackBetButtons() {
+                  const inc = getBetIncBtn();
+                  const dec = getBetDecBtn();
+                  if (inc) {
+                    const newInc = inc.cloneNode(true);
+                    inc.parentNode.replaceChild(newInc, inc);
+                    newInc.addEventListener('click', () => {
+                      const idx = PRESETS.indexOf(realBet);
+                      realBet = idx >= 0 && idx < PRESETS.length-1 ? PRESETS[idx+1] : realBet+1;
+                      updateUI();
+                    });
+                  }
+                  if (dec) {
+                    const newDec = dec.cloneNode(true);
+                    dec.parentNode.replaceChild(newDec, dec);
+                    newDec.addEventListener('click', () => {
+                      const idx = PRESETS.indexOf(realBet);
+                      realBet = idx > 0 ? PRESETS[idx-1] : Math.max(1, realBet-1);
+                      updateUI();
+                    });
+                  }
+                }
+
+                // --- Disable unwanted features (SuperTurbo, AutoSpin) ------------
+                function disableFeatures() {
+                  // Hide/remove SuperTurbo toggle
+                  const st = getSuperTurbo();
+                  if (st) st.style.display = 'none';
+                  // Hide AutoSpin stop button
+                  const sb = getStopBtn();
+                  if (sb) sb.style.display = 'none';
+
+                  // Also watch for dynamic additions (simple polling)
+                  setInterval(() => {
+                    const stNow = getSuperTurbo();
+                    if (stNow && stNow.style.display !== 'none') stNow.style.display = 'none';
+                    const sbNow = getStopBtn();
+                    if (sbNow && sbNow.style.display !== 'none') sbNow.style.display = 'none';
+                  }, 2000);
+                }
+
+                // --- Initialize everything ----------------------------------------
+                (async function init() {
+                  await fetchBalance();
+                  updateUI();
+                  hijackSpinButton();
+                  hijackBetButtons();
+                  disableFeatures();
+                  // Keep balance updated periodically (also after spin it updates instantly)
+                  setInterval(async () => {
+                    if (!busy) { await fetchBalance(); updateUI(); }
+                  }, 5000);
+                })();
+              })();
+            </script>
+          </head>`);
+        return this._html(res, 200, rewrote);
+      } catch (e) {
+        console.error("[ProxyGame]", e);
+        return this._html(res, 500, "Could not load game");
+      }
+    }
+
+    // ── PROXY‑ASSET: serve game resources (JS, CSS, images) same‑origin ──────
+    if (path === "/proxy-asset" && req.method === "GET") {
+      const assetUrl = u.searchParams.get("url");
+      if (!assetUrl) { res.writeHead(400); return res.end("Missing url"); }
+      try {
+        await proxyAsset(decodeURIComponent(assetUrl), res);
+      } catch (e) {
+        res.writeHead(404);
+        res.end("Asset not found");
+      }
+      return;
+    }
+
+    // ── SPIN API — real FluxCoin deduction + house‑edge RNG ──────────────────
     if (path === "/api/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
