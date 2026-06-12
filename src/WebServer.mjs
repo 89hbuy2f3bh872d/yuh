@@ -11,29 +11,6 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// SlotsLaunch
-// SL_TOKEN : your API token from slotslaunch.com/launch-pad/api
-// SL_ORIGIN: register "sirgreen.online" as the host in your SlotsLaunch token
-//            then set SL_ORIGIN=sirgreen.online when running the bot.
-// ---------------------------------------------------------------------------
-const SL_TOKEN  = process.env.SL_TOKEN  ?? "";
-const SL_ORIGIN = process.env.SL_ORIGIN ?? "sirgreen.online";
-
-const LE_BANDIT = {
-  id:       16485,
-  name:     "Le Bandit",
-  provider: "Hacksaw Gaming",
-  // Verified thumbnail from assets.slotslaunch.com
-  thumb:    "https://assets.slotslaunch.com/16132/conversions/le-bandit-game115.jpg",
-  // Fallback CDN path tried on first onerror before inline SVG
-  thumbAlt: "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
-};
-
-// Direct iframe embed — no launch-API call needed.
-const SL_EMBED = (id) =>
-  `https://slotslaunch.com/iframe/${id}?token=${encodeURIComponent(SL_TOKEN)}`;
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function parseCookies(req) {
@@ -73,6 +50,14 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+
+const LE_BANDIT = {
+  id:       16485,
+  name:     "Le Bandit",
+  provider: "Hacksaw Gaming",
+  thumb:    "https://assets.slotslaunch.com/16132/conversions/le-bandit-game115.jpg",
+  thumbAlt: "https://assets.slotslaunch.com/uploads/games/le-bandit.jpg",
+};
 
 // ---------------------------------------------------------------------------
 // SHARED CSS (dark green casino theme)
@@ -276,10 +261,8 @@ const LE_BANDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 
     </linearGradient>
   </defs>
   <rect width="280" height="210" fill="url(#bg)"/>
-  <circle cx="30" cy="30" r="2" fill="#2ecc7122"/>
-  <circle cx="250" cy="30" r="2" fill="#2ecc7122"/>
-  <circle cx="30" cy="180" r="2" fill="#2ecc7122"/>
-  <circle cx="250" cy="180" r="2" fill="#2ecc7122"/>
+  <circle cx="30" cy="30" r="2" fill="#2ecc7122"/><circle cx="250" cy="30" r="2" fill="#2ecc7122"/>
+  <circle cx="30" cy="180" r="2" fill="#2ecc7122"/><circle cx="250" cy="180" r="2" fill="#2ecc7122"/>
   <rect x="60" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
   <rect x="120" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
   <rect x="180" y="70" width="40" height="60" rx="6" fill="#0a2a0a" stroke="#2ecc7133" stroke-width="1"/>
@@ -323,9 +306,6 @@ function navBar(tag, avatar, bal) {
 </nav>`;
 }
 
-// ---------------------------------------------------------------------------
-// LOBBY PAGE — Le Bandit card, 3-tier thumbnail fallback
-// ---------------------------------------------------------------------------
 function lobbyPage(bal, tag, avatar) {
   const g = LE_BANDIT;
   const thumbHtml = `
@@ -336,7 +316,6 @@ function lobbyPage(bal, tag, avatar) {
       loading="lazy"
       onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${esc(g.thumbAlt)}';}else{this.style.display='none';this.insertAdjacentHTML('afterend','<div class=game-thumb-placeholder>${esc(LE_BANDIT_SVG)}</div>');}"
     >`;
-
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
@@ -355,11 +334,12 @@ ${navBar(tag, avatar, bal)}
 `);
 }
 
-// ---------------------------------------------------------------------------
-// GAME VIEWER PAGE — embeds SlotsLaunch iframe directly
-// ---------------------------------------------------------------------------
-function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
-  const embedUrl = SL_EMBED(gameId);
+function gamePage(bal, tag, avatar, gameId, gameName, gameProvider, slToken) {
+  // SlotsLaunch requires the token in the iframe src.
+  // The Host header is validated server-side by SlotsLaunch against the token’s
+  // registered domain — this is handled by the browser naturally when the user
+  // loads the iframe from sirgreen.online.
+  const embedUrl = `https://slotslaunch.com/iframe/${gameId}?token=${encodeURIComponent(slToken)}`;
   return shellPage("", `
 <div style="display:flex;flex-direction:column;height:100vh">
   <div class="viewer-header">
@@ -395,9 +375,6 @@ function gamePage(bal, tag, avatar, gameId, gameName, gameProvider) {
 `);
 }
 
-// ---------------------------------------------------------------------------
-// LOGIN PAGE
-// ---------------------------------------------------------------------------
 function loginPage(authUrl) {
   return shellPage("", `
 <div class="login-wrap">
@@ -434,16 +411,22 @@ export class WebServer {
     this.port         = config.webPort             ?? 3420;
     this.clientId     = config.fluxerClientId      ?? config.discordClientId     ?? "";
     this.clientSecret = config.fluxerClientSecret  ?? config.discordClientSecret ?? "";
-    // webBaseUrl must match the redirect_uri registered in your Fluxer OAuth app.
-    // Using www.sirgreen.online — make sure Cloudflare has a CNAME for www → sirgreen.online.
-    this.baseUrl      = config.webBaseUrl ?? "https://www.sirgreen.online";
+    this.baseUrl      = config.webBaseUrl           ?? "https://www.sirgreen.online";
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
+
+    // SlotsLaunch token: config.json ‘slToken’ takes priority, then SL_TOKEN env var.
+    // Get your token from https://slotslaunch.com/launch-pad/api
+    // Register the host as: sirgreen.online  (no www, no https)
+    this.slToken      = config.slToken ?? process.env.SL_TOKEN ?? "";
+
     this._states      = new Map();
   }
 
   async start() {
-    if (!SL_TOKEN) {
-      console.warn("[SlotsLaunch] SL_TOKEN not set — game embeds will not work until it is.");
+    if (!this.slToken) {
+      console.warn("[SlotsLaunch] slToken not set — add \"slToken\" to config.json or set SL_TOKEN env var.");
+    } else {
+      console.log("[SlotsLaunch] token loaded ✓");
     }
 
     this._server = http.createServer((req, res) =>
@@ -490,10 +473,10 @@ export class WebServer {
       const gameProv = decodeURIComponent(u.searchParams.get("provider") ?? "");
       if (!gameId) return this._redirect(res, "/lobby");
 
-      if (!SL_TOKEN) {
+      if (!this.slToken) {
         return this._html(res, 500, errPage(
           "⚠️ Not Configured",
-          "Set the SL_TOKEN environment variable to your SlotsLaunch API token.",
+          "Add \"slToken\" to config.json with your SlotsLaunch API token.",
           "/lobby", "← Back"
         ));
       }
@@ -503,7 +486,7 @@ export class WebServer {
       const cookies = parseCookies(req);
       const tag     = decodeURIComponent(cookies.dtag ?? "Player");
       const avatar  = decodeURIComponent(cookies.dav  ?? "");
-      return this._html(res, 200, gamePage(bal, tag, avatar, gameId, gameName, gameProv));
+      return this._html(res, 200, gamePage(bal, tag, avatar, gameId, gameName, gameProv, this.slToken));
     }
 
     // ── BALANCE API ────────────────────────────────────────────────────────
