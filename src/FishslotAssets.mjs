@@ -4,13 +4,10 @@
  * Serves the fishslot PWA from disk (public/fishslot/) using Node's fs module.
  *
  * On every bot startup:
- *   - If the directory doesn't exist: clone from GitHub and patch.
- *   - If it does exist: git pull (to pick up game updates) then re-run the
- *     patcher so the FluxerBridge is always current.
- *
- * JS/HTML assets are served with Cache-Control: no-cache so browsers always
- * revalidate — prevents stale c3runtime.js / index.html being served from
- * browser or SW cache after a redeploy.
+ *   - If the directory doesn't exist OR index.html is missing: fresh clone.
+ *   - If it does exist: git pull --ff-only; if that fails, hard-reset to
+ *     origin/main so broken/partial clones are self-healing.
+ *   - Always re-run the patcher so FluxerBridge is current.
  */
 
 import fs   from 'fs';
@@ -57,59 +54,73 @@ export function mimeOf(filePath) {
 export function cacheHeaderFor(filePath) {
   return NO_CACHE_EXTS.has(extOf(filePath))
     ? 'no-cache, no-store, must-revalidate'
-    : 'public, max-age=86400';   // images/audio/wasm: cache 24h (they never change between redeploys)
+    : 'public, max-age=86400';
 }
 
-/**
- * Ensure the fishslot game files are present, up-to-date, and patched.
- *
- * Runs on every bot startup:
- *   1. Clone if missing.
- *   2. git pull if already present (get latest game changes).
- *   3. Always re-run patcher so FluxerBridge is current.
- */
 export async function preloadFishslotAssets() {
   const indexPath = path.join(GAME_ROOT, 'index.html');
   const gitDir    = path.join(GAME_ROOT, '.git');
 
   if (!fs.existsSync(indexPath)) {
-    // ── First run: clone ────────────────────────────────────────────────────
+    // ── Fresh clone ─────────────────────────────────────────────────────────
     console.log('[Fishslot] Game files not found — running setup-fishslot.sh');
+    // Wipe any partial directory so clone doesn't fail
+    if (fs.existsSync(GAME_ROOT)) {
+      try { execSync(`rm -rf "${GAME_ROOT}"`, { stdio: 'inherit' }); } catch (_) {}
+    }
     try {
       execSync(`bash "${SETUP_SH}"`, { stdio: 'inherit' });
     } catch (e) {
       console.error('[Fishslot] setup-fishslot.sh failed:', e.message);
-      console.error('[Fishslot] Run:  bash scripts/setup-fishslot.sh  then restart.');
       return;
     }
   } else if (fs.existsSync(gitDir)) {
-    // ── Subsequent runs: pull latest ────────────────────────────────────────
+    // ── Pull latest, hard-reset if needed ───────────────────────────────────
     console.log('[Fishslot] Pulling latest game files from GitHub...');
     try {
-      const result = execSync(`git -C "${GAME_ROOT}" pull --ff-only 2>&1`).toString().trim();
+      const result = execSync(
+        `git -C "${GAME_ROOT}" pull --ff-only 2>&1`
+      ).toString().trim();
       console.log('[Fishslot] git pull:', result);
-    } catch (e) {
-      // Non-fatal — log and continue with existing files
-      console.warn('[Fishslot] git pull failed (continuing with existing files):', e.message);
+    } catch (pullErr) {
+      console.warn('[Fishslot] git pull --ff-only failed — attempting hard reset...');
+      try {
+        // Fetch first so origin/main is up to date, then reset local to match
+        execSync(`git -C "${GAME_ROOT}" fetch origin 2>&1`, { stdio: 'inherit' });
+        execSync(`git -C "${GAME_ROOT}" reset --hard origin/main 2>&1`, { stdio: 'inherit' });
+        console.log('[Fishslot] Hard reset to origin/main succeeded.');
+      } catch (resetErr) {
+        console.error('[Fishslot] Hard reset failed — wiping and re-cloning...');
+        try {
+          execSync(`rm -rf "${GAME_ROOT}"`, { stdio: 'inherit' });
+          execSync(`bash "${SETUP_SH}"`, { stdio: 'inherit' });
+        } catch (cloneErr) {
+          console.error('[Fishslot] Re-clone failed:', cloneErr.message);
+          return;
+        }
+      }
     }
   } else {
-    console.warn('[Fishslot] Game dir exists but is not a git repo — skipping pull.');
+    console.warn('[Fishslot] Game dir exists but is not a git repo — wiping and re-cloning...');
+    try {
+      execSync(`rm -rf "${GAME_ROOT}"`, { stdio: 'inherit' });
+      execSync(`bash "${SETUP_SH}"`, { stdio: 'inherit' });
+    } catch (e) {
+      console.error('[Fishslot] Re-clone failed:', e.message);
+      return;
+    }
   }
 
   // ── Always re-run patcher so bridge is current ──────────────────────────
   console.log('[Fishslot] Running patcher...');
   try {
     execSync(`node "${PATCH_JS}" "${GAME_ROOT}"`, { stdio: 'inherit' });
+    console.log('[Fishslot] Game files found and patched at', GAME_ROOT);
   } catch (e) {
     console.error('[Fishslot] Patch failed:', e.message);
   }
 }
 
-/**
- * Serve a fishslot static asset directly from disk.
- * @param {string} assetPath - path relative to fishslot root, e.g. "/scripts/main.js"
- * @returns {{ body: Buffer, mime: string, cacheControl: string } | null}
- */
 export function getFishslotAsset(assetPath) {
   const safe = path.normalize(assetPath).replace(/^(\.\.[/\\])+/, '');
   const full = path.join(GAME_ROOT, safe);

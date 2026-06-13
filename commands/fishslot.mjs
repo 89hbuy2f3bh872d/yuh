@@ -51,7 +51,7 @@ export default {
     });
 
     const base    = config.webBaseUrl ?? "https://www.sirgreen.online";
-    const gameUrl = `${base}/game/fishslot?token=${token}&bet=${bet}`;
+    const gameUrl = `${base}/fishslot/?token=${token}&bet=${bet}`;
 
     const row = {
       type: 1,
@@ -63,6 +63,9 @@ export default {
       }],
     };
 
+    // baitPlay is a nice-to-have — don't crash if HouseEdge failed to load
+    const bait = typeof HouseEdge?.baitPlay === "function" ? HouseEdge.baitPlay() : "";
+
     await message.channel.send({
       embeds: [
         embed(COLORS.primary)
@@ -70,7 +73,8 @@ export default {
           .setDescription(
             `**Bet:** ${bet.toLocaleString()} FC deducted.\n` +
             `Click below to play. Your result is saved automatically when you finish.\n\n` +
-            `*Session expires in 10 minutes.*\n\n${HouseEdge.baitPlay()}`
+            `*Session expires in 10 minutes.*` +
+            (bait ? `\n\n${bait}` : "")
           )
           .setFooter({ text: `Token: ${token.slice(0, 8)}…` }),
       ],
