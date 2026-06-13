@@ -179,14 +179,13 @@ function errPage(title, msg, href, label) {
 // ---------------------------------------------------------------------------
 // Fish Slot wrapper page
 //
-// Served at /fishslot/ and /fishslot/index.html
-//
 // Architecture:
-//   - iframe src="/fishslot/game/" loads the REAL C3 index.html
-//     All C3 relative paths (scripts/, workermain.js, media/, sw.js) resolve
-//     correctly because the iframe document origin is /fishslot/game/
-//   - An overlay bar sits ABOVE the iframe (position:fixed, z-index:9999)
-//     It owns the FC balance display, bet input, and Spin button.
+//   - iframe src="/fishslot/game/" loads the real C3 index.html
+//   - Overlay bar owns FC balance display, bet input, Spin button
+//   - On iframe load: postMessage({ type:"fluxer:init", balance, bet }) so
+//     the C3 game starts with the player's real FC balance instead of 0
+//   - After each resolved spin: postMessage({ type:"fluxer:sync", balance })
+//     so the C3 display stays in sync
 //   - Spin: POST /api/fishslot/spin  -> deducts bet, returns spinToken + newBal
 //   - After 4.5s animation: POST /api/fishslot/resolve -> applies RNG payout
 //   - Balance polled every 5s from /api/balance
@@ -324,8 +323,30 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
   const betIn   = document.getElementById("fcBetIn");
   const spinBtn = document.getElementById("fcSpinBtn");
   const banner  = document.getElementById("fcBanner");
+  const frame   = document.getElementById("gameFrame");
 
-  function setBal(n) { bal = Math.max(0, Math.floor(Number(n) || 0)); balNum.textContent = bal.toLocaleString(); }
+  // ── postMessage helpers ──────────────────────────────────────────────────
+  // Send the C3 game its real FC balance so it starts from the correct value
+  // instead of the hardcoded 0 in data.json.
+  function postToGame(msg) {
+    try { frame.contentWindow.postMessage(msg, "*"); } catch (_) {}
+  }
+
+  // On iframe load: fire fluxer:init with current balance + bet
+  frame.addEventListener("load", function () {
+    // Small delay to let C3 runtime initialise its global vars first
+    setTimeout(function () {
+      postToGame({ type: "fluxer:init", balance: bal, bet: getBet() });
+    }, 800);
+  });
+
+  // ── balance helpers ──────────────────────────────────────────────────────
+  function setBal(n) {
+    bal = Math.max(0, Math.floor(Number(n) || 0));
+    balNum.textContent = bal.toLocaleString();
+    // Keep C3 display in sync after each payout
+    postToGame({ type: "fluxer:sync", balance: bal });
+  }
   function getBet()  { return Math.max(1, Math.floor(Number(betIn.value) || 1)); }
 
   function setSpin(s) {
