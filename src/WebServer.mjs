@@ -279,8 +279,8 @@ export class WebServer {
     this.port         = config.webPort            ?? 3420;
     this.clientId     = config.fluxerClientId     ?? config.discordClientId     ?? "";
     this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
-    this.baseUrl      = config.webBaseUrl          ?? "https://www.sirgreen.online";
-    this.redirectUri  = `${this.baseUrl}/oauth/callback`;
+    this.baseUrl      = config.webBaseUrl          ?? `http://82.223.104.166:${config.webPort ?? 3420}`;
+    this.redirectUri  = config.redirectUri         ?? `${this.baseUrl}/oauth/callback`;
     this._states      = new Map();
   }
 
