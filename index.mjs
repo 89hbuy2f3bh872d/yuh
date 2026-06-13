@@ -26,7 +26,6 @@ setInterval(() => db.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
 
 const web = new WebServer(db, config);
 await web.start();
-globalThis.__web = web; // accessible to bandit command
 
 const client = new Client({ intents: 0, suppressIntentWarning: true, ...config["fluxer.js"] });
 const handler = new CommandHandler(client, db, config);

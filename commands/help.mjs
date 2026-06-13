@@ -21,7 +21,7 @@ export default {
               `\`${p}crash <bet> <×>\` — Crash`,
               `\`${p}dice <o|u> <n> <bet>\` — Dice over/under`,
               `\`${p}rl <colour|n> <bet>\` — Roulette`,
-              `\`${p}bandit\` — Le Bandit (web)`,
+              `\`${p}web\` — Browser games (Cherry Charm, JS Slots, Slot Game, Blackjack)`,
             ].join("\n"),
             inline: false,
           },
@@ -41,7 +41,7 @@ export default {
             inline: false,
           }
         )
-        .setFooter({ text: "Aliases work too — e.g. &spin, &flip, &roll" })
+        .setFooter({ text: "Aliases work too — e.g. &spin, &flip, &roll, &games" })
     ]});
   },
 };
