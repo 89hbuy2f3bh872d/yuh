@@ -4,6 +4,7 @@ import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
 import { pendingSessions } from "../commands/fishslot.mjs";
+import { preloadFishslotAssets, getFishslotAsset, mimeOf } from "./FishslotAssets.mjs";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -13,24 +14,9 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Fish Slot — served from the fishslot GitHub Pages PWA
-// We proxy the page and inject balance via postMessage after load.
+// The fishslot PWA is now hosted on THIS server under /fishslot/
+// No GitHub Pages needed.
 // ---------------------------------------------------------------------------
-const FISHSLOT_ORIGIN = "https://vermingov.github.io/fishslot";
-
-// ---------------------------------------------------------------------------
-// External game URLs (iframed — no proxy needed)
-// ---------------------------------------------------------------------------
-const WEB_GAMES = [
-  {
-    id:       "fishslot",
-    name:     "Fish Slot",
-    provider: "vermingov",
-    emoji:    "🐟",
-    thumb:    "https://opengraph.githubassets.com/1/vermingov/fishslot",
-    url:      FISHSLOT_ORIGIN,
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Low-level fetch helper
@@ -192,36 +178,34 @@ function navBar(tag, avatar, bal) {
 }
 
 function lobbyPage(bal, tag, avatar) {
-  const cards = WEB_GAMES.map(g => `
-    <div class="game-card" onclick="window.location.href='/game/${esc(g.id)}'">
+  const card = `
+    <div class="game-card" onclick="window.location.href='/game/fishslot'">
       <div class="game-thumb-wrap">
-        <img class="game-thumb" src="${esc(g.thumb)}" alt="${esc(g.name)}" loading="lazy" onerror="this.style.display='none'">
+        <div style="width:100%;height:100%;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:4rem">🐟</div>
         <div class="game-play-overlay"><div class="game-play-btn">&#9654; Play</div></div>
       </div>
       <div class="game-info">
-        <div class="game-name">${esc(g.emoji)} ${esc(g.name)}</div>
-        <div class="game-meta">${esc(g.provider)}</div>
+        <div class="game-name">🐟 Fish Slot</div>
+        <div class="game-meta">vermingov</div>
       </div>
-    </div>`).join("");
+    </div>`;
 
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
   <div class="section-title">🐟 Game Lobby</div>
-  <div class="games-grid">${cards}</div>
+  <div class="games-grid">${card}</div>
 </div>`);
 }
 
 // ---------------------------------------------------------------------------
 // Fish Slot game page
-// Wraps the fishslot PWA in an iframe, injects FC balance via postMessage,
-// listens for a "fishslot:result" message from the iframe, and POSTs
-// the result + session token to /api/fishslot/result to settle payout.
+// The fishslot PWA is served on the same origin under /fishslot/
+// so postMessage works without CORS restrictions.
 // ---------------------------------------------------------------------------
 function fishslotPage(bal, tag, avatar, token, bet) {
   const safeToken = esc(token);
   const safeBet   = Number(bet) || 0;
-  const safeOrigin = esc(FISHSLOT_ORIGIN);
 
   return shellPage("", `
 <div class="play-layout">
@@ -242,7 +226,7 @@ function fishslotPage(bal, tag, avatar, token, bet) {
     <iframe
       id="gameFrame"
       class="game-frame"
-      src="${safeOrigin}"
+      src="/fishslot/"
       allowfullscreen
       allow="autoplay; fullscreen"
     ></iframe>
@@ -253,7 +237,6 @@ function fishslotPage(bal, tag, avatar, token, bet) {
 (function(){
   const TOKEN = "${safeToken}";
   const BET   = ${safeBet};
-  const ORIGIN = "${safeOrigin}";
   const frame  = document.getElementById("gameFrame");
   const loader = document.getElementById("frameLoading");
   const banner = document.getElementById("resultBanner");
@@ -262,25 +245,23 @@ function fishslotPage(bal, tag, avatar, token, bet) {
 
   frame.addEventListener("load", function() {
     loader.classList.add("hidden");
-    // Inject the bet amount as the starting balance into the fishslot game
-    // fishslot listens for { type: "fluxer:init", balance: N, bet: N }
+    // Inject balance into the fishslot game (same origin — no CORS)
     try {
       frame.contentWindow.postMessage(
         { type: "fluxer:init", balance: ${Number(bal)}, bet: BET },
-        ORIGIN
+        window.location.origin
       );
-    } catch(e) { /* cross-origin fallback: game will use its own default balance */ }
+    } catch(e) { console.warn("postMessage failed", e); }
   });
 
   // Safety: hide loader after 12s regardless
   setTimeout(function(){ loader.classList.add("hidden"); }, 12000);
 
   // Listen for the game to report its final result
+  // fishslot PWA should post: { type: "fluxer:result", won: <FC amount> }
   window.addEventListener("message", function(e) {
-    if (e.origin !== ORIGIN) return;
+    if (e.source !== frame.contentWindow) return;
     const d = e.data;
-    // fishslot PWA should post: { type: "fluxer:result", won: <FC amount incl. bet>, lost: <FC amount> }
-    // won = total returned to player; lost = 0 on win
     if (!d || d.type !== "fluxer:result") return;
     if (settled) return;
     settled = true;
@@ -298,48 +279,19 @@ function fishslotPage(bal, tag, avatar, token, bet) {
       }
       const delta = res.delta ?? 0;
       banner.textContent = delta >= 0
-        ? "✅ +" + Math.abs(delta).toLocaleString() + " FC — result saved!"
-        : "❌ -" + Math.abs(delta).toLocaleString() + " FC — result saved.";
+        ? "\u2705 +" + Math.abs(delta).toLocaleString() + " FC \u2014 result saved!"
+        : "\u274c -" + Math.abs(delta).toLocaleString() + " FC \u2014 result saved.";
       banner.style.display = "block";
       banner.style.borderColor = delta >= 0 ? "#2ecc7188" : "#e74c3c88";
       setTimeout(() => { banner.style.display = "none"; }, 6000);
     })
     .catch(() => {
-      banner.textContent = "⚠️ Could not save result — please contact an admin.";
+      banner.textContent = "\u26a0\ufe0f Could not save result \u2014 please contact an admin.";
       banner.style.display = "block";
     });
   });
 })();
 </script>`);
-}
-
-function gamePage(game, bal, tag, avatar) {
-  return shellPage("", `
-<div class="play-layout">
-  <div class="viewer-header">
-    <button class="viewer-back" onclick="history.back()">&#8592; Lobby</button>
-    <div style="flex:1;min-width:0">
-      <div class="viewer-title">${esc(game.emoji)} ${esc(game.name)}</div>
-      <div class="viewer-provider">${esc(game.provider)}</div>
-    </div>
-    <div class="nav-bal" style="font-size:.8rem">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div>
-    <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
-  </div>
-  <div class="play-top">
-    <div class="frame-loading" id="frameLoading">
-      <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading ${esc(game.name)}&#8230;</div>
-    </div>
-    <iframe
-      class="game-frame"
-      src="${esc(game.url)}"
-      allowfullscreen
-      allow="autoplay; fullscreen"
-      onload="document.getElementById('frameLoading').classList.add('hidden')"
-    ></iframe>
-  </div>
-</div>
-<script>setTimeout(function(){var f=document.getElementById('frameLoading');if(f)f.classList.add('hidden');},12000);</script>`);
 }
 
 function loginPage(authUrl) {
@@ -379,6 +331,9 @@ export class WebServer {
   }
 
   async start() {
+    // Download all fishslot assets at startup
+    await preloadFishslotAssets();
+
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
@@ -399,6 +354,28 @@ export class WebServer {
     const path = u.pathname;
 
     if (path === "/") return this._redirect(res, "/lobby");
+
+    // ── FISHSLOT STATIC FILES ─────────────────────────────────────────────────
+    // Serve every file from the fishslot PWA at /fishslot/*
+    // /fishslot/        → /index.html
+    // /fishslot/scripts/main.js → /scripts/main.js
+    // etc.
+    if (path === "/fishslot" || path.startsWith("/fishslot/")) {
+      // Strip the /fishslot prefix
+      let assetPath = path.slice("/fishslot".length) || "/";
+      if (assetPath === "/" || assetPath === "") assetPath = "/index.html";
+      const asset = getFishslotAsset(assetPath);
+      if (!asset) {
+        res.writeHead(404);
+        return res.end("Not found");
+      }
+      res.writeHead(200, {
+        "Content-Type":  asset.mime,
+        "Cache-Control": "public, max-age=3600",
+        "Content-Length": asset.body.length,
+      });
+      return res.end(asset.body);
+    }
 
     // ── LOBBY ────────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
@@ -426,46 +403,19 @@ export class WebServer {
       const tag   = decodeURIComponent(cookies.dtag ?? "Player");
       const avatar = decodeURIComponent(cookies.dav  ?? "");
 
-      // If accessed from Discord link with a valid token, show the game
       if (token && pendingSessions.has(token)) {
         const sess = pendingSessions.get(token);
-        // Verify the session belongs to this logged-in user
         if (sess.uid !== uid) {
-          return this._html(res, 403, errPage("⛔ Wrong Account", "This game link belongs to a different Fluxer account. Log out and log in as the correct user.", "/login", "Switch account"));
+          return this._html(res, 403, errPage("\u26d4 Wrong Account", "This game link belongs to a different Fluxer account. Log out and log in as the correct user.", "/login", "Switch account"));
         }
         return this._html(res, 200, fishslotPage(bal, tag, avatar, token, sess.bet));
       }
 
-      // Accessed directly from the lobby (no token) — still show the game,
-      // but without a session bet to settle
+      // Direct lobby access — show the game without a pending bet session
       return this._html(res, 200, fishslotPage(bal, tag, avatar, "", 0));
     }
 
-    if (path.startsWith("/game/") && req.method === "GET") {
-      const uid = this._uid(req);
-      if (!uid) return this._redirect(res, "/login");
-      const gameId = path.slice("/game/".length);
-      const game   = WEB_GAMES.find(g => g.id === gameId);
-      if (!game) {
-        return this._html(res, 404, errPage("404 Not Found", "That game doesn't exist.", "/lobby", "Back to Lobby"));
-      }
-      const user    = await this.db.getUser(uid);
-      const cookies = parseCookies(req);
-      return this._html(res, 200, gamePage(
-        game,
-        Number(user?.bal ?? 0),
-        decodeURIComponent(cookies.dtag ?? "Player"),
-        decodeURIComponent(cookies.dav  ?? "")
-      ));
-    }
-
     // ── FISHSLOT RESULT CALLBACK ─────────────────────────────────────────────
-    // POST /api/fishslot/result
-    // Body: { token, won, lost }
-    //   won  = total FC returned to player (0 on full loss)
-    //   lost = FC lost (0 on full win)
-    // The bet was already deducted when the command ran.
-    // We credit back `won` (which includes the original stake on a win).
     if (path === "/api/fishslot/result" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -486,12 +436,11 @@ export class WebServer {
       const bet    = sess.bet;
       const payout = Math.max(0, Math.floor(Number(won) || 0));
 
-      // Bet was already deducted. Credit back whatever the game awarded.
       if (payout > 0) {
         await this.db.updateBalance(uid, payout);
       }
 
-      const won_net = payout - bet; // positive = net win, negative = net loss
+      const won_net = payout - bet;
       await this.db.recordGame(uid, won_net >= 0, bet);
 
       const user   = await this.db.getUser(uid);
