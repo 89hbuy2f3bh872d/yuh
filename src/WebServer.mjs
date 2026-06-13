@@ -3,6 +3,7 @@ import { URL } from "url";
 import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
+import { pendingSessions } from "../commands/fishslot.mjs";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -12,40 +13,22 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
+// Fish Slot — served from the fishslot GitHub Pages PWA
+// We proxy the page and inject balance via postMessage after load.
+// ---------------------------------------------------------------------------
+const FISHSLOT_ORIGIN = "https://vermingov.github.io/fishslot";
+
+// ---------------------------------------------------------------------------
 // External game URLs (iframed — no proxy needed)
 // ---------------------------------------------------------------------------
 const WEB_GAMES = [
   {
-    id:       "cherry-charm",
-    name:     "Cherry Charm",
-    provider: "michaelkolesidis",
-    emoji:    "🍒",
-    thumb:    "https://opengraph.githubassets.com/1/michaelkolesidis/cherry-charm",
-    url:      "https://cherry-charm.vercel.app",
-  },
-  {
-    id:       "js-slots",
-    name:     "JS Slots",
-    provider: "marianapatcosta",
-    emoji:    "🎰",
-    thumb:    "https://opengraph.githubassets.com/1/marianapatcosta/js-slots-cra",
-    url:      "https://marianapatcosta.github.io/js-slots-cra",
-  },
-  {
-    id:       "slot-game",
-    name:     "Slot Game",
-    provider: "asiryk",
-    emoji:    "🎡",
-    thumb:    "https://opengraph.githubassets.com/1/asiryk/slot-game",
-    url:      "https://asiryk.github.io/slot-game",
-  },
-  {
-    id:       "blackjack",
-    name:     "Blackjack",
-    provider: "Saganaki22",
-    emoji:    "♠️",
-    thumb:    "https://opengraph.githubassets.com/1/Saganaki22/Blackjack",
-    url:      "https://saganaki22.github.io/Blackjack",
+    id:       "fishslot",
+    name:     "Fish Slot",
+    provider: "vermingov",
+    emoji:    "🐟",
+    thumb:    "https://opengraph.githubassets.com/1/vermingov/fishslot",
+    url:      FISHSLOT_ORIGIN,
   },
 ];
 
@@ -115,6 +98,15 @@ function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", c => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -195,8 +187,8 @@ function shellPage(headExtra, bodyContent) {
 function navBar(tag, avatar, bal) {
   const av = avatar
     ? `<img class="nav-avatar" src="${esc(avatar)}" alt="${esc(tag)}" loading="lazy">`
-    : `<span style="font-size:1.3rem">&#127918;</span>`;
-  return `<nav class="nav"><div class="nav-logo"><span>&#127918;</span> SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal" id="navBal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><div class="nav-user">${av}<span>${esc(tag)}</span></div><a href="/logout" class="nav-logout">logout</a></nav>`;
+    : `<span style="font-size:1.3rem">🐟</span>`;
+  return `<nav class="nav"><div class="nav-logo"><span>🐟</span> SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal" id="navBal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><div class="nav-user">${av}<span>${esc(tag)}</span></div><a href="/logout" class="nav-logout">logout</a></nav>`;
 }
 
 function lobbyPage(bal, tag, avatar) {
@@ -215,9 +207,110 @@ function lobbyPage(bal, tag, avatar) {
   return shellPage("", `
 ${navBar(tag, avatar, bal)}
 <div class="wrap">
-  <div class="section-title">&#127918; Game Lobby</div>
+  <div class="section-title">🐟 Game Lobby</div>
   <div class="games-grid">${cards}</div>
 </div>`);
+}
+
+// ---------------------------------------------------------------------------
+// Fish Slot game page
+// Wraps the fishslot PWA in an iframe, injects FC balance via postMessage,
+// listens for a "fishslot:result" message from the iframe, and POSTs
+// the result + session token to /api/fishslot/result to settle payout.
+// ---------------------------------------------------------------------------
+function fishslotPage(bal, tag, avatar, token, bet) {
+  const safeToken = esc(token);
+  const safeBet   = Number(bet) || 0;
+  const safeOrigin = esc(FISHSLOT_ORIGIN);
+
+  return shellPage("", `
+<div class="play-layout">
+  <div class="viewer-header">
+    <button class="viewer-back" onclick="history.back()">&#8592; Lobby</button>
+    <div style="flex:1;min-width:0">
+      <div class="viewer-title">🐟 Fish Slot</div>
+      <div class="viewer-provider">vermingov · Bet: <strong>${safeBet.toLocaleString()} FC</strong></div>
+    </div>
+    <div class="nav-bal" id="navBal" style="font-size:.8rem">Balance: <strong id="balNum">${Number(bal).toLocaleString()}</strong> FC</div>
+    <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
+  </div>
+  <div class="play-top">
+    <div class="frame-loading" id="frameLoading">
+      <div class="frame-spinner"></div>
+      <div class="frame-loading-txt">Loading Fish Slot&#8230;</div>
+    </div>
+    <iframe
+      id="gameFrame"
+      class="game-frame"
+      src="${safeOrigin}"
+      allowfullscreen
+      allow="autoplay; fullscreen"
+    ></iframe>
+  </div>
+</div>
+<div id="resultBanner" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#0e230e;border:2px solid #2ecc7133;border-radius:12px;padding:.75rem 1.5rem;color:#e2ffe2;font-weight:700;font-size:.95rem;z-index:9999;box-shadow:0 4px 24px #2ecc7133"></div>
+<script>
+(function(){
+  const TOKEN = "${safeToken}";
+  const BET   = ${safeBet};
+  const ORIGIN = "${safeOrigin}";
+  const frame  = document.getElementById("gameFrame");
+  const loader = document.getElementById("frameLoading");
+  const banner = document.getElementById("resultBanner");
+  const balNum = document.getElementById("balNum");
+  let settled = false;
+
+  frame.addEventListener("load", function() {
+    loader.classList.add("hidden");
+    // Inject the bet amount as the starting balance into the fishslot game
+    // fishslot listens for { type: "fluxer:init", balance: N, bet: N }
+    try {
+      frame.contentWindow.postMessage(
+        { type: "fluxer:init", balance: ${Number(bal)}, bet: BET },
+        ORIGIN
+      );
+    } catch(e) { /* cross-origin fallback: game will use its own default balance */ }
+  });
+
+  // Safety: hide loader after 12s regardless
+  setTimeout(function(){ loader.classList.add("hidden"); }, 12000);
+
+  // Listen for the game to report its final result
+  window.addEventListener("message", function(e) {
+    if (e.origin !== ORIGIN) return;
+    const d = e.data;
+    // fishslot PWA should post: { type: "fluxer:result", won: <FC amount incl. bet>, lost: <FC amount> }
+    // won = total returned to player; lost = 0 on win
+    if (!d || d.type !== "fluxer:result") return;
+    if (settled) return;
+    settled = true;
+
+    const body = JSON.stringify({ token: TOKEN, won: d.won ?? 0, lost: d.lost ?? BET });
+    fetch("/api/fishslot/result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (res.newBal !== undefined) {
+        balNum.textContent = Number(res.newBal).toLocaleString();
+      }
+      const delta = res.delta ?? 0;
+      banner.textContent = delta >= 0
+        ? "✅ +" + Math.abs(delta).toLocaleString() + " FC — result saved!"
+        : "❌ -" + Math.abs(delta).toLocaleString() + " FC — result saved.";
+      banner.style.display = "block";
+      banner.style.borderColor = delta >= 0 ? "#2ecc7188" : "#e74c3c88";
+      setTimeout(() => { banner.style.display = "none"; }, 6000);
+    })
+    .catch(() => {
+      banner.textContent = "⚠️ Could not save result — please contact an admin.";
+      banner.style.display = "block";
+    });
+  });
+})();
+</script>`);
 }
 
 function gamePage(game, bal, tag, avatar) {
@@ -253,10 +346,10 @@ function loginPage(authUrl) {
   return shellPage("", `
 <div class="login-wrap">
   <div class="login-card">
-    <div class="login-logo">&#127918;</div>
+    <div class="login-logo">🐟</div>
     <div class="login-title">SirGreen Casino</div>
     <div class="login-sub">Powered by FluxCoins</div>
-    <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span>
+    <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play Fish Slot with your FluxCoin balance.</span>
     <a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a>
     <div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div>
   </div>
@@ -276,6 +369,7 @@ function errPage(title, msg, btnHref, btnLabel) {
 export class WebServer {
   constructor(db, config) {
     this.db           = db;
+    this.config       = config;
     this.port         = config.webPort            ?? 3420;
     this.clientId     = config.fluxerClientId     ?? config.discordClientId     ?? "";
     this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
@@ -320,7 +414,33 @@ export class WebServer {
     }
 
     // ── GAME VIEWER ──────────────────────────────────────────────────────────
-    // /game/:id → full-page iframe wrapping the external game URL
+    if (path === "/game/fishslot" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._redirect(res, "/login");
+
+      const token = u.searchParams.get("token");
+      const bet   = parseInt(u.searchParams.get("bet") ?? "0");
+      const user  = await this.db.getUser(uid);
+      const bal   = Number(user?.bal ?? 0);
+      const cookies = parseCookies(req);
+      const tag   = decodeURIComponent(cookies.dtag ?? "Player");
+      const avatar = decodeURIComponent(cookies.dav  ?? "");
+
+      // If accessed from Discord link with a valid token, show the game
+      if (token && pendingSessions.has(token)) {
+        const sess = pendingSessions.get(token);
+        // Verify the session belongs to this logged-in user
+        if (sess.uid !== uid) {
+          return this._html(res, 403, errPage("⛔ Wrong Account", "This game link belongs to a different Fluxer account. Log out and log in as the correct user.", "/login", "Switch account"));
+        }
+        return this._html(res, 200, fishslotPage(bal, tag, avatar, token, sess.bet));
+      }
+
+      // Accessed directly from the lobby (no token) — still show the game,
+      // but without a session bet to settle
+      return this._html(res, 200, fishslotPage(bal, tag, avatar, "", 0));
+    }
+
     if (path.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -337,6 +457,47 @@ export class WebServer {
         decodeURIComponent(cookies.dtag ?? "Player"),
         decodeURIComponent(cookies.dav  ?? "")
       ));
+    }
+
+    // ── FISHSLOT RESULT CALLBACK ─────────────────────────────────────────────
+    // POST /api/fishslot/result
+    // Body: { token, won, lost }
+    //   won  = total FC returned to player (0 on full loss)
+    //   lost = FC lost (0 on full win)
+    // The bet was already deducted when the command ran.
+    // We credit back `won` (which includes the original stake on a win).
+    if (path === "/api/fishslot/result" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return this._json(res, 400, { error: "Bad JSON" }); }
+
+      const { token, won } = body;
+      if (!token) return this._json(res, 400, { error: "Missing token" });
+
+      const sess = pendingSessions.get(token);
+      if (!sess) return this._json(res, 404, { error: "Session not found or expired" });
+      if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
+
+      pendingSessions.delete(token);
+
+      const bet    = sess.bet;
+      const payout = Math.max(0, Math.floor(Number(won) || 0));
+
+      // Bet was already deducted. Credit back whatever the game awarded.
+      if (payout > 0) {
+        await this.db.updateBalance(uid, payout);
+      }
+
+      const won_net = payout - bet; // positive = net win, negative = net loss
+      await this.db.recordGame(uid, won_net >= 0, bet);
+
+      const user   = await this.db.getUser(uid);
+      const newBal = Number(user?.bal ?? 0);
+
+      return this._json(res, 200, { ok: true, delta: won_net, newBal });
     }
 
     // ── BALANCE API ───────────────────────────────────────────────────────────

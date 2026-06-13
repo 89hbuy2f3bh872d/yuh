@@ -10,18 +10,13 @@ export default {
 
     return message.channel.send({ embeds: [
       embed(COLORS.accent)
-        .setTitle("🟢 SirGreen Casino — Commands")
+        .setTitle("🐟 SirGreen Casino — Commands")
         .addFields(
           {
             name: "🎰  Games",
             value: [
-              `\`${p}slots <bet>\` — Spin the slots`,
-              `\`${p}bj <bet>\` — Blackjack (hit/stand/double)`,
-              `\`${p}cf <h|t> <bet>\` — Coinflip`,
-              `\`${p}crash <bet> <×>\` — Crash`,
-              `\`${p}dice <o|u> <n> <bet>\` — Dice over/under`,
-              `\`${p}rl <colour|n> <bet>\` — Roulette`,
-              `\`${p}web\` — Browser games (Cherry Charm, JS Slots, Slot Game, Blackjack)`,
+              `\`${p}fishslot <bet>\` — Play Fish Slot (browser game, bet settled automatically)`,
+              `\`${p}web\` — Open the Casino lobby in your browser`,
             ].join("\n"),
             inline: false,
           },
@@ -41,7 +36,7 @@ export default {
             inline: false,
           }
         )
-        .setFooter({ text: "Aliases work too — e.g. &spin, &flip, &roll, &games" })
+        .setFooter({ text: "Aliases: &fish, &fs  |  &games to open the web lobby" })
     ]});
   },
 };
