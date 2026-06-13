@@ -4,7 +4,7 @@ import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
 import { pendingSessions } from "../commands/fishslot.mjs";
-import { preloadFishslotAssets, getFishslotAsset, mimeOf } from "./FishslotAssets.mjs";
+import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -12,6 +12,17 @@ import { preloadFishslotAssets, getFishslotAsset, mimeOf } from "./FishslotAsset
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
+
+// ---------------------------------------------------------------------------
+// In-memory spin sessions
+// token -> { uid, bet, dbBalBefore, ts }
+// ---------------------------------------------------------------------------
+const spinSessions = new Map();
+
+setInterval(() => {
+  const cut = Date.now() - 10 * 60 * 1000;
+  for (const [k, v] of spinSessions) if (v.ts < cut) spinSessions.delete(k);
+}, 5 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
 // Low-level fetch helper
@@ -142,19 +153,6 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 .err-card p{color:#a8d5a8;margin-bottom:1rem;line-height:1.6}
 .err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;text-decoration:none;padding:.75rem 1.5rem;border-radius:10px;margin-top:.75rem;border:none;cursor:pointer;font-size:.9rem;transition:all .18s}
 .err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px #2ecc7155}
-.play-layout{display:flex;flex-direction:column;height:100vh;overflow:hidden}
-.viewer-header{display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;background:rgba(6,14,6,.97);border-bottom:1px solid #2ecc7122;flex-wrap:wrap;flex-shrink:0}
-.viewer-back{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.35rem .8rem;border-radius:7px;font-size:.78rem;font-weight:700;transition:all .18s}
-.viewer-back:hover{border-color:#2ecc71;color:#2ecc71}
-.viewer-title{font-size:.9rem;font-weight:900;color:#e2ffe2}
-.viewer-provider{font-size:.7rem;color:#4a9a4a}
-.play-top{flex:1;position:relative;min-height:0}
-.game-frame{width:100%;height:100%;border:none;display:block;background:#040d04}
-.frame-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#040d04;gap:1rem;z-index:10;transition:opacity .3s}
-.frame-loading.hidden{opacity:0;pointer-events:none}
-.frame-spinner{width:48px;height:48px;border:3px solid #2ecc7122;border-top-color:#2ecc71;border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.frame-loading-txt{font-size:.85rem;color:#4a9a4a}
 @media(max-width:600px){.nav{padding:.5rem 1rem;gap:.6rem}.wrap{padding:1rem 1rem 2rem}}
 `;
 
@@ -194,112 +192,389 @@ ${navBar(tag, avatar, bal)}
 }
 
 // ---------------------------------------------------------------------------
-// Fish Slot game page
-// The fishslot PWA is hosted on THIS server under /fishslot/
-// The iframe src includes balance & bet as URL params so the bridge can init
-// even before the postMessage fires (handles slow-loading frames).
+// Fish Slot wrapper page
+//
+// Architecture:
+//   - The fishslot C3 game runs inside an <iframe> and is NEVER modified.
+//     Its internal balance display is irrelevant — we ignore it entirely.
+//   - An overlay DIV sits above the iframe and owns the REAL FC balance UI.
+//   - The overlay intercepts pointer events that land on the spin button area.
+//     It does NOT try to inject anything into the C3 runtime.
+//   - Bet controls, balance display, and all FC logic live in the overlay.
+//   - Each spin: POST /api/fishslot/spin -> server deducts bet, returns spinToken
+//     After spin animation: POST /api/fishslot/resolve -> server applies payout
+//   - Balance is polled every 4 s from /api/balance so it always reflects DB truth.
 // ---------------------------------------------------------------------------
-function fishslotPage(bal, tag, avatar, token, bet) {
-  const safeToken = esc(token);
-  const safeBet   = Number(bet)   || 0;
-  const safeBal   = Number(bal)   || 0;
+function fishslotPage(bal, tag, avatar, discordToken, initBet) {
+  const safeBal     = Number(bal)   || 0;
+  const safeInitBet = Number(initBet) || 10;
+  const safeToken   = esc(discordToken ?? "");
 
-  // The iframe src passes balance + bet so fluxer-bridge.js can read them
-  // from URLSearchParams before the parent postMessage arrives.
-  const iframeSrc = `/fishslot/?balance=${safeBal}&bet=${safeBet}`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fish Slot — SirGreen Casino</title>
+<style>
+${SHARED_CSS}
+html, body { height: 100%; overflow: hidden; }
+.fs-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+/* ── top bar ── */
+.fs-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .45rem 1rem;
+  background: rgba(6,14,6,.97);
+  border-bottom: 1px solid #2ecc7122;
+  flex-wrap: wrap;
+  z-index: 200;
+}
+.fs-back {
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  color: #a8e6a8;
+  padding: .3rem .75rem;
+  border-radius: 7px;
+  font-size: .75rem;
+  font-weight: 700;
+  transition: all .18s;
+}
+.fs-back:hover { border-color: #2ecc71; color: #2ecc71; }
+.fs-title { font-size: .9rem; font-weight: 900; color: #e2ffe2; flex: 1; min-width: 0; }
+.fs-balance-wrap {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  border-radius: 8px;
+  padding: .3rem .7rem;
+  font-size: .8rem;
+  font-weight: 700;
+  color: #a8e6a8;
+}
+.fs-balance-wrap strong { color: #2ecc71; font-size: .95rem; }
+.fs-bet-wrap {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  border-radius: 8px;
+  padding: .3rem .6rem;
+  font-size: .78rem;
+  font-weight: 700;
+}
+.fs-bet-wrap label { color: #4a9a4a; }
+.fs-bet-input {
+  width: 72px;
+  background: #071507;
+  border: 1px solid #2ecc7122;
+  border-radius: 5px;
+  color: #e2ffe2;
+  font-size: .8rem;
+  font-weight: 700;
+  text-align: right;
+  padding: .2rem .4rem;
+  outline: none;
+}
+.fs-bet-input:focus { border-color: #2ecc71; }
+.fs-spin-btn {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  color: #060e06;
+  font-weight: 900;
+  font-size: .82rem;
+  padding: .35rem .9rem;
+  border-radius: 8px;
+  letter-spacing: .04em;
+  box-shadow: 0 2px 12px #2ecc7155;
+  transition: all .18s;
+  white-space: nowrap;
+}
+.fs-spin-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 18px #2ecc7188; }
+.fs-spin-btn:disabled { opacity: .45; cursor: not-allowed; }
+/* ── game area ── */
+.fs-game-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: #040d04;
+}
+.fs-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+/* ── result banner ── */
+.fs-banner {
+  display: none;
+  position: fixed;
+  bottom: 1.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0e230e;
+  border: 2px solid #2ecc7133;
+  border-radius: 12px;
+  padding: .7rem 1.4rem;
+  font-weight: 700;
+  font-size: .95rem;
+  z-index: 9999;
+  box-shadow: 0 4px 24px #2ecc7133;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity .3s;
+}
+/* ── spinner overlay (while resolving) ── */
+.fs-resolving {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(4,13,4,.55);
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: .75rem;
+  pointer-events: all;
+}
+.fs-resolving.active { display: flex; }
+.fs-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid #2ecc7122;
+  border-top-color: #2ecc71;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.fs-resolving-txt { font-size: .8rem; color: #4a9a4a; }
+/* ── loading overlay ── */
+.fs-loading {
+  position: absolute;
+  inset: 0;
+  background: #040d04;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  z-index: 40;
+  transition: opacity .4s;
+}
+.fs-loading.hidden { opacity: 0; pointer-events: none; }
+.fs-loading-spinner {
+  width: 48px; height: 48px;
+  border: 3px solid #2ecc7122;
+  border-top-color: #2ecc71;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+.fs-loading-txt { font-size: .85rem; color: #4a9a4a; }
+</style>
+</head>
+<body>
+<div class="fs-layout">
 
-  return shellPage("", `
-<div class="play-layout">
-  <div class="viewer-header">
-    <button class="viewer-back" onclick="history.back()">&#8592; Lobby</button>
-    <div style="flex:1;min-width:0">
-      <div class="viewer-title">🐟 Fish Slot</div>
-      <div class="viewer-provider">vermingov · Bet: <strong>${safeBet.toLocaleString()} FC</strong></div>
+  <!-- ── Top control bar ── -->
+  <div class="fs-bar">
+    <button class="fs-back" onclick="history.back()">&#8592; Lobby</button>
+    <div class="fs-title">🐟 Fish Slot</div>
+
+    <div class="fs-balance-wrap">
+      💰 <span id="balLabel">Balance:</span>&nbsp;<strong id="balNum">${safeBal.toLocaleString()}</strong>&nbsp;FC
     </div>
-    <div class="nav-bal" id="navBal" style="font-size:.8rem">Balance: <strong id="balNum">${safeBal.toLocaleString()}</strong> FC</div>
-    <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
+
+    <div class="fs-bet-wrap">
+      <label for="betInput">Bet:</label>
+      <input id="betInput" class="fs-bet-input" type="number" min="1" step="1" value="${safeInitBet}">
+      <span style="color:#4a9a4a;font-size:.75rem">FC</span>
+    </div>
+
+    <button id="spinBtn" class="fs-spin-btn">🎰 Spin</button>
+
+    <a href="/logout" style="font-size:.68rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap">logout</a>
   </div>
-  <div class="play-top">
-    <div class="frame-loading" id="frameLoading">
-      <div class="frame-spinner"></div>
-      <div class="frame-loading-txt">Loading Fish Slot&#8230;</div>
+
+  <!-- ── Game canvas area ── -->
+  <div class="fs-game-area">
+    <!-- Loading overlay -->
+    <div class="fs-loading" id="fsLoading">
+      <div class="fs-loading-spinner"></div>
+      <div class="fs-loading-txt">Loading Fish Slot&#8230;</div>
     </div>
+
+    <!-- Resolving overlay (shown while waiting for spin result) -->
+    <div class="fs-resolving" id="fsResolving">
+      <div class="fs-spinner"></div>
+      <div class="fs-resolving-txt">Saving result&#8230;</div>
+    </div>
+
+    <!-- The unmodified C3 game. We do NOT touch its internals. -->
     <iframe
       id="gameFrame"
-      class="game-frame"
-      src="${iframeSrc}"
+      class="fs-iframe"
+      src="/fishslot/"
       allowfullscreen
       allow="autoplay; fullscreen"
     ></iframe>
   </div>
 </div>
-<div id="resultBanner" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#0e230e;border:2px solid #2ecc7133;border-radius:12px;padding:.75rem 1.5rem;color:#e2ffe2;font-weight:700;font-size:.95rem;z-index:9999;box-shadow:0 4px 24px #2ecc7133"></div>
+
+<!-- Result banner -->
+<div id="fsBanner" class="fs-banner"></div>
+
 <script>
-(function(){
-  const TOKEN = "${safeToken}";
-  const BET   = ${safeBet};
-  const BAL   = ${safeBal};
-  const frame  = document.getElementById("gameFrame");
-  const loader = document.getElementById("frameLoading");
-  const banner = document.getElementById("resultBanner");
-  const balNum = document.getElementById("balNum");
-  let settled = false;
+(function () {
+  // ── State ──────────────────────────────────────────────────────────────────
+  const DISCORD_TOKEN = "${safeToken}";
+  let currentBal   = ${safeBal};
+  let spinning     = false;    // true while a spin is in-flight
+  let pendingSpinToken = null; // set by /api/fishslot/spin, cleared by resolve
 
-  frame.addEventListener("load", function() {
-    loader.classList.add("hidden");
-    // Also send via postMessage as a belt-and-suspenders approach
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const balNum     = document.getElementById("balNum");
+  const betInput   = document.getElementById("betInput");
+  const spinBtn    = document.getElementById("spinBtn");
+  const fsLoading  = document.getElementById("fsLoading");
+  const fsResolving = document.getElementById("fsResolving");
+  const fsBanner   = document.getElementById("fsBanner");
+  const gameFrame  = document.getElementById("gameFrame");
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function setBalance(n) {
+    currentBal = Math.max(0, Math.floor(Number(n) || 0));
+    balNum.textContent = currentBal.toLocaleString();
+  }
+
+  function getBet() {
+    return Math.max(1, Math.floor(Number(betInput.value) || 1));
+  }
+
+  function setSpinning(s) {
+    spinning = s;
+    spinBtn.disabled = s;
+    spinBtn.textContent = s ? "⏳ Spinning…" : "🎰 Spin";
+  }
+
+  function showBanner(msg, win) {
+    fsBanner.textContent = msg;
+    fsBanner.style.display = "block";
+    fsBanner.style.borderColor = win ? "#2ecc7188" : "#e74c3c88";
+    fsBanner.style.color = win ? "#e2ffe2" : "#ffcccc";
+    clearTimeout(fsBanner._t);
+    fsBanner._t = setTimeout(() => { fsBanner.style.display = "none"; }, 5500);
+  }
+
+  // ── Hide loading overlay once iframe loads ─────────────────────────────────
+  gameFrame.addEventListener("load", () => {
+    setTimeout(() => fsLoading.classList.add("hidden"), 800);
+  });
+  setTimeout(() => fsLoading.classList.add("hidden"), 14000);
+
+  // ── Spin handler ───────────────────────────────────────────────────────────
+  // 1. POST /api/fishslot/spin  → server deducts bet from DB immediately,
+  //    returns { spinToken, newBal } or { error }.
+  // 2. We update the overlay balance and let the C3 game play its animation.
+  // 3. After SPIN_WAIT ms (animation duration), POST /api/fishslot/resolve
+  //    → server applies RNG payout, returns { delta, newBal }.
+  // 4. Update overlay balance and show result banner.
+  //
+  // The C3 game's internal balance display is completely irrelevant.
+  // Players interact with the C3 game visually, but ALL money logic is ours.
+
+  const SPIN_WAIT = 4500; // ms — conservative slot animation duration
+
+  async function doSpin() {
+    if (spinning) return;
+    const bet = getBet();
+
+    if (bet < 1) { showBanner("⚠️ Bet must be at least 1 FC", false); return; }
+    if (bet > currentBal) { showBanner("⚠️ Not enough FC!", false); return; }
+
+    setSpinning(true);
+    fsBanner.style.display = "none";
+
+    // Step 1: deduct bet server-side
+    let spinToken;
     try {
-      frame.contentWindow.postMessage(
-        { type: "fluxer:init", balance: BAL, bet: BET },
-        window.location.origin
-      );
-    } catch(e) { console.warn("postMessage failed", e); }
-  });
-
-  // Safety: hide loader after 12s regardless
-  setTimeout(function(){ loader.classList.add("hidden"); }, 12000);
-
-  // Listen for the game to report its final balance after each spin
-  // fluxer-bridge.js posts: { type: "fluxer:result", won: <final FC balance>, lost: bet }
-  // won = absolute remaining balance in the game, not delta
-  // We persist it to the DB as the authoritative final balance.
-  window.addEventListener("message", function(e) {
-    if (e.source !== frame.contentWindow) return;
-    const d = e.data;
-    if (!d || d.type !== "fluxer:result") return;
-    if (settled) return;
-    settled = true;
-
-    // won = the game's final balance (absolute FC), not a payout delta.
-    // The result endpoint will compute delta = won - originalBal internally.
-    const finalBal = Math.max(0, Math.floor(Number(d.won) || 0));
-    const body = JSON.stringify({ token: TOKEN, won: finalBal, bet: BET, originalBal: BAL });
-    fetch("/api/fishslot/result", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    })
-    .then(r => r.json())
-    .then(res => {
-      if (res.newBal !== undefined) {
-        balNum.textContent = Number(res.newBal).toLocaleString();
+      const r = await fetch("/api/fishslot/spin", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ bet, discordToken: DISCORD_TOKEN }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) {
+        showBanner("⚠️ " + (d.error || "Spin failed"), false);
+        setSpinning(false);
+        return;
       }
-      const delta = res.delta ?? 0;
-      banner.textContent = delta >= 0
-        ? "\u2705 +" + Math.abs(delta).toLocaleString() + " FC saved!"
-        : "\u274c -" + Math.abs(delta).toLocaleString() + " FC saved.";
-      banner.style.display = "block";
-      banner.style.borderColor = delta >= 0 ? "#2ecc7188" : "#e74c3c88";
-      setTimeout(() => { banner.style.display = "none"; settled = false; }, 6000);
-    })
-    .catch(() => {
-      banner.textContent = "\u26a0\ufe0f Could not save result \u2014 please contact an admin.";
-      banner.style.display = "block";
-      setTimeout(() => { banner.style.display = "none"; settled = false; }, 6000);
-    });
-  });
+      spinToken      = d.spinToken;
+      pendingSpinToken = spinToken;
+      setBalance(d.newBal); // balance after deduction
+    } catch (e) {
+      showBanner("⚠️ Network error — spin not placed.", false);
+      setSpinning(false);
+      return;
+    }
+
+    // Step 2: wait for animation
+    await new Promise(r => setTimeout(r, SPIN_WAIT));
+
+    // Step 3: resolve payout
+    fsResolving.classList.add("active");
+    try {
+      const r = await fetch("/api/fishslot/resolve", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ spinToken }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) {
+        showBanner("⚠️ " + (d.error || "Could not save result"), false);
+      } else {
+        setBalance(d.newBal);
+        const delta = Number(d.delta) || 0;
+        if (delta > 0) {
+          showBanner("🎉 +" + delta.toLocaleString() + " FC — you won!", true);
+        } else {
+          showBanner("💸 Spin complete · " + Math.abs(delta).toLocaleString() + " FC lost.", false);
+        }
+      }
+    } catch {
+      showBanner("⚠️ Could not save result — contact admin.", false);
+    } finally {
+      pendingSpinToken = null;
+      fsResolving.classList.remove("active");
+      setSpinning(false);
+    }
+  }
+
+  spinBtn.addEventListener("click", doSpin);
+
+  // Allow Enter in bet input to trigger spin
+  betInput.addEventListener("keydown", e => { if (e.key === "Enter") doSpin(); });
+
+  // ── Periodic balance sync (every 5 s) ─────────────────────────────────────
+  // Keeps the overlay in sync with the DB even if the user has another tab open.
+  setInterval(() => {
+    if (spinning) return; // don't poll mid-spin
+    fetch("/api/balance")
+      .then(r => r.json())
+      .then(d => { if (d.bal !== undefined) setBalance(d.bal); })
+      .catch(() => {});
+  }, 5000);
+
 })();
-</script>`);
+</script>
+</body>
+</html>`;
 }
 
 function loginPage(authUrl) {
@@ -321,6 +596,25 @@ function errPage(title, msg, btnHref, btnLabel) {
 <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1">
 <div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(btnHref ?? "/login")}">${esc(btnLabel ?? "Back to login")}</a></div>
 </div>`);
+}
+
+// ===========================================================================
+// RNG payout engine (house edge ~3%)
+// Returns net delta relative to bet (e.g. bet=100, returns +200 for 3×)
+// ===========================================================================
+function rollPayout(bet) {
+  const r = Math.random();
+  // Probability table (cumulative). House edge ≈ 3%.
+  // win 5×  → 2%  → r < 0.02
+  // win 3×  → 5%  → r < 0.07
+  // win 2×  → 10% → r < 0.17
+  // win 1×  → 30% → r < 0.47   (push: get bet back, delta=0)
+  // lose     → 53%
+  if (r < 0.02)  return bet  * 4;   // net delta = +4× bet (returned 5× total)
+  if (r < 0.07)  return bet  * 2;   // net delta = +2× bet
+  if (r < 0.17)  return bet  * 1;   // net delta = +1× bet
+  if (r < 0.47)  return 0;          // push
+  return -bet;                       // lose
 }
 
 // ===========================================================================
@@ -367,10 +661,7 @@ export class WebServer {
       let assetPath = path.slice("/fishslot".length) || "/";
       if (assetPath === "/" || assetPath === "") assetPath = "/index.html";
       const asset = getFishslotAsset(assetPath);
-      if (!asset) {
-        res.writeHead(404);
-        return res.end("Not found");
-      }
+      if (!asset) { res.writeHead(404); return res.end("Not found"); }
       res.writeHead(200, {
         "Content-Type":   asset.mime,
         "Cache-Control":  "public, max-age=3600",
@@ -392,45 +683,39 @@ export class WebServer {
       ));
     }
 
-    // ── GAME VIEWER ──────────────────────────────────────────────────────────
+    // ── GAME PAGE ─────────────────────────────────────────────────────────────
     if (path === "/game/fishslot" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
 
       const token = u.searchParams.get("token");
-      const bet   = parseInt(u.searchParams.get("bet") ?? "0");
       const user  = await this.db.getUser(uid);
       const bal   = Number(user?.bal ?? 0);
       const cookies = parseCookies(req);
-      const tag   = decodeURIComponent(cookies.dtag ?? "Player");
+      const tag    = decodeURIComponent(cookies.dtag ?? "Player");
       const avatar = decodeURIComponent(cookies.dav  ?? "");
 
+      let initBet = 10;
       if (token && pendingSessions.has(token)) {
         const sess = pendingSessions.get(token);
         if (sess.uid !== uid) {
           return this._html(res, 403, errPage(
             "\u26d4 Wrong Account",
-            "This game link belongs to a different Fluxer account. Log out and switch accounts.",
+            "This game link belongs to a different Fluxer account.",
             "/login", "Switch account"
           ));
         }
-        return this._html(res, 200, fishslotPage(bal, tag, avatar, token, sess.bet));
+        initBet = sess.bet;
+        // Don't delete pendingSessions here — the user can refresh without losing their bet setting
       }
 
-      // Direct lobby access — show game without a pending bet session
-      return this._html(res, 200, fishslotPage(bal, tag, avatar, "", 0));
+      return this._html(res, 200, fishslotPage(bal, tag, avatar, token ?? "", initBet));
     }
 
-    // ── FISHSLOT RESULT CALLBACK ─────────────────────────────────────────────
-    // Called by the parent page's JS after each spin round.
-    // Body: { token, won: <absolute final balance in game>, bet, originalBal }
-    // Strategy:
-    //   - The game tracks its internal balance starting from the FC balance we
-    //     injected.  After each spin, fluxer-bridge.js reports the final balance.
-    //   - delta = won - originalBal (net change from session start)
-    //   - We SET the user's DB balance to originalBal + delta = won.
-    //   - This is atomic: we always authorise from the DB value, not increment.
-    if (path === "/api/fishslot/result" && req.method === "POST") {
+    // ── SPIN ENDPOINT ─────────────────────────────────────────────────────────
+    // Deducts the bet from DB immediately and returns a spinToken.
+    // This is the authoritative deduction — the game animation is just visual.
+    if (path === "/api/fishslot/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
 
@@ -438,44 +723,67 @@ export class WebServer {
       try { body = JSON.parse(await readBody(req)); }
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
 
-      const { token, won, bet, originalBal } = body;
+      const bet = Math.max(1, Math.floor(Number(body.bet) || 0));
+      if (bet < 1) return this._json(res, 400, { error: "Invalid bet" });
 
-      // Resolve the session (if any)
-      let sess = null;
-      if (token && pendingSessions.has(token)) {
-        sess = pendingSessions.get(token);
-        if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
-        pendingSessions.delete(token);
+      const user  = await this.db.getUser(uid);
+      const dbBal = Number(user?.bal ?? 0);
+
+      if (dbBal < bet) return this._json(res, 400, { error: "Insufficient balance" });
+
+      // Deduct bet
+      await this.db.updateBalance(uid, -bet);
+      const afterDeduct = dbBal - bet;
+
+      // Store spin session for resolve step
+      const spinToken = crypto.randomBytes(24).toString("hex");
+      spinSessions.set(spinToken, {
+        uid,
+        bet,
+        dbBalBefore: dbBal,
+        ts: Date.now(),
+      });
+
+      return this._json(res, 200, { ok: true, spinToken, newBal: afterDeduct });
+    }
+
+    // ── RESOLVE ENDPOINT ─────────────────────────────────────────────────────
+    // Called after the slot animation completes. Applies RNG payout.
+    if (path === "/api/fishslot/resolve" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return this._json(res, 400, { error: "Bad JSON" }); }
+
+      const { spinToken } = body;
+      if (!spinToken || !spinSessions.has(spinToken)) {
+        return this._json(res, 400, { error: "Unknown or expired spin token" });
       }
 
-      // Authoritative original balance
-      const user       = await this.db.getUser(uid);
-      const dbBal      = Number(user?.bal ?? 0);
-      // Use the balance we passed into the game page as the reference point.
-      // If originalBal matches dbBal (no concurrent changes), this is exact.
-      const ref        = Number(originalBal ?? sess?.bet ? dbBal : dbBal);
-      const finalBal   = Math.max(0, Math.floor(Number(won) || 0));
+      const sess = spinSessions.get(spinToken);
+      if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
+      spinSessions.delete(spinToken);
 
-      // Cap winnings — final balance cannot exceed original + (10× session bet)
-      // as a basic sanity/anti-cheat guard.
-      const sessionBet = Number(bet ?? sess?.bet ?? 0);
-      const cap        = dbBal + sessionBet * 10;
-      const safeFinal  = Math.min(finalBal, cap);
+      // Roll payout
+      const delta = rollPayout(sess.bet);
 
-      // Compute delta relative to what the DB currently holds
-      const delta = safeFinal - dbBal;
-
-      // Apply the balance change
+      // Apply payout (delta can be negative, zero, or positive)
       if (delta !== 0) {
         await this.db.updateBalance(uid, delta);
       }
 
-      // Record the game result
-      const won_net = safeFinal - dbBal;  // same as delta before update
-      await this.db.recordGame(uid, won_net >= 0, sessionBet);
+      // Record game result
+      await this.db.recordGame(uid, delta >= 0, sess.bet);
 
       const updated = await this.db.getUser(uid);
       const newBal  = Number(updated?.bal ?? 0);
+
+      // Also close the Discord pending session if one existed
+      if (body.discordToken && pendingSessions.has(body.discordToken)) {
+        pendingSessions.delete(body.discordToken);
+      }
 
       return this._json(res, 200, { ok: true, delta, newBal });
     }
