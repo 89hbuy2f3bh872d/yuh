@@ -4,7 +4,7 @@ import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
 import { pendingSessions } from "../commands/fishslot.mjs";
-import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
+import { getFishslotAsset } from "./FishslotAssets.mjs";
 
 // ---------------------------------------------------------------------------
 // Fluxer OAuth2
@@ -14,18 +14,16 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// In-memory spin sessions
-// token -> { uid, bet, dbBalBefore, ts }
+// In-memory spin sessions  token -> { uid, bet, ts }
 // ---------------------------------------------------------------------------
 const spinSessions = new Map();
-
 setInterval(() => {
   const cut = Date.now() - 10 * 60 * 1000;
   for (const [k, v] of spinSessions) if (v.ts < cut) spinSessions.delete(k);
 }, 5 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
-// Low-level fetch helper
+// Helpers
 // ---------------------------------------------------------------------------
 function rawFetch(url, opts = {}, maxRedirects = 4) {
   return new Promise((resolve, reject) => {
@@ -46,9 +44,8 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
         method:   opts.method ?? "GET",
         headers },
       res => {
-        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && maxRedirects > 0)
           return resolve(rawFetch(new URL(res.headers.location, url).toString(), opts, maxRedirects - 1));
-        }
         const chunks = [];
         res.on("data", c => chunks.push(c));
         res.on("end", () => {
@@ -73,9 +70,6 @@ async function nodeFetch(url, opts = {}) {
   return r.body.toString("utf8");
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -102,179 +96,116 @@ function readBody(req) {
 }
 
 // ---------------------------------------------------------------------------
+// RNG payout (house edge ~3%)
+// Returns net delta relative to bet.
+// ---------------------------------------------------------------------------
+function rollPayout(bet) {
+  const r = Math.random();
+  if (r < 0.02)  return bet * 4;   // 5× total, 2%
+  if (r < 0.07)  return bet * 2;   // 3× total, 5%
+  if (r < 0.17)  return bet * 1;   // 2× total, 10%
+  if (r < 0.47)  return 0;         // push, 30%
+  return -bet;                      // lose, 53%
+}
+
+// ---------------------------------------------------------------------------
 // Shared CSS
 // ---------------------------------------------------------------------------
-const SHARED_CSS = `
+const BASE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
-body{background:#060e06;color:#e2ffe2;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+html,body{height:100%;overflow:hidden;background:#040d04;-webkit-font-smoothing:antialiased}
+body{font-family:'Segoe UI',system-ui,sans-serif;color:#e2ffe2}
 a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:#0a1a0a}
-::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
-::-webkit-scrollbar-thumb:hover{background:#2ecc71aa}
-.nav{position:sticky;top:0;z-index:100;background:rgba(6,14,6,.92);backdrop-filter:blur(12px);border-bottom:1px solid #2ecc7122;display:flex;align-items:center;gap:1rem;padding:.6rem 1.5rem}
-.nav-logo{font-size:1.1rem;font-weight:900;color:#2ecc71;display:flex;align-items:center;gap:.4rem;white-space:nowrap}
-.nav-spacer{flex:1}
-.nav-bal{font-size:.8rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
-.nav-bal strong{color:#2ecc71;font-size:.95rem}
-.nav-user{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:#a8d5a8}
-.nav-avatar{width:28px;height:28px;border-radius:50%;border:1px solid #2ecc7144;object-fit:cover}
-.nav-logout{font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;cursor:pointer}
-.nav-logout:hover{color:#2ecc71}
-.ambient{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 70% 50% at 50% 0%,#0d3b0d33 0%,transparent 70%)}
-.wrap{position:relative;z-index:1;padding:1.5rem 1.5rem 3rem}
-.section-title{font-size:1rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#2ecc71;text-shadow:0 0 10px #2ecc7155;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;max-width:960px}
-.game-card{background:#0a1f0a;border:1px solid #2ecc7122;border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s}
-.game-card:hover{transform:translateY(-4px) scale(1.02);box-shadow:0 8px 32px #2ecc7133;border-color:#2ecc7166}
-.game-card:active{transform:translateY(-1px) scale(1.01)}
-.game-thumb-wrap{width:100%;aspect-ratio:4/3;overflow:hidden;background:#071507;position:relative}
-.game-thumb{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
-.game-card:hover .game-thumb{transform:scale(1.06)}
-.game-play-overlay{position:absolute;inset:0;background:rgba(6,14,6,.6);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s}
-.game-card:hover .game-play-overlay{opacity:1}
-.game-play-btn{background:#2ecc71;color:#060e06;font-weight:900;font-size:.85rem;padding:.45rem 1.1rem;border-radius:8px;letter-spacing:.04em;box-shadow:0 0 20px #2ecc7188}
-.game-info{padding:.6rem .7rem .7rem}
-.game-name{font-size:.78rem;font-weight:700;color:#c8f5c8}
-.game-meta{font-size:.65rem;color:#4a9a4a;margin-top:.2rem}
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1}
-.login-card{background:linear-gradient(160deg,#0e230e,#071507);border:2px solid #2ecc7133;border-radius:20px;padding:2.5rem 2rem;max-width:400px;width:100%;text-align:center;box-shadow:0 0 60px #2ecc7111,inset 0 1px 0 #2ecc7122}
-.login-logo{font-size:3.5rem;margin-bottom:.5rem}
-.login-title{font-size:2rem;font-weight:900;color:#2ecc71;text-shadow:0 0 20px #2ecc71cc;margin-bottom:.25rem}
-.login-sub{font-size:.75rem;letter-spacing:.25em;text-transform:uppercase;color:#4a9a4a;margin-bottom:1.5rem}
-.login-desc{font-size:.9rem;color:#a8d5a8;display:block;margin-bottom:1.5rem;line-height:1.6}
-.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.6rem;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-size:1rem;font-weight:900;padding:.85rem 2rem;border-radius:12px;letter-spacing:.04em;box-shadow:0 4px 20px #2ecc7144;transition:all .18s;width:100%}
-.login-btn:hover{background:linear-gradient(135deg,#2ecc71,#39d97a);box-shadow:0 6px 30px #2ecc7166;transform:translateY(-1px)}
-.login-footer{margin-top:1.5rem;font-size:.7rem;color:#2a4a2a;line-height:1.7}
-.err-card{background:#0e230e;border:2px solid #2ecc7133;border-radius:16px;padding:2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 0 40px #2ecc7111;margin:auto;position:relative;z-index:1}
-.err-card h1{color:#2ecc71;font-size:1.5rem;margin-bottom:1rem}
-.err-card p{color:#a8d5a8;margin-bottom:1rem;line-height:1.6}
-.err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;text-decoration:none;padding:.75rem 1.5rem;border-radius:10px;margin-top:.75rem;border:none;cursor:pointer;font-size:.9rem;transition:all .18s}
-.err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px #2ecc7155}
-@media(max-width:600px){.nav{padding:.5rem 1rem;gap:.6rem}.wrap{padding:1rem 1rem 2rem}}
 `;
 
 // ---------------------------------------------------------------------------
-// Page builders
-// ---------------------------------------------------------------------------
-function shellPage(headExtra, bodyContent) {
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SirGreen Casino</title>\n<style>${SHARED_CSS}</style>\n${headExtra ?? ""}\n</head>\n<body>\n<div class="ambient"></div>\n${bodyContent}\n</body>\n</html>`;
-}
-
-function navBar(tag, avatar, bal) {
-  const av = avatar
-    ? `<img class="nav-avatar" src="${esc(avatar)}" alt="${esc(tag)}" loading="lazy">`
-    : `<span style="font-size:1.3rem">🐟</span>`;
-  return `<nav class="nav"><div class="nav-logo"><span>🐟</span> SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal" id="navBal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><div class="nav-user">${av}<span>${esc(tag)}</span></div><a href="/logout" class="nav-logout">logout</a></nav>`;
-}
-
-function lobbyPage(bal, tag, avatar) {
-  const card = `
-    <div class="game-card" onclick="window.location.href='/game/fishslot'">
-      <div class="game-thumb-wrap">
-        <div style="width:100%;height:100%;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:4rem">🐟</div>
-        <div class="game-play-overlay"><div class="game-play-btn">&#9654; Play</div></div>
-      </div>
-      <div class="game-info">
-        <div class="game-name">🐟 Fish Slot</div>
-        <div class="game-meta">vermingov</div>
-      </div>
-    </div>`;
-
-  return shellPage("", `
-${navBar(tag, avatar, bal)}
-<div class="wrap">
-  <div class="section-title">🐟 Game Lobby</div>
-  <div class="games-grid">${card}</div>
-</div>`);
-}
-
-// ---------------------------------------------------------------------------
-// Fish Slot wrapper page
+// Game page — C3 scripts load directly in THIS document (no iframe)
 //
-// Architecture:
-//   - The fishslot C3 game runs inside an <iframe> and is NEVER modified.
-//     Its internal balance display is irrelevant — we ignore it entirely.
-//   - An overlay DIV sits above the iframe and owns the REAL FC balance UI.
-//   - The overlay intercepts pointer events that land on the spin button area.
-//     It does NOT try to inject anything into the C3 runtime.
-//   - Bet controls, balance display, and all FC logic live in the overlay.
-//   - Each spin: POST /api/fishslot/spin -> server deducts bet, returns spinToken
-//     After spin animation: POST /api/fishslot/resolve -> server applies payout
-//   - Balance is polled every 4 s from /api/balance so it always reflects DB truth.
+// The C3 canvas fills the entire viewport below our overlay bar.
+// We intercept pointerdown on the canvas to detect spin clicks.
+// All money logic is server-side; C3's internal balance display is ignored.
 // ---------------------------------------------------------------------------
-function fishslotPage(bal, tag, avatar, discordToken, initBet) {
-  const safeBal     = Number(bal)   || 0;
+function gamePage(bal, tag, initBet, discordToken) {
+  const safeBal   = Number(bal)     || 0;
   const safeInitBet = Number(initBet) || 10;
-  const safeToken   = esc(discordToken ?? "");
+  const safeToken = esc(discordToken ?? "");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fish Slot — SirGreen Casino</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Fish Slot</title>
+<link rel="manifest" href="/fishslot/appmanifest.json">
+<link rel="stylesheet" href="/fishslot/style.css">
 <style>
-${SHARED_CSS}
-html, body { height: 100%; overflow: hidden; }
-.fs-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-/* ── top bar ── */
-.fs-bar {
-  flex-shrink: 0;
+${BASE_CSS}
+/* ── overlay bar ── */
+#fluxerBar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 99999;
   display: flex;
   align-items: center;
-  gap: .75rem;
-  padding: .45rem 1rem;
-  background: rgba(6,14,6,.97);
-  border-bottom: 1px solid #2ecc7122;
+  gap: .6rem;
   flex-wrap: wrap;
-  z-index: 200;
-}
-.fs-back {
-  background: #0a1f0a;
-  border: 1px solid #2ecc7133;
-  color: #a8e6a8;
-  padding: .3rem .75rem;
-  border-radius: 7px;
-  font-size: .75rem;
-  font-weight: 700;
-  transition: all .18s;
-}
-.fs-back:hover { border-color: #2ecc71; color: #2ecc71; }
-.fs-title { font-size: .9rem; font-weight: 900; color: #e2ffe2; flex: 1; min-width: 0; }
-.fs-balance-wrap {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  background: #0a1f0a;
-  border: 1px solid #2ecc7133;
-  border-radius: 8px;
-  padding: .3rem .7rem;
-  font-size: .8rem;
-  font-weight: 700;
-  color: #a8e6a8;
-}
-.fs-balance-wrap strong { color: #2ecc71; font-size: .95rem; }
-.fs-bet-wrap {
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-  background: #0a1f0a;
-  border: 1px solid #2ecc7133;
-  border-radius: 8px;
-  padding: .3rem .6rem;
+  padding: .4rem .8rem;
+  background: rgba(4,13,4,.96);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #2ecc7122;
+  font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: .78rem;
+  color: #e2ffe2;
+  min-height: 44px;
+  user-select: none;
+}
+#fluxerBar .fb-back {
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  color: #a8e6a8;
+  padding: .25rem .6rem;
+  border-radius: 6px;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color .18s, color .18s;
+}
+#fluxerBar .fb-back:hover { border-color: #2ecc71; color: #2ecc71; }
+#fluxerBar .fb-title {
+  font-weight: 900;
+  color: #e2ffe2;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#fluxerBar .fb-bal {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  border-radius: 7px;
+  padding: .25rem .6rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#fluxerBar .fb-bal strong { color: #2ecc71; font-size: .9rem; }
+#fluxerBar .fb-bet {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  background: #0a1f0a;
+  border: 1px solid #2ecc7133;
+  border-radius: 7px;
+  padding: .25rem .5rem;
   font-weight: 700;
 }
-.fs-bet-wrap label { color: #4a9a4a; }
-.fs-bet-input {
-  width: 72px;
+#fluxerBar .fb-bet label { color: #4a9a4a; }
+#fluxerBar .fb-bet input {
+  width: 68px;
   background: #071507;
   border: 1px solid #2ecc7122;
   border-radius: 5px;
@@ -282,293 +213,166 @@ html, body { height: 100%; overflow: hidden; }
   font-size: .8rem;
   font-weight: 700;
   text-align: right;
-  padding: .2rem .4rem;
+  padding: .15rem .35rem;
   outline: none;
+  font-family: inherit;
 }
-.fs-bet-input:focus { border-color: #2ecc71; }
-.fs-spin-btn {
-  background: linear-gradient(135deg, #27ae60, #2ecc71);
+#fluxerBar .fb-bet input:focus { border-color: #2ecc71; }
+#fluxerBar .fb-spin {
+  background: linear-gradient(135deg,#27ae60,#2ecc71);
   color: #060e06;
   font-weight: 900;
-  font-size: .82rem;
-  padding: .35rem .9rem;
-  border-radius: 8px;
+  font-size: .78rem;
+  padding: .28rem .8rem;
+  border-radius: 7px;
   letter-spacing: .04em;
-  box-shadow: 0 2px 12px #2ecc7155;
+  box-shadow: 0 2px 10px #2ecc7144;
   transition: all .18s;
   white-space: nowrap;
 }
-.fs-spin-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 18px #2ecc7188; }
-.fs-spin-btn:disabled { opacity: .45; cursor: not-allowed; }
-/* ── game area ── */
-.fs-game-area {
-  flex: 1;
-  position: relative;
-  min-height: 0;
-  background: #040d04;
-}
-.fs-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  display: block;
-}
-/* ── result banner ── */
-.fs-banner {
+#fluxerBar .fb-spin:hover:not(:disabled) { box-shadow: 0 4px 16px #2ecc7177; transform: translateY(-1px); }
+#fluxerBar .fb-spin:disabled { opacity: .45; cursor: not-allowed; }
+#fluxerBar .fb-logout { font-size: .65rem; color: #3a6b3a; border-bottom: 1px solid #2ecc7122; white-space: nowrap; }
+#fluxerBar .fb-logout:hover { color: #2ecc71; }
+/* result banner */
+#fbBanner {
   display: none;
   position: fixed;
-  bottom: 1.4rem;
+  bottom: 1.2rem;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 99999;
   background: #0e230e;
   border: 2px solid #2ecc7133;
-  border-radius: 12px;
-  padding: .7rem 1.4rem;
+  border-radius: 11px;
+  padding: .6rem 1.2rem;
+  font-family: 'Segoe UI', system-ui, sans-serif;
   font-weight: 700;
-  font-size: .95rem;
-  z-index: 9999;
-  box-shadow: 0 4px 24px #2ecc7133;
-  white-space: nowrap;
+  font-size: .9rem;
+  color: #e2ffe2;
+  box-shadow: 0 4px 20px #2ecc7122;
   pointer-events: none;
-  transition: opacity .3s;
+  white-space: nowrap;
 }
-/* ── spinner overlay (while resolving) ── */
-.fs-resolving {
-  display: none;
-  position: absolute;
-  inset: 0;
-  background: rgba(4,13,4,.55);
-  z-index: 50;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: .75rem;
-  pointer-events: all;
-}
-.fs-resolving.active { display: flex; }
-.fs-spinner {
-  width: 40px; height: 40px;
-  border: 3px solid #2ecc7122;
-  border-top-color: #2ecc71;
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.fs-resolving-txt { font-size: .8rem; color: #4a9a4a; }
-/* ── loading overlay ── */
-.fs-loading {
-  position: absolute;
-  inset: 0;
-  background: #040d04;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  z-index: 40;
-  transition: opacity .4s;
-}
-.fs-loading.hidden { opacity: 0; pointer-events: none; }
-.fs-loading-spinner {
-  width: 48px; height: 48px;
-  border: 3px solid #2ecc7122;
-  border-top-color: #2ecc71;
-  border-radius: 50%;
-  animation: spin .8s linear infinite;
-}
-.fs-loading-txt { font-size: .85rem; color: #4a9a4a; }
+/* push C3 canvas down so it's not under the bar */
+#c3canvas, canvas { margin-top: 44px !important; }
 </style>
 </head>
 <body>
-<div class="fs-layout">
 
-  <!-- ── Top control bar ── -->
-  <div class="fs-bar">
-    <button class="fs-back" onclick="history.back()">&#8592; Lobby</button>
-    <div class="fs-title">🐟 Fish Slot</div>
-
-    <div class="fs-balance-wrap">
-      💰 <span id="balLabel">Balance:</span>&nbsp;<strong id="balNum">${safeBal.toLocaleString()}</strong>&nbsp;FC
-    </div>
-
-    <div class="fs-bet-wrap">
-      <label for="betInput">Bet:</label>
-      <input id="betInput" class="fs-bet-input" type="number" min="1" step="1" value="${safeInitBet}">
-      <span style="color:#4a9a4a;font-size:.75rem">FC</span>
-    </div>
-
-    <button id="spinBtn" class="fs-spin-btn">🎰 Spin</button>
-
-    <a href="/logout" style="font-size:.68rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap">logout</a>
+<!-- ── Fluxer FC overlay bar ── -->
+<div id="fluxerBar">
+  <button class="fb-back" onclick="location.href='/lobby'">&#8592; Lobby</button>
+  <span class="fb-title">🐟 Fish Slot</span>
+  <div class="fb-bal">💰 Balance:&nbsp;<strong id="fbBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
+  <div class="fb-bet">
+    <label for="fbBet">Bet:</label>
+    <input id="fbBet" type="number" min="1" step="1" value="${safeInitBet}">
+    <span style="color:#4a9a4a">FC</span>
   </div>
-
-  <!-- ── Game canvas area ── -->
-  <div class="fs-game-area">
-    <!-- Loading overlay -->
-    <div class="fs-loading" id="fsLoading">
-      <div class="fs-loading-spinner"></div>
-      <div class="fs-loading-txt">Loading Fish Slot&#8230;</div>
-    </div>
-
-    <!-- Resolving overlay (shown while waiting for spin result) -->
-    <div class="fs-resolving" id="fsResolving">
-      <div class="fs-spinner"></div>
-      <div class="fs-resolving-txt">Saving result&#8230;</div>
-    </div>
-
-    <!-- The unmodified C3 game. We do NOT touch its internals. -->
-    <iframe
-      id="gameFrame"
-      class="fs-iframe"
-      src="/fishslot/"
-      allowfullscreen
-      allow="autoplay; fullscreen"
-    ></iframe>
-  </div>
+  <button id="fbSpinBtn" class="fb-spin">🎰 Spin</button>
+  <a href="/logout" class="fb-logout">logout</a>
 </div>
 
-<!-- Result banner -->
-<div id="fsBanner" class="fs-banner"></div>
+<!-- result banner -->
+<div id="fbBanner"></div>
 
+<!-- ── C3 game scripts (same document — no iframe) ── -->
 <script>
-(function () {
-  // ── State ──────────────────────────────────────────────────────────────────
+if (location.protocol.substr(0,4) === "file") {
+  alert("Web exports won't work until you upload them.");
+}
+</script>
+<script src="/fishslot/scripts/supportcheck.js"></script>
+<script src="/fishslot/scripts/offlineclient.js" type="module"></script>
+<script src="/fishslot/scripts/main.js" type="module"></script>
+<script src="/fishslot/scripts/register-sw.js" type="module"></script>
+
+<!-- ── Fluxer currency logic ── -->
+<script>
+(function(){
   const DISCORD_TOKEN = "${safeToken}";
-  let currentBal   = ${safeBal};
-  let spinning     = false;    // true while a spin is in-flight
-  let pendingSpinToken = null; // set by /api/fishslot/spin, cleared by resolve
+  let bal     = ${safeBal};
+  let spinning = false;
 
-  // ── DOM refs ───────────────────────────────────────────────────────────────
-  const balNum     = document.getElementById("balNum");
-  const betInput   = document.getElementById("betInput");
-  const spinBtn    = document.getElementById("spinBtn");
-  const fsLoading  = document.getElementById("fsLoading");
-  const fsResolving = document.getElementById("fsResolving");
-  const fsBanner   = document.getElementById("fsBanner");
-  const gameFrame  = document.getElementById("gameFrame");
+  const balNum  = document.getElementById("fbBalNum");
+  const betInput= document.getElementById("fbBet");
+  const spinBtn = document.getElementById("fbSpinBtn");
+  const banner  = document.getElementById("fbBanner");
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function setBalance(n) {
-    currentBal = Math.max(0, Math.floor(Number(n) || 0));
-    balNum.textContent = currentBal.toLocaleString();
+  function setBal(n) {
+    bal = Math.max(0, Math.floor(Number(n)||0));
+    balNum.textContent = bal.toLocaleString();
   }
-
-  function getBet() {
-    return Math.max(1, Math.floor(Number(betInput.value) || 1));
-  }
-
-  function setSpinning(s) {
+  function getBet() { return Math.max(1, Math.floor(Number(betInput.value)||1)); }
+  function setSpin(s) {
     spinning = s;
     spinBtn.disabled = s;
-    spinBtn.textContent = s ? "⏳ Spinning…" : "🎰 Spin";
+    spinBtn.textContent = s ? "\u23f3 Spinning\u2026" : "\ud83c\udfb0 Spin";
   }
-
   function showBanner(msg, win) {
-    fsBanner.textContent = msg;
-    fsBanner.style.display = "block";
-    fsBanner.style.borderColor = win ? "#2ecc7188" : "#e74c3c88";
-    fsBanner.style.color = win ? "#e2ffe2" : "#ffcccc";
-    clearTimeout(fsBanner._t);
-    fsBanner._t = setTimeout(() => { fsBanner.style.display = "none"; }, 5500);
+    banner.textContent = msg;
+    banner.style.borderColor = win ? "#2ecc7188" : "#e74c3c88";
+    banner.style.color = win ? "#e2ffe2" : "#ffcccc";
+    banner.style.display = "block";
+    clearTimeout(banner._t);
+    banner._t = setTimeout(()=>{ banner.style.display="none"; }, 5000);
   }
-
-  // ── Hide loading overlay once iframe loads ─────────────────────────────────
-  gameFrame.addEventListener("load", () => {
-    setTimeout(() => fsLoading.classList.add("hidden"), 800);
-  });
-  setTimeout(() => fsLoading.classList.add("hidden"), 14000);
-
-  // ── Spin handler ───────────────────────────────────────────────────────────
-  // 1. POST /api/fishslot/spin  → server deducts bet from DB immediately,
-  //    returns { spinToken, newBal } or { error }.
-  // 2. We update the overlay balance and let the C3 game play its animation.
-  // 3. After SPIN_WAIT ms (animation duration), POST /api/fishslot/resolve
-  //    → server applies RNG payout, returns { delta, newBal }.
-  // 4. Update overlay balance and show result banner.
-  //
-  // The C3 game's internal balance display is completely irrelevant.
-  // Players interact with the C3 game visually, but ALL money logic is ours.
-
-  const SPIN_WAIT = 4500; // ms — conservative slot animation duration
 
   async function doSpin() {
     if (spinning) return;
     const bet = getBet();
+    if (bet < 1)   { showBanner("\u26a0\ufe0f Bet must be at least 1 FC", false); return; }
+    if (bet > bal) { showBanner("\u26a0\ufe0f Not enough FC!", false); return; }
 
-    if (bet < 1) { showBanner("⚠️ Bet must be at least 1 FC", false); return; }
-    if (bet > currentBal) { showBanner("⚠️ Not enough FC!", false); return; }
+    setSpin(true);
+    banner.style.display = "none";
 
-    setSpinning(true);
-    fsBanner.style.display = "none";
-
-    // Step 1: deduct bet server-side
+    // 1. Deduct bet server-side immediately
     let spinToken;
     try {
       const r = await fetch("/api/fishslot/spin", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ bet, discordToken: DISCORD_TOKEN }),
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ bet, discordToken: DISCORD_TOKEN }),
       });
       const d = await r.json();
-      if (!r.ok || d.error) {
-        showBanner("⚠️ " + (d.error || "Spin failed"), false);
-        setSpinning(false);
-        return;
-      }
-      spinToken      = d.spinToken;
-      pendingSpinToken = spinToken;
-      setBalance(d.newBal); // balance after deduction
-    } catch (e) {
-      showBanner("⚠️ Network error — spin not placed.", false);
-      setSpinning(false);
-      return;
-    }
+      if (!r.ok || d.error) { showBanner("\u26a0\ufe0f "+(d.error||"Spin failed"), false); setSpin(false); return; }
+      spinToken = d.spinToken;
+      setBal(d.newBal);
+    } catch { showBanner("\u26a0\ufe0f Network error", false); setSpin(false); return; }
 
-    // Step 2: wait for animation
-    await new Promise(r => setTimeout(r, SPIN_WAIT));
+    // 2. Wait for C3 animation (~4.5 s)
+    await new Promise(r=>setTimeout(r,4500));
 
-    // Step 3: resolve payout
-    fsResolving.classList.add("active");
+    // 3. Resolve payout
     try {
       const r = await fetch("/api/fishslot/resolve", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ spinToken }),
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ spinToken, discordToken: DISCORD_TOKEN }),
       });
       const d = await r.json();
       if (!r.ok || d.error) {
-        showBanner("⚠️ " + (d.error || "Could not save result"), false);
+        showBanner("\u26a0\ufe0f "+(d.error||"Result error"), false);
       } else {
-        setBalance(d.newBal);
-        const delta = Number(d.delta) || 0;
-        if (delta > 0) {
-          showBanner("🎉 +" + delta.toLocaleString() + " FC — you won!", true);
-        } else {
-          showBanner("💸 Spin complete · " + Math.abs(delta).toLocaleString() + " FC lost.", false);
-        }
+        setBal(d.newBal);
+        const delta = Number(d.delta)||0;
+        if (delta > 0)       showBanner("\ud83c\udf89 +"+delta.toLocaleString()+" FC \u2014 you won!", true);
+        else if (delta === 0) showBanner("\ud83d� Push \u2014 bet returned.", true);
+        else                  showBanner("\ud83d\udcb8 "+Math.abs(delta).toLocaleString()+" FC lost.", false);
       }
-    } catch {
-      showBanner("⚠️ Could not save result — contact admin.", false);
-    } finally {
-      pendingSpinToken = null;
-      fsResolving.classList.remove("active");
-      setSpinning(false);
-    }
+    } catch { showBanner("\u26a0\ufe0f Could not save result", false); }
+    finally { setSpin(false); }
   }
 
   spinBtn.addEventListener("click", doSpin);
+  betInput.addEventListener("keydown", e=>{ if(e.key==="Enter") doSpin(); });
 
-  // Allow Enter in bet input to trigger spin
-  betInput.addEventListener("keydown", e => { if (e.key === "Enter") doSpin(); });
-
-  // ── Periodic balance sync (every 5 s) ─────────────────────────────────────
-  // Keeps the overlay in sync with the DB even if the user has another tab open.
-  setInterval(() => {
-    if (spinning) return; // don't poll mid-spin
-    fetch("/api/balance")
-      .then(r => r.json())
-      .then(d => { if (d.bal !== undefined) setBalance(d.bal); })
-      .catch(() => {});
+  // Poll balance every 5 s
+  setInterval(()=>{
+    if (spinning) return;
+    fetch("/api/balance").then(r=>r.json()).then(d=>{ if(d.bal!==undefined) setBal(d.bal); }).catch(()=>{});
   }, 5000);
 
 })();
@@ -577,44 +381,69 @@ html, body { height: 100%; overflow: hidden; }
 </html>`;
 }
 
-function loginPage(authUrl) {
-  return shellPage("", `
-<div class="login-wrap">
-  <div class="login-card">
-    <div class="login-logo">🐟</div>
-    <div class="login-title">SirGreen Casino</div>
-    <div class="login-sub">Powered by FluxCoins</div>
-    <span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play Fish Slot with your FluxCoin balance.</span>
-    <a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a>
-    <div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div>
+// ---------------------------------------------------------------------------
+// Lobby
+// ---------------------------------------------------------------------------
+const LOBBY_CSS = `
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+body{background:#060e06;color:#e2ffe2;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
+.nav{position:sticky;top:0;z-index:100;background:rgba(6,14,6,.92);backdrop-filter:blur(12px);border-bottom:1px solid #2ecc7122;display:flex;align-items:center;gap:.8rem;padding:.6rem 1.2rem;min-height:50px}
+.nav-logo{font-weight:900;color:#2ecc71;font-size:1rem;white-space:nowrap}
+.nav-spacer{flex:1}
+.nav-bal{font-size:.78rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
+.nav-bal strong{color:#2ecc71}
+.nav-logout{font-size:.68rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122}
+.nav-logout:hover{color:#2ecc71}
+.wrap{padding:1.5rem;max-width:960px;margin:0 auto}
+.section-title{font-size:.9rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#2ecc71;text-shadow:0 0 10px #2ecc7155;margin-bottom:1.2rem}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.game-card{background:#0a1f0a;border:1px solid #2ecc7122;border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s}
+.game-card:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 8px 28px #2ecc7133;border-color:#2ecc7166}
+.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:3.5rem}
+.game-info{padding:.5rem .6rem .6rem}
+.game-name{font-size:.75rem;font-weight:700;color:#c8f5c8}
+.game-meta{font-size:.62rem;color:#4a9a4a;margin-top:.15rem}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.login-card{background:linear-gradient(160deg,#0e230e,#071507);border:2px solid #2ecc7133;border-radius:18px;padding:2.5rem 2rem;max-width:380px;width:100%;text-align:center;box-shadow:0 0 50px #2ecc7111}
+.login-logo{font-size:3rem;margin-bottom:.4rem}
+.login-title{font-size:1.8rem;font-weight:900;color:#2ecc71;text-shadow:0 0 16px #2ecc71bb;margin-bottom:.2rem}
+.login-sub{font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:#4a9a4a;margin-bottom:1.4rem}
+.login-desc{font-size:.87rem;color:#a8d5a8;display:block;margin-bottom:1.4rem;line-height:1.6}
+.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-size:.95rem;font-weight:900;padding:.8rem 1.8rem;border-radius:10px;box-shadow:0 4px 18px #2ecc7144;transition:all .18s;width:100%}
+.login-btn:hover{box-shadow:0 6px 26px #2ecc7166;transform:translateY(-1px)}
+.login-footer{margin-top:1.2rem;font-size:.67rem;color:#2a4a2a;line-height:1.7}
+.err-card{background:#0e230e;border:2px solid #2ecc7133;border-radius:14px;padding:2rem;max-width:400px;width:100%;text-align:center;box-shadow:0 0 36px #2ecc7111;margin:auto}
+.err-card h1{color:#2ecc71;font-size:1.4rem;margin-bottom:.8rem}
+.err-card p{color:#a8d5a8;margin-bottom:.8rem;line-height:1.6}
+.err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;padding:.7rem 1.4rem;border-radius:9px;margin-top:.6rem;cursor:pointer;font-size:.87rem;transition:all .18s}
+.err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px #2ecc7155}
+`;
+
+function lobbyPage(bal, tag) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SirGreen Casino</title><style>${LOBBY_CSS}</style></head><body>
+<nav class="nav"><div class="nav-logo">🐟 SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong id="navBal">${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.78rem;color:#a8d5a8">${esc(tag)}</span><a href="/logout" class="nav-logout">logout</a></nav>
+<div class="wrap">
+<div class="section-title">🎮 Game Lobby</div>
+<div class="games-grid">
+  <div class="game-card" onclick="location.href='/game/fishslot'">
+    <div class="game-thumb">🐟</div>
+    <div class="game-info"><div class="game-name">🐟 Fish Slot</div><div class="game-meta">vermingov</div></div>
   </div>
-</div>`);
+</div>
+</div>
+</body></html>`;
 }
 
-function errPage(title, msg, btnHref, btnLabel) {
-  return shellPage("", `
-<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1">
-<div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(btnHref ?? "/login")}">${esc(btnLabel ?? "Back to login")}</a></div>
-</div>`);
+function loginPage(authUrl) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SirGreen Casino</title><style>${LOBBY_CSS}</style></head><body><div class="login-wrap"><div class="login-card"><div class="login-logo">🐟</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play Fish Slot with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div></body></html>`;
 }
 
-// ===========================================================================
-// RNG payout engine (house edge ~3%)
-// Returns net delta relative to bet (e.g. bet=100, returns +200 for 3×)
-// ===========================================================================
-function rollPayout(bet) {
-  const r = Math.random();
-  // Probability table (cumulative). House edge ≈ 3%.
-  // win 5×  → 2%  → r < 0.02
-  // win 3×  → 5%  → r < 0.07
-  // win 2×  → 10% → r < 0.17
-  // win 1×  → 30% → r < 0.47   (push: get bet back, delta=0)
-  // lose     → 53%
-  if (r < 0.02)  return bet  * 4;   // net delta = +4× bet (returned 5× total)
-  if (r < 0.07)  return bet  * 2;   // net delta = +2× bet
-  if (r < 0.17)  return bet  * 1;   // net delta = +1× bet
-  if (r < 0.47)  return 0;          // push
-  return -bet;                       // lose
+function errPage(title, msg, href, label) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error</title><style>${LOBBY_CSS}</style></head><body><div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href??'/login')}">${esc(label??'Back')}</a></div></div></body></html>`;
 }
 
 // ===========================================================================
@@ -633,17 +462,14 @@ export class WebServer {
   }
 
   async start() {
-    await preloadFishslotAssets();
-
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
-        res.writeHead(500);
-        res.end("Internal error");
+        res.writeHead(500); res.end("Internal error");
       })
     );
     this._server.listen(this.port, "0.0.0.0", () =>
-      console.log(`[Web] SirGreen Casino running on port ${this.port}`));
+      console.log(`[Web] SirGreen Casino on port ${this.port}`));
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
       for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
@@ -654,13 +480,23 @@ export class WebServer {
     const u    = new URL(req.url, "http://localhost");
     const path = u.pathname;
 
+    // Root → lobby
     if (path === "/") return this._redirect(res, "/lobby");
 
-    // ── FISHSLOT STATIC FILES ─────────────────────────────────────────────────
-    if (path === "/fishslot" || path.startsWith("/fishslot/")) {
-      let assetPath = path.slice("/fishslot".length) || "/";
-      if (assetPath === "/" || assetPath === "") assetPath = "/index.html";
-      const asset = getFishslotAsset(assetPath);
+    // ===========================================================================
+    // /fishslot/* — serve static game assets (scripts, images, media, etc.)
+    // BUT redirect bare /fishslot and /fishslot/index.html to our wrapper page
+    // so users always go through /game/fishslot
+    // ===========================================================================
+    if (path === "/fishslot" || path === "/fishslot/") {
+      return this._redirect(res, "/game/fishslot");
+    }
+    if (path === "/fishslot/index.html") {
+      return this._redirect(res, "/game/fishslot");
+    }
+    if (path.startsWith("/fishslot/")) {
+      let assetPath = path.slice("/fishslot".length);
+      const asset   = getFishslotAsset(assetPath);
       if (!asset) { res.writeHead(404); return res.end("Not found"); }
       res.writeHead(200, {
         "Content-Type":   asset.mime,
@@ -670,7 +506,9 @@ export class WebServer {
       return res.end(asset.body);
     }
 
-    // ── LOBBY ────────────────────────────────────────────────────────────────
+    // ===========================================================================
+    // Lobby
+    // ===========================================================================
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -678,12 +516,13 @@ export class WebServer {
       const cookies = parseCookies(req);
       return this._html(res, 200, lobbyPage(
         Number(user?.bal ?? 0),
-        decodeURIComponent(cookies.dtag ?? "Player"),
-        decodeURIComponent(cookies.dav  ?? "")
+        decodeURIComponent(cookies.dtag ?? "Player")
       ));
     }
 
-    // ── GAME PAGE ─────────────────────────────────────────────────────────────
+    // ===========================================================================
+    // Game page — C3 game + FC overlay in ONE document
+    // ===========================================================================
     if (path === "/game/fishslot" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -692,8 +531,6 @@ export class WebServer {
       const user  = await this.db.getUser(uid);
       const bal   = Number(user?.bal ?? 0);
       const cookies = parseCookies(req);
-      const tag    = decodeURIComponent(cookies.dtag ?? "Player");
-      const avatar = decodeURIComponent(cookies.dav  ?? "");
 
       let initBet = 10;
       if (token && pendingSessions.has(token)) {
@@ -706,15 +543,17 @@ export class WebServer {
           ));
         }
         initBet = sess.bet;
-        // Don't delete pendingSessions here — the user can refresh without losing their bet setting
       }
 
-      return this._html(res, 200, fishslotPage(bal, tag, avatar, token ?? "", initBet));
+      return this._html(res, 200, gamePage(bal,
+        decodeURIComponent(cookies.dtag ?? "Player"),
+        initBet, token ?? ""
+      ));
     }
 
-    // ── SPIN ENDPOINT ─────────────────────────────────────────────────────────
-    // Deducts the bet from DB immediately and returns a spinToken.
-    // This is the authoritative deduction — the game animation is just visual.
+    // ===========================================================================
+    // API: spin — deducts bet immediately
+    // ===========================================================================
     if (path === "/api/fishslot/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -724,31 +563,23 @@ export class WebServer {
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
 
       const bet = Math.max(1, Math.floor(Number(body.bet) || 0));
-      if (bet < 1) return this._json(res, 400, { error: "Invalid bet" });
+      if (!bet) return this._json(res, 400, { error: "Invalid bet" });
 
       const user  = await this.db.getUser(uid);
       const dbBal = Number(user?.bal ?? 0);
-
       if (dbBal < bet) return this._json(res, 400, { error: "Insufficient balance" });
 
-      // Deduct bet
       await this.db.updateBalance(uid, -bet);
-      const afterDeduct = dbBal - bet;
 
-      // Store spin session for resolve step
       const spinToken = crypto.randomBytes(24).toString("hex");
-      spinSessions.set(spinToken, {
-        uid,
-        bet,
-        dbBalBefore: dbBal,
-        ts: Date.now(),
-      });
+      spinSessions.set(spinToken, { uid, bet, ts: Date.now() });
 
-      return this._json(res, 200, { ok: true, spinToken, newBal: afterDeduct });
+      return this._json(res, 200, { ok: true, spinToken, newBal: dbBal - bet });
     }
 
-    // ── RESOLVE ENDPOINT ─────────────────────────────────────────────────────
-    // Called after the slot animation completes. Applies RNG payout.
+    // ===========================================================================
+    // API: resolve — applies RNG payout
+    // ===========================================================================
     if (path === "/api/fishslot/resolve" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -758,37 +589,27 @@ export class WebServer {
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
 
       const { spinToken } = body;
-      if (!spinToken || !spinSessions.has(spinToken)) {
+      if (!spinToken || !spinSessions.has(spinToken))
         return this._json(res, 400, { error: "Unknown or expired spin token" });
-      }
 
       const sess = spinSessions.get(spinToken);
       if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
       spinSessions.delete(spinToken);
 
-      // Roll payout
       const delta = rollPayout(sess.bet);
-
-      // Apply payout (delta can be negative, zero, or positive)
-      if (delta !== 0) {
-        await this.db.updateBalance(uid, delta);
-      }
-
-      // Record game result
+      if (delta !== 0) await this.db.updateBalance(uid, delta);
       await this.db.recordGame(uid, delta >= 0, sess.bet);
 
-      const updated = await this.db.getUser(uid);
-      const newBal  = Number(updated?.bal ?? 0);
-
-      // Also close the Discord pending session if one existed
-      if (body.discordToken && pendingSessions.has(body.discordToken)) {
+      if (body.discordToken && pendingSessions.has(body.discordToken))
         pendingSessions.delete(body.discordToken);
-      }
 
-      return this._json(res, 200, { ok: true, delta, newBal });
+      const updated = await this.db.getUser(uid);
+      return this._json(res, 200, { ok: true, delta, newBal: Number(updated?.bal ?? 0) });
     }
 
-    // ── BALANCE API ───────────────────────────────────────────────────────────
+    // ===========================================================================
+    // API: balance poll
+    // ===========================================================================
     if (path === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -796,12 +617,14 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── LOGIN ─────────────────────────────────────────────────────────────────
+    // ===========================================================================
+    // Login
+    // ===========================================================================
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(
           "\u26a0\ufe0f Not Configured",
-          "Add fluxerClientId, fluxerClientSecret, and webBaseUrl to config.json.",
+          "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.",
           "#", "\u2014"
         ));
       }
@@ -817,14 +640,16 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl));
     }
 
-    // ── OAUTH CALLBACK ────────────────────────────────────────────────────────
+    // ===========================================================================
+    // OAuth callback
+    // ===========================================================================
     if (path === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-      if (!code || !state || !this._states.has(state)) {
+      if (!code || !state || !this._states.has(state))
         return this._html(res, 400, errPage("\u274c Login Failed", "Invalid or expired login state.", "/login", "Try again"));
-      }
       this._states.delete(state);
+
       let tokenData;
       try {
         const raw = await nodeFetch(FLUXER_TOKEN_URL, {
@@ -844,21 +669,22 @@ export class WebServer {
         return this._html(res, 500, errPage("\u26a0\ufe0f Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
       if (!tokenData.access_token) {
-        console.error("[OAuth] no access_token:", tokenData);
         return this._html(res, 400, errPage(
           "\u274c Login Failed",
           tokenData.error_description ?? tokenData.message ?? "Unknown error",
           "/login", "Try again"
         ));
       }
+
       let me;
       try {
         me = JSON.parse(await nodeFetch(FLUXER_ME_URL, {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         }));
       } catch {
-        return this._html(res, 500, errPage("\u26a0\ufe0f Error", "Could not fetch your Fluxer profile.", "/login", "Retry"));
+        return this._html(res, 500, errPage("\u26a0\ufe0f Error", "Could not fetch Fluxer profile.", "/login", "Retry"));
       }
+
       const userId  = me.id;
       const tag     = me.username ?? me.tag ?? userId;
       const avatar  = me.avatar
@@ -876,7 +702,9 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
-    // ── LOGOUT ────────────────────────────────────────────────────────────────
+    // ===========================================================================
+    // Logout
+    // ===========================================================================
     if (path === "/logout") {
       const uid = this._uid(req);
       if (uid) {
@@ -890,16 +718,14 @@ export class WebServer {
       return this._redirect(res, "/login");
     }
 
-    res.writeHead(404);
-    res.end("Not found");
+    res.writeHead(404); res.end("Not found");
   }
 
   _uid(req) {
     const c = parseCookies(req);
     return (c.sid && c.uid) ? c.uid : null;
   }
-
-  _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
-  _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
+  _html(res, s, b) { res.writeHead(s, {"Content-Type":"text/html;charset=utf-8"}); res.end(b); }
+  _json(res, s, o) { res.writeHead(s, {"Content-Type":"application/json"}); res.end(JSON.stringify(o)); }
   _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }
 }
