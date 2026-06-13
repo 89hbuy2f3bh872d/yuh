@@ -21,8 +21,20 @@ const WIN_BAITS = [
   "📈 Your balance is climbing. Press the advantage!",
 ];
 
+// Pre-game teasers — shown before the player opens the slot
+const PLAY_BAITS = [
+  "🐟 The fish are biting today. Something feels lucky.",
+  "🎰 Your session token is live. Don't let it go to waste.",
+  "🌊 Big catches only happen for players bold enough to spin.",
+  "⚓ The reels are warm from the last player's run. Jump in.",
+  "💎 Someone just hit big on Fish Slot. The table's still hot.",
+  "🎣 Fortune favours the bold. One click to find out.",
+  "🔑 Your session is locked and loaded. Time to reel it in.",
+];
+
 let _lastLoss = -1;
-let _lastWin = -1;
+let _lastWin  = -1;
+let _lastPlay = -1;
 
 export const HouseEdge = {
   baitLoss() {
@@ -36,5 +48,11 @@ export const HouseEdge = {
     do { i = Math.floor(Math.random() * WIN_BAITS.length); } while (i === _lastWin);
     _lastWin = i;
     return WIN_BAITS[i];
+  },
+  baitPlay() {
+    let i;
+    do { i = Math.floor(Math.random() * PLAY_BAITS.length); } while (i === _lastPlay);
+    _lastPlay = i;
+    return PLAY_BAITS[i];
   },
 };
