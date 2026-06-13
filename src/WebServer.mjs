@@ -3,7 +3,6 @@ import { URL } from "url";
 import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
-import { pendingSessions } from "../commands/fishslot.mjs";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
 
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
@@ -160,21 +159,9 @@ function errPage(title, msg, href, label) {
 
 // ---------------------------------------------------------------------------
 // Fish Slot wrapper page
-//
-// The C3 game owns ALL spin UI — its own spin button, bet controls, animations.
-// This wrapper page's only jobs are:
-//   1. On iframe load: send { type:"fluxer:init", balance, bet } so the game
-//      starts with the real FC balance.
-//   2. Listen for { type:"fluxer:result", won: <net delta signed int> } from
-//      the game, then POST /api/fishslot/settle to persist the result and
-//      send { type:"fluxer:sync", balance: <new bal> } back so the C3
-//      display stays authoritative.
-//   3. Show a thin top bar: Lobby link + live balance readout + username.
-//      No spin button, no bet input — the game has those.
 // ---------------------------------------------------------------------------
-function fishslotWrapperPage(bal, tag, initBet) {
-  const safeBal     = Number(bal)     || 0;
-  const safeInitBet = Number(initBet) || 10;
+function fishslotWrapperPage(bal, tag) {
+  const safeBal = Number(bal) || 0;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -215,7 +202,7 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
 <script>
 (function () {
   let bal   = ${safeBal};
-  let busy  = false;          // prevent double-settle on rapid messages
+  let busy  = false;
   const frame  = document.getElementById('gameFrame');
   const balNum = document.getElementById('fcBalNum');
 
@@ -228,20 +215,18 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
     balNum.textContent = bal.toLocaleString();
   }
 
-  // Send real balance + initial bet to game once it loads
   frame.addEventListener('load', function () {
     setTimeout(function () {
-      post({ type: 'fluxer:init', balance: bal, bet: ${safeInitBet} });
+      post({ type: 'fluxer:init', balance: bal, bet: 10 });
     }, 800);
   });
 
-  // Listen for spin results from the C3 game
   window.addEventListener('message', async function (ev) {
     if (!ev.data || ev.data.type !== 'fluxer:result') return;
     if (busy) return;
     busy = true;
 
-    const won = Number(ev.data.won) || 0; // net delta: positive = win, negative = loss
+    const won = Number(ev.data.won) || 0;
 
     try {
       const r = await fetch('/api/fishslot/settle', {
@@ -254,20 +239,17 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
         setDisplay(d.newBal);
         post({ type: 'fluxer:sync', balance: d.newBal });
       } else {
-        // Server rejected — re-sync balance from DB so game stays accurate
         const rb = await fetch('/api/balance');
         const db = await rb.json();
         if (db.bal !== undefined) { setDisplay(db.bal); post({ type: 'fluxer:sync', balance: db.bal }); }
       }
     } catch (_) {
-      // Network error — still resync so UI isn't stuck
       fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{});
     } finally {
       busy = false;
     }
   });
 
-  // Passive balance poll every 8s (safety net for drift)
   setInterval(function () {
     if (busy) return;
     fetch('/api/balance').then(r=>r.json()).then(d=>{
@@ -318,35 +300,21 @@ export class WebServer {
 
     if (path === "/") return this._redirect(res, "/lobby");
 
-    // ── Fish Slot wrapper ──────────────────────────────────────────────────
-    if (path === "/fishslot" || path === "/fishslot/" || path === "/fishslot/index.html") {
+    // ── Fish Slot wrapper (auth-gated) ─────────────────────────────────────
+    if (path === "/fishslot" || path === "/fishslot/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const token   = u.searchParams.get("token");
       const user    = await this.db.getUser(uid);
-      const bal     = Number(user?.bal ?? 0);
       const cookies = parseCookies(req);
+      const bal     = Number(user?.bal ?? 0);
       const tag     = decodeURIComponent(cookies.dtag ?? "Player");
-      let initBet = 10;
-      if (token && pendingSessions.has(token)) {
-        const sess = pendingSessions.get(token);
-        if (sess.uid !== uid) {
-          return this._html(res, 403, errPage(
-            "\u26d4 Wrong Account",
-            "This game link belongs to a different Fluxer account.",
-            "/login", "Switch account"
-          ));
-        }
-        initBet = sess.bet;
-        pendingSessions.delete(token);
-      }
-      return this._html(res, 200, fishslotWrapperPage(bal, tag, initBet));
+      return this._html(res, 200, fishslotWrapperPage(bal, tag));
     }
 
     // ── Game static files ──────────────────────────────────────────────────
-    if (path === "/fishslot/game" || path === "/fishslot/game/" || path === "/fishslot/game/index.html") {
+    if (path === "/fishslot/game" || path === "/fishslot/game/") {
       const asset = getFishslotAsset("/index.html");
-      if (!asset) { res.writeHead(404); return res.end("Game files not found — restart the bot to re-clone."); }
+      if (!asset) { res.writeHead(404); return res.end("Game files not found — restart the bot."); }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
       return res.end(asset.body);
     }
@@ -364,12 +332,6 @@ export class WebServer {
       return res.end(asset.body);
     }
 
-    if (path === "/game/fishslot" || path === "/game/fishslot/") {
-      const uid = this._uid(req);
-      const qs  = u.search ?? "";
-      return this._redirect(res, uid ? `/fishslot/${qs}` : `/login`);
-    }
-
     // ── Lobby ──────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
@@ -382,9 +344,7 @@ export class WebServer {
       ));
     }
 
-    // ── Settle: called by wrapper after game posts fluxer:result ───────────
-    // won = net delta from the game (positive = player won, negative = lost)
-    // The game's own RNG is authoritative; we just persist the delta.
+    // ── Settle ─────────────────────────────────────────────────────────────
     if (path === "/api/fishslot/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -393,16 +353,8 @@ export class WebServer {
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
 
       const won = Math.floor(Number(body.won) || 0);
-      // Sanity cap: reject impossibly large payouts (>10 000 FC net win)
       if (won > 10_000) return this._json(res, 400, { error: "Payout out of range" });
 
-      const user   = await this.db.getUser(uid);
-      const curBal = Number(user?.bal ?? 0);
-
-      // If the player somehow sends a win that would exceed their own balance
-      // (e.g. they lost but sent a positive number) we still apply it —
-      // the C3 game is the source of truth for the RNG result.
-      // We only hard-reject obviously impossible values above.
       if (won !== 0) await this.db.updateBalance(uid, won);
       await this.db.recordGame(uid, won >= 0, Math.abs(won));
 
