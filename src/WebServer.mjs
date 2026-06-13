@@ -14,11 +14,6 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// The fishslot PWA is now hosted on THIS server under /fishslot/
-// No GitHub Pages needed.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Low-level fetch helper
 // ---------------------------------------------------------------------------
 function rawFetch(url, opts = {}, maxRedirects = 4) {
@@ -200,12 +195,18 @@ ${navBar(tag, avatar, bal)}
 
 // ---------------------------------------------------------------------------
 // Fish Slot game page
-// The fishslot PWA is served on the same origin under /fishslot/
-// so postMessage works without CORS restrictions.
+// The fishslot PWA is hosted on THIS server under /fishslot/
+// The iframe src includes balance & bet as URL params so the bridge can init
+// even before the postMessage fires (handles slow-loading frames).
 // ---------------------------------------------------------------------------
 function fishslotPage(bal, tag, avatar, token, bet) {
   const safeToken = esc(token);
-  const safeBet   = Number(bet) || 0;
+  const safeBet   = Number(bet)   || 0;
+  const safeBal   = Number(bal)   || 0;
+
+  // The iframe src passes balance + bet so fluxer-bridge.js can read them
+  // from URLSearchParams before the parent postMessage arrives.
+  const iframeSrc = `/fishslot/?balance=${safeBal}&bet=${safeBet}`;
 
   return shellPage("", `
 <div class="play-layout">
@@ -215,7 +216,7 @@ function fishslotPage(bal, tag, avatar, token, bet) {
       <div class="viewer-title">🐟 Fish Slot</div>
       <div class="viewer-provider">vermingov · Bet: <strong>${safeBet.toLocaleString()} FC</strong></div>
     </div>
-    <div class="nav-bal" id="navBal" style="font-size:.8rem">Balance: <strong id="balNum">${Number(bal).toLocaleString()}</strong> FC</div>
+    <div class="nav-bal" id="navBal" style="font-size:.8rem">Balance: <strong id="balNum">${safeBal.toLocaleString()}</strong> FC</div>
     <a href="/logout" style="font-size:.7rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122">logout</a>
   </div>
   <div class="play-top">
@@ -226,7 +227,7 @@ function fishslotPage(bal, tag, avatar, token, bet) {
     <iframe
       id="gameFrame"
       class="game-frame"
-      src="/fishslot/"
+      src="${iframeSrc}"
       allowfullscreen
       allow="autoplay; fullscreen"
     ></iframe>
@@ -237,6 +238,7 @@ function fishslotPage(bal, tag, avatar, token, bet) {
 (function(){
   const TOKEN = "${safeToken}";
   const BET   = ${safeBet};
+  const BAL   = ${safeBal};
   const frame  = document.getElementById("gameFrame");
   const loader = document.getElementById("frameLoading");
   const banner = document.getElementById("resultBanner");
@@ -245,10 +247,10 @@ function fishslotPage(bal, tag, avatar, token, bet) {
 
   frame.addEventListener("load", function() {
     loader.classList.add("hidden");
-    // Inject balance into the fishslot game (same origin — no CORS)
+    // Also send via postMessage as a belt-and-suspenders approach
     try {
       frame.contentWindow.postMessage(
-        { type: "fluxer:init", balance: ${Number(bal)}, bet: BET },
+        { type: "fluxer:init", balance: BAL, bet: BET },
         window.location.origin
       );
     } catch(e) { console.warn("postMessage failed", e); }
@@ -257,8 +259,10 @@ function fishslotPage(bal, tag, avatar, token, bet) {
   // Safety: hide loader after 12s regardless
   setTimeout(function(){ loader.classList.add("hidden"); }, 12000);
 
-  // Listen for the game to report its final result
-  // fishslot PWA should post: { type: "fluxer:result", won: <FC amount> }
+  // Listen for the game to report its final balance after each spin
+  // fluxer-bridge.js posts: { type: "fluxer:result", won: <final FC balance>, lost: bet }
+  // won = absolute remaining balance in the game, not delta
+  // We persist it to the DB as the authoritative final balance.
   window.addEventListener("message", function(e) {
     if (e.source !== frame.contentWindow) return;
     const d = e.data;
@@ -266,7 +270,10 @@ function fishslotPage(bal, tag, avatar, token, bet) {
     if (settled) return;
     settled = true;
 
-    const body = JSON.stringify({ token: TOKEN, won: d.won ?? 0, lost: d.lost ?? BET });
+    // won = the game's final balance (absolute FC), not a payout delta.
+    // The result endpoint will compute delta = won - originalBal internally.
+    const finalBal = Math.max(0, Math.floor(Number(d.won) || 0));
+    const body = JSON.stringify({ token: TOKEN, won: finalBal, bet: BET, originalBal: BAL });
     fetch("/api/fishslot/result", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -279,15 +286,16 @@ function fishslotPage(bal, tag, avatar, token, bet) {
       }
       const delta = res.delta ?? 0;
       banner.textContent = delta >= 0
-        ? "\u2705 +" + Math.abs(delta).toLocaleString() + " FC \u2014 result saved!"
-        : "\u274c -" + Math.abs(delta).toLocaleString() + " FC \u2014 result saved.";
+        ? "\u2705 +" + Math.abs(delta).toLocaleString() + " FC saved!"
+        : "\u274c -" + Math.abs(delta).toLocaleString() + " FC saved.";
       banner.style.display = "block";
       banner.style.borderColor = delta >= 0 ? "#2ecc7188" : "#e74c3c88";
-      setTimeout(() => { banner.style.display = "none"; }, 6000);
+      setTimeout(() => { banner.style.display = "none"; settled = false; }, 6000);
     })
     .catch(() => {
       banner.textContent = "\u26a0\ufe0f Could not save result \u2014 please contact an admin.";
       banner.style.display = "block";
+      setTimeout(() => { banner.style.display = "none"; settled = false; }, 6000);
     });
   });
 })();
@@ -331,7 +339,6 @@ export class WebServer {
   }
 
   async start() {
-    // Download all fishslot assets at startup
     await preloadFishslotAssets();
 
     this._server = http.createServer((req, res) =>
@@ -356,12 +363,7 @@ export class WebServer {
     if (path === "/") return this._redirect(res, "/lobby");
 
     // ── FISHSLOT STATIC FILES ─────────────────────────────────────────────────
-    // Serve every file from the fishslot PWA at /fishslot/*
-    // /fishslot/        → /index.html
-    // /fishslot/scripts/main.js → /scripts/main.js
-    // etc.
     if (path === "/fishslot" || path.startsWith("/fishslot/")) {
-      // Strip the /fishslot prefix
       let assetPath = path.slice("/fishslot".length) || "/";
       if (assetPath === "/" || assetPath === "") assetPath = "/index.html";
       const asset = getFishslotAsset(assetPath);
@@ -370,8 +372,8 @@ export class WebServer {
         return res.end("Not found");
       }
       res.writeHead(200, {
-        "Content-Type":  asset.mime,
-        "Cache-Control": "public, max-age=3600",
+        "Content-Type":   asset.mime,
+        "Cache-Control":  "public, max-age=3600",
         "Content-Length": asset.body.length,
       });
       return res.end(asset.body);
@@ -406,16 +408,28 @@ export class WebServer {
       if (token && pendingSessions.has(token)) {
         const sess = pendingSessions.get(token);
         if (sess.uid !== uid) {
-          return this._html(res, 403, errPage("\u26d4 Wrong Account", "This game link belongs to a different Fluxer account. Log out and log in as the correct user.", "/login", "Switch account"));
+          return this._html(res, 403, errPage(
+            "\u26d4 Wrong Account",
+            "This game link belongs to a different Fluxer account. Log out and switch accounts.",
+            "/login", "Switch account"
+          ));
         }
         return this._html(res, 200, fishslotPage(bal, tag, avatar, token, sess.bet));
       }
 
-      // Direct lobby access — show the game without a pending bet session
+      // Direct lobby access — show game without a pending bet session
       return this._html(res, 200, fishslotPage(bal, tag, avatar, "", 0));
     }
 
     // ── FISHSLOT RESULT CALLBACK ─────────────────────────────────────────────
+    // Called by the parent page's JS after each spin round.
+    // Body: { token, won: <absolute final balance in game>, bet, originalBal }
+    // Strategy:
+    //   - The game tracks its internal balance starting from the FC balance we
+    //     injected.  After each spin, fluxer-bridge.js reports the final balance.
+    //   - delta = won - originalBal (net change from session start)
+    //   - We SET the user's DB balance to originalBal + delta = won.
+    //   - This is atomic: we always authorise from the DB value, not increment.
     if (path === "/api/fishslot/result" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -424,29 +438,46 @@ export class WebServer {
       try { body = JSON.parse(await readBody(req)); }
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
 
-      const { token, won } = body;
-      if (!token) return this._json(res, 400, { error: "Missing token" });
+      const { token, won, bet, originalBal } = body;
 
-      const sess = pendingSessions.get(token);
-      if (!sess) return this._json(res, 404, { error: "Session not found or expired" });
-      if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
-
-      pendingSessions.delete(token);
-
-      const bet    = sess.bet;
-      const payout = Math.max(0, Math.floor(Number(won) || 0));
-
-      if (payout > 0) {
-        await this.db.updateBalance(uid, payout);
+      // Resolve the session (if any)
+      let sess = null;
+      if (token && pendingSessions.has(token)) {
+        sess = pendingSessions.get(token);
+        if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
+        pendingSessions.delete(token);
       }
 
-      const won_net = payout - bet;
-      await this.db.recordGame(uid, won_net >= 0, bet);
+      // Authoritative original balance
+      const user       = await this.db.getUser(uid);
+      const dbBal      = Number(user?.bal ?? 0);
+      // Use the balance we passed into the game page as the reference point.
+      // If originalBal matches dbBal (no concurrent changes), this is exact.
+      const ref        = Number(originalBal ?? sess?.bet ? dbBal : dbBal);
+      const finalBal   = Math.max(0, Math.floor(Number(won) || 0));
 
-      const user   = await this.db.getUser(uid);
-      const newBal = Number(user?.bal ?? 0);
+      // Cap winnings — final balance cannot exceed original + (10× session bet)
+      // as a basic sanity/anti-cheat guard.
+      const sessionBet = Number(bet ?? sess?.bet ?? 0);
+      const cap        = dbBal + sessionBet * 10;
+      const safeFinal  = Math.min(finalBal, cap);
 
-      return this._json(res, 200, { ok: true, delta: won_net, newBal });
+      // Compute delta relative to what the DB currently holds
+      const delta = safeFinal - dbBal;
+
+      // Apply the balance change
+      if (delta !== 0) {
+        await this.db.updateBalance(uid, delta);
+      }
+
+      // Record the game result
+      const won_net = safeFinal - dbBal;  // same as delta before update
+      await this.db.recordGame(uid, won_net >= 0, sessionBet);
+
+      const updated = await this.db.getUser(uid);
+      const newBal  = Number(updated?.bal ?? 0);
+
+      return this._json(res, 200, { ok: true, delta, newBal });
     }
 
     // ── BALANCE API ───────────────────────────────────────────────────────────

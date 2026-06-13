@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# scripts/setup-fishslot.sh
-# Clones or updates the fishslot game files into public/fishslot/
-# Run once before starting the bot, or let the bot run it automatically.
-
+# Clone the fishslot PWA and patch it with the Fluxer currency bridge.
 set -e
 
-DEST="$(cd "$(dirname "$0")/.." && pwd)/public/fishslot"
-REPO="https://github.com/vermingov/fishslot.git"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEST="$REPO_ROOT/public/fishslot"
 
 if [ -d "$DEST/.git" ]; then
-  echo "[setup-fishslot] Updating existing clone at $DEST"
+  echo "[setup-fishslot] Pulling latest fishslot..."
   git -C "$DEST" pull --ff-only
 else
-  echo "[setup-fishslot] Cloning fishslot into $DEST"
-  mkdir -p "$(dirname "$DEST")"
-  git clone --depth=1 "$REPO" "$DEST"
+  echo "[setup-fishslot] Cloning fishslot..."
+  rm -rf "$DEST"
+  git clone --depth 1 https://github.com/vermingov/fishslot.git "$DEST"
 fi
+
+echo "[setup-fishslot] Applying Fluxer currency patch..."
+node "$SCRIPT_DIR/patch-fishslot.js" "$DEST"
 
 echo "[setup-fishslot] Done."
