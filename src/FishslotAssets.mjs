@@ -1,67 +1,19 @@
 /**
  * FishslotAssets.mjs
  *
- * Downloads every static file from vermingov/fishslot at startup and caches
- * them in memory. Uses the pinned commit SHA because the repo has no branch.
+ * Serves the fishslot PWA from disk (public/fishslot/) using Node's fs module.
+ * The files are put there by scripts/setup-fishslot.sh (git clone) which the
+ * bot runs automatically on startup if the directory is missing.
  */
 
-import https from "https";
-import zlib from "zlib";
+import fs   from "fs";
+import path from "path";
+import { execSync } from "child_process";
+import { fileURLToPath } from "url";
 
-// Pinned commit — the repo has no named branch, only this SHA
-const COMMIT = "d68ccb40c7565e4f4ca00d3e5d84a7d0c60c7bec";
-const RAW_BASE = `https://raw.githubusercontent.com/vermingov/fishslot/${COMMIT}`;
-
-// Every file in the repo (root + scripts/ + images/ + media/)
-const FISHSLOT_FILES = [
-  // Root
-  "index.html",
-  "style.css",
-  "data.json",
-  "sw.js",
-  "workermain.js",
-  "offline.json",
-  "appmanifest.json",
-  // Scripts
-  "scripts/main.js",
-  "scripts/c3runtime.js",
-  "scripts/dispatchworker.js",
-  "scripts/jobworker.js",
-  "scripts/offlineclient.js",
-  "scripts/opus.wasm.js",
-  "scripts/opus.wasm.wasm",
-  "scripts/register-sw.js",
-  "scripts/supportcheck.js",
-  // Images
-  "images/lines-sheet0.webp",
-  "images/lines-sheet1.webp",
-  "images/multif-sheet0.webp",
-  "images/paytablesymbol-sheet0.webp",
-  "images/posidon-sheet0.webp",
-  "images/posidon-sheet1.webp",
-  "images/posidon-sheet2.webp",
-  "images/shared-0-sheet0.webp",
-  "images/shared-0-sheet1.webp",
-  "images/shared-0-sheet2.webp",
-  "images/sprite3-sheet0.webp",
-  "images/symbol-sheet0.webp",
-  "images/tiledbackground-sheet0.webp",
-  "images/tiledbackground2-sheet0.webp",
-  "images/xfre-sheet0.webp",
-  "images/xfre-sheet1.webp",
-  "images/xfre-sheet2.webp",
-  // Media (audio/video)
-  "media/Button.webm",
-  "media/Epic Sea Battles.webm",
-  "media/Fishing.webm",
-  "media/Stop1.webm",
-  "media/Stop2.webm",
-  "media/Stop3.webm",
-  "media/Stop4.webm",
-  "media/Stop5.webm",
-  "media/drop.webm",
-  "media/scatter.webm",
-];
+const __dirname  = path.dirname(fileURLToPath(import.meta.url));
+const GAME_ROOT  = path.resolve(__dirname, "..", "public", "fishslot");
+const SETUP_SH   = path.resolve(__dirname, "..", "scripts", "setup-fishslot.sh");
 
 // MIME type map
 const MIME = {
@@ -79,6 +31,7 @@ const MIME = {
   ".mp3":   "audio/mpeg",
   ".mp4":   "video/mp4",
   ".ico":   "image/x-icon",
+  ".svg":   "image/svg+xml",
 };
 
 function extOf(p) {
@@ -86,72 +39,47 @@ function extOf(p) {
   return i === -1 ? "" : p.slice(i).toLowerCase();
 }
 
-export function mimeOf(path) {
-  return MIME[extOf(path)] ?? "application/octet-stream";
-}
-
-// In-memory cache: "/relative/path" → Buffer
-const _cache = new Map();
-let _loaded = false;
-
-function fetchRaw(url) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { "User-Agent": "SirGreenCasino/2.0" } }, res => {
-      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
-        return resolve(fetchRaw(res.headers.location));
-      }
-      const chunks = [];
-      res.on("data", c => chunks.push(c));
-      res.on("end", () => {
-        const raw = Buffer.concat(chunks);
-        const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
-        try {
-          const body = enc === "br"      ? zlib.brotliDecompressSync(raw)
-                     : enc === "gzip"    ? zlib.gunzipSync(raw)
-                     : enc === "deflate" ? zlib.inflateSync(raw)
-                     : raw;
-          resolve({ statusCode: res.statusCode, body });
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on("error", reject);
-  });
+export function mimeOf(filePath) {
+  return MIME[extOf(filePath)] ?? "application/octet-stream";
 }
 
 /**
- * Download all fishslot assets into memory. Call once at bot startup.
+ * Ensure the fishslot game files are present on disk.
+ * Runs scripts/setup-fishslot.sh if public/fishslot/ doesn't exist.
  */
 export async function preloadFishslotAssets() {
-  if (_loaded) return;
-  console.log("[Fishslot] Pre-loading game assets…");
-  const results = await Promise.allSettled(
-    FISHSLOT_FILES.map(async (file) => {
-      // URL-encode spaces (e.g. "Epic Sea Battles.webm")
-      const encoded = file.split("/").map(encodeURIComponent).join("/");
-      const url = `${RAW_BASE}/${encoded}`;
-      const { statusCode, body } = await fetchRaw(url);
-      if (statusCode !== 200) {
-        console.warn(`[Fishslot] Warning: ${file} returned HTTP ${statusCode}`);
-        return;
-      }
-      _cache.set("/" + file, body);
-    })
-  );
-  const failed = results.filter(r => r.status === "rejected");
-  if (failed.length) {
-    console.warn(`[Fishslot] ${failed.length} fetch(es) threw:`, failed.map(f => f.reason?.message ?? f.reason));
+  const indexPath = path.join(GAME_ROOT, "index.html");
+  if (fs.existsSync(indexPath)) {
+    console.log("[Fishslot] Game files found at", GAME_ROOT);
+    return;
   }
-  _loaded = true;
-  console.log(`[Fishslot] ${_cache.size} / ${FISHSLOT_FILES.length} assets loaded.`);
+  console.log("[Fishslot] Game files not found — running setup-fishslot.sh");
+  try {
+    execSync(`bash "${SETUP_SH}"`, { stdio: "inherit" });
+    console.log("[Fishslot] Setup complete.");
+  } catch (e) {
+    console.error("[Fishslot] setup-fishslot.sh failed:", e.message);
+    console.error("[Fishslot] Run: bash scripts/setup-fishslot.sh  then restart the bot.");
+  }
 }
 
 /**
- * Return a cached asset by its path relative to the fishslot root.
- * e.g. "/index.html", "/scripts/main.js", "/images/posidon-sheet0.webp"
- * Returns null if not found.
+ * Serve a fishslot static asset directly from disk.
+ * @param {string} assetPath - path relative to fishslot root, e.g. "/scripts/main.js"
+ * @returns {{ body: Buffer, mime: string } | null}
  */
 export function getFishslotAsset(assetPath) {
-  const buf = _cache.get(assetPath);
-  if (!buf) return null;
-  return { body: buf, mime: mimeOf(assetPath) };
+  // Safety: prevent path traversal
+  const safe = path.normalize(assetPath).replace(/^(\.\.[/\\])+/, "");
+  const full = path.join(GAME_ROOT, safe);
+
+  // Must stay inside GAME_ROOT
+  if (!full.startsWith(GAME_ROOT + path.sep) && full !== GAME_ROOT) return null;
+
+  try {
+    const body = fs.readFileSync(full);
+    return { body, mime: mimeOf(full) };
+  } catch {
+    return null;
+  }
 }
