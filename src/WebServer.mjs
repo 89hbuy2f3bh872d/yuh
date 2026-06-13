@@ -3,7 +3,13 @@ import { URL } from "url";
 import crypto from "crypto";
 import https from "https";
 import zlib from "zlib";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
 
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
@@ -132,7 +138,7 @@ function shell(head, body) {
 function lobbyPage(bal, tag) {
   return shell("", `
 <nav class="nav">
-  <div class="nav-logo">🐟 SirGreen Casino</div>
+  <div class="nav-logo">🎰 SirGreen Casino</div>
   <div class="nav-spacer"></div>
   <div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div>
   <span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span>
@@ -141,28 +147,29 @@ function lobbyPage(bal, tag) {
 <div class="wrap">
   <div class="section-title">🎮 Game Lobby</div>
   <div class="games-grid">
+    <div class="game-card" onclick="location.href='/sirbandit'">
+      <div class="game-thumb">⭐</div>
+      <div class="game-info"><div class="game-name">⭐ Sir Bandit</div><div class="game-meta">6×5 slot — up to 30 lines</div></div>
+    </div>
     <div class="game-card" onclick="location.href='/fishslot/'">
       <div class="game-thumb">🐟</div>
-      <div class="game-info"><div class="game-name">🐟 Fish Slot</div><div class="game-meta">vermingov</div></div>
+      <div class="game-info"><div class="game-name">🐟 Fish Slot</div><div class="game-meta">coming soon</div></div>
     </div>
   </div>
 </div>`);
 }
 
 function loginPage(authUrl) {
-  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🐟</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play Fish Slot with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
+  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
 }
 
 function errPage(title, msg, href, label) {
   return shell("", `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href??'/login')}">${esc(label??'Back')}</a></div></div>`);
 }
 
-// ---------------------------------------------------------------------------
-// Fish Slot wrapper page
-// ---------------------------------------------------------------------------
+// Fish Slot wrapper page (unchanged)
 function fishslotWrapperPage(bal, tag) {
   const safeBal = Number(bal) || 0;
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -173,12 +180,7 @@ function fishslotWrapperPage(bal, tag) {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; background: #040d04; font-family: 'Segoe UI', system-ui, sans-serif; color: #e2ffe2; -webkit-font-smoothing: antialiased; }
 a, button { color: inherit; cursor: pointer; background: none; border: none; font: inherit; text-decoration: none; }
-#fcBar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-  display: flex; align-items: center; gap: .6rem;
-  padding: .38rem .75rem; background: rgba(4,13,4,.97); backdrop-filter: blur(12px);
-  border-bottom: 2px solid #2ecc7133; font-size: .76rem; min-height: 42px; user-select: none;
-}
+#fcBar { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; display: flex; align-items: center; gap: .6rem; padding: .38rem .75rem; background: rgba(4,13,4,.97); backdrop-filter: blur(12px); border-bottom: 2px solid #2ecc7133; font-size: .76rem; min-height: 42px; user-select: none; }
 .fc-back { background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.22rem .6rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:border-color .18s,color .18s; }
 .fc-back:hover { border-color:#2ecc71;color:#2ecc71; }
 .fc-spacer { flex: 1; }
@@ -201,62 +203,25 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
 <iframe id="gameFrame" src="/fishslot/game/" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
 (function () {
-  let bal   = ${safeBal};
-  let busy  = false;
-  const frame  = document.getElementById('gameFrame');
+  let bal = ${safeBal}; let busy = false;
+  const frame = document.getElementById('gameFrame');
   const balNum = document.getElementById('fcBalNum');
-
-  function post(msg) {
-    try { frame.contentWindow.postMessage(msg, '*'); } catch (_) {}
-  }
-
-  function setDisplay(n) {
-    bal = Math.max(0, Math.floor(Number(n) || 0));
-    balNum.textContent = bal.toLocaleString();
-  }
-
-  frame.addEventListener('load', function () {
-    setTimeout(function () {
-      post({ type: 'fluxer:init', balance: bal, bet: 10 });
-    }, 800);
-  });
-
+  function post(msg) { try { frame.contentWindow.postMessage(msg, '*'); } catch (_) {} }
+  function setDisplay(n) { bal = Math.max(0, Math.floor(Number(n)||0)); balNum.textContent = bal.toLocaleString(); }
+  frame.addEventListener('load', function () { setTimeout(function () { post({ type: 'fluxer:init', balance: bal, bet: 10 }); }, 800); });
   window.addEventListener('message', async function (ev) {
     if (!ev.data || ev.data.type !== 'fluxer:result') return;
-    if (busy) return;
-    busy = true;
-
+    if (busy) return; busy = true;
     const won = Number(ev.data.won) || 0;
-
     try {
-      const r = await fetch('/api/fishslot/settle', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ won }),
-      });
+      const r = await fetch('/api/fishslot/settle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ won }) });
       const d = await r.json();
-      if (r.ok && d.newBal !== undefined) {
-        setDisplay(d.newBal);
-        post({ type: 'fluxer:sync', balance: d.newBal });
-      } else {
-        const rb = await fetch('/api/balance');
-        const db = await rb.json();
-        if (db.bal !== undefined) { setDisplay(db.bal); post({ type: 'fluxer:sync', balance: db.bal }); }
-      }
-    } catch (_) {
-      fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{});
-    } finally {
-      busy = false;
-    }
+      if (r.ok && d.newBal !== undefined) { setDisplay(d.newBal); post({ type: 'fluxer:sync', balance: d.newBal }); }
+      else { const rb = await fetch('/api/balance'); const db = await rb.json(); if (db.bal !== undefined) { setDisplay(db.bal); post({ type: 'fluxer:sync', balance: db.bal }); } }
+    } catch (_) { fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{}); }
+    finally { busy = false; }
   });
-
-  setInterval(function () {
-    if (busy) return;
-    fetch('/api/balance').then(r=>r.json()).then(d=>{
-      if (d.bal !== undefined && d.bal !== bal) { setDisplay(d.bal); post({ type:'fluxer:sync', balance:d.bal }); }
-    }).catch(()=>{});
-  }, 8000);
-
+  setInterval(function () { if (busy) return; fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined&&d.bal!==bal){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{}); }, 8000);
 })();
 </script>
 </body>
@@ -300,7 +265,42 @@ export class WebServer {
 
     if (path === "/") return this._redirect(res, "/lobby");
 
-    // ── Fish Slot wrapper (auth-gated) ─────────────────────────────────────
+    // ── Sir Bandit ───────────────────────────────────────────────────────────
+    if (path === "/sirbandit" || path === "/sirbandit/") {
+      const uid = this._uid(req);
+      if (!uid) return this._redirect(res, "/login");
+      let html;
+      try { html = fs.readFileSync(SIR_BANDIT_HTML, "utf8"); }
+      catch { return this._html(res, 500, errPage("Game not found", "sir-bandit.html missing.", "/lobby", "Back to lobby")); }
+      return this._html(res, 200, html);
+    }
+
+    // ── Sir Bandit settle ──────────────────────────────────────────────
+    if (path === "/api/sirbandit/settle" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return this._json(res, 400, { error: "Bad JSON" }); }
+
+      const won = Math.floor(Number(body.won) || 0);
+      // Sanity caps: max net win 50 000 FC, min net -100 000 FC per spin
+      if (won > 50_000 || won < -100_000)
+        return this._json(res, 400, { error: "Delta out of range" });
+
+      // Prevent balance going below 0
+      const user   = await this.db.getUser(uid);
+      const curBal = Number(user?.bal ?? 0);
+      const clamped = Math.max(-curBal, won);
+
+      if (clamped !== 0) await this.db.updateBalance(uid, clamped);
+      await this.db.recordGame(uid, won >= 0, Math.abs(won));
+
+      const updated = await this.db.getUser(uid);
+      return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
+    }
+
+    // ── Fish Slot wrapper ─────────────────────────────────────────────
     if (path === "/fishslot" || path === "/fishslot/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -311,28 +311,23 @@ export class WebServer {
       return this._html(res, 200, fishslotWrapperPage(bal, tag));
     }
 
-    // ── Game static files ──────────────────────────────────────────────────
+    // ── Fish Slot game static files ───────────────────────────────
     if (path === "/fishslot/game" || path === "/fishslot/game/") {
       const asset = getFishslotAsset("/index.html");
       if (!asset) { res.writeHead(404); return res.end("Game files not found — restart the bot."); }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
       return res.end(asset.body);
     }
-
     if (path.startsWith("/fishslot/")) {
       let assetPath = path.slice("/fishslot".length);
       if (assetPath.startsWith("/game/")) assetPath = assetPath.slice("/game".length);
       const asset = getFishslotAsset(assetPath);
       if (!asset) { res.writeHead(404); return res.end("Not found"); }
-      res.writeHead(200, {
-        "Content-Type":   asset.mime,
-        "Cache-Control":  asset.cacheControl,
-        "Content-Length": asset.body.length,
-      });
+      res.writeHead(200, { "Content-Type": asset.mime, "Cache-Control": asset.cacheControl, "Content-Length": asset.body.length });
       return res.end(asset.body);
     }
 
-    // ── Lobby ──────────────────────────────────────────────────────────────
+    // ── Lobby ────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -344,25 +339,22 @@ export class WebServer {
       ));
     }
 
-    // ── Settle ─────────────────────────────────────────────────────────────
+    // ── Fish Slot settle ────────────────────────────────────────────
     if (path === "/api/fishslot/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
       try { body = JSON.parse(await readBody(req)); }
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
-
       const won = Math.floor(Number(body.won) || 0);
       if (won > 10_000) return this._json(res, 400, { error: "Payout out of range" });
-
       if (won !== 0) await this.db.updateBalance(uid, won);
       await this.db.recordGame(uid, won >= 0, Math.abs(won));
-
       const updated = await this.db.getUser(uid);
       return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
     }
 
-    // ── Balance read ───────────────────────────────────────────────────────
+    // ── Balance ──────────────────────────────────────────────────────────
     if (path === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -370,7 +362,7 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Auth ───────────────────────────────────────────────────────────────
+    // ── Auth ─────────────────────────────────────────────────────────────
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(

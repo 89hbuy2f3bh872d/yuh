@@ -9,13 +9,13 @@ export default {
     return message.channel.send({
       embeds: [
         embed(COLORS.primary)
-          .setTitle("📋 SirGreen Casino — Commands")
+          .setTitle("🎰 SirGreen Casino — Commands")
           .setDescription(
             "**`&balance`** — Check your FC balance\n" +
             "**`&daily`** — Claim your daily FC bonus\n" +
             "**`&pay <user> <amount>`** — Send FC to another user\n" +
             "**`&leaderboard`** — Top FC holders\n" +
-            "**`&web`** — Open the casino website to play Fish Slot"
+            "**`&web`** — Open the casino — play Sir Bandit (6×5 slots) and more"
           ),
       ],
     });

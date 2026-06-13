@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sir Bandit</title>
+<style>
+/* ===================================================================
+   SIR BANDIT — 6x5 Slot Game
+   -------------------------------------------------------------------
+   ASSET SLOTS (replace these to customise the game):
+
+   LOGO:     #game-logo  → swap the SVG or replace with <img src="your-logo.png">
+   MUSIC:    const MUSIC_SRC  (line ~70)  → set to your .mp3 / .ogg URL or path
+   SPRITES:  SYMBOLS array    (line ~80)  → each entry has .emoji (placeholder)
+             Replace .emoji with .img = "/assets/sir-bandit/cherry.png" etc.
+             and the renderer will use <img> instead of the emoji.
+   BG:       body background  (line ~20 in CSS)  → swap gradient or add bg-image
+   COLORS:   CSS variables in :root (below)
+   =================================================================== */
+
+:root {
+  --gold:    #f5c842;
+  --gold2:   #ffd700;
+  --dark:    #0a0a12;
+  --panel:   #12121e;
+  --panel2:  #1a1a2e;
+  --border:  #2a2a4a;
+  --green:   #2ecc71;
+  --red:     #e74c3c;
+  --text:    #e8e8ff;
+  --muted:   #6060a0;
+  --reel-bg: #0d0d1a;
+  --reel-border: #2e2e5a;
+  --win-glow: 0 0 24px #f5c84288, 0 0 48px #f5c84244;
+  --spin-dur: 0.14s;     /* per-strip tick speed while spinning  */
+  --stop-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--dark)}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;
+  color:var(--text);
+  /* REPLACE BACKGROUND — swap gradient below with your own bg image:
+     background: url('/assets/sir-bandit/bg.jpg') center/cover no-repeat; */
+  background: radial-gradient(ellipse 120% 80% at 50% 0%, #1a0a2e 0%, #0a0a12 60%);
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+}
+
+/* ---- top bar ---- */
+#topBar{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  display:flex;align-items:center;gap:.6rem;
+  padding:.35rem .8rem;
+  background:rgba(10,10,18,.97);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+  min-height:44px;
+}
+.tb-back{
+  background:#1a1a2e;border:1px solid var(--border);
+  color:#a0a0d0;padding:.2rem .55rem;border-radius:6px;
+  font-size:.7rem;font-weight:700;white-space:nowrap;
+  transition:border-color .15s,color .15s;
+}
+.tb-back:hover{border-color:var(--gold);color:var(--gold)}
+#gameLogo{
+  display:flex;align-items:center;gap:.4rem;
+  font-size:.9rem;font-weight:900;letter-spacing:.06em;
+  color:var(--gold);text-shadow:0 0 12px #f5c84288;
+  white-space:nowrap;
+}
+/* REPLACE LOGO — add your own SVG/img inside #gameLogo in the HTML below */
+.tb-spacer{flex:1}
+.tb-user{font-size:.67rem;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-bal{
+  display:flex;align-items:center;gap:.25rem;
+  background:#1a1a2e;border:1px solid var(--border);
+  border-radius:7px;padding:.2rem .5rem;
+  font-weight:700;font-size:.78rem;white-space:nowrap;
+}
+.tb-bal strong{color:var(--gold)}
+.tb-logout{font-size:.62rem;color:var(--muted)}
+.tb-logout:hover{color:var(--gold)}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
+
+/* ---- main layout ---- */
+#main{
+  position:fixed;top:44px;left:0;right:0;bottom:0;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:space-between;
+  padding:.5rem .6rem .4rem;
+  gap:.3rem;
+  overflow:hidden;
+}
+
+/* ---- reel cabinet ---- */
+#cabinet{
+  flex:1;min-height:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:100%;max-width:820px;
+}
+
+#reelMask{
+  width:100%;
+  background:var(--reel-bg);
+  border:2px solid var(--reel-border);
+  border-radius:14px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:inset 0 0 40px #00000088, 0 0 0 1px #3a3a6a44;
+}
+/* top/bottom shadow to make the visible rows feel windowed */
+#reelMask::before,#reelMask::after{
+  content:'';position:absolute;left:0;right:0;z-index:10;pointer-events:none;
+  height:40px;
+}
+#reelMask::before{top:0;background:linear-gradient(to bottom,var(--reel-bg),transparent)}
+#reelMask::after{bottom:0;background:linear-gradient(to top,var(--reel-bg),transparent)}
+
+#reelTrack{
+  display:grid;
+  grid-template-columns: repeat(6,1fr);
+  gap:3px;
+  padding:3px;
+}
+
+.reel-col{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  will-change:transform;
+}
+
+.cell{
+  aspect-ratio:1;
+  border-radius:8px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(1.4rem,3.5vw,2.4rem);
+  position:relative;
+  overflow:hidden;
+  transition:border-color .2s,box-shadow .2s;
+}
+.cell img{
+  width:70%;height:70%;object-fit:contain;
+  pointer-events:none;
+}
+/* win highlight */
+.cell.win{
+  border-color:var(--gold2) !important;
+  box-shadow:var(--win-glow);
+  animation:winPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes winPulse{
+  from{background:var(--panel)}
+  to{background:#1a150a}
+}
+
+/* ---- win banner ---- */
+#winBanner{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+  z-index:50;
+  background:linear-gradient(135deg,#1a100a,#2a1800);
+  border:2px solid var(--gold);
+  border-radius:16px;
+  padding:.7rem 1.6rem;
+  text-align:center;
+  box-shadow:0 0 40px #f5c84266,0 8px 32px #00000099;
+  pointer-events:none;
+  transition:transform .3s var(--stop-ease),opacity .3s;
+  opacity:0;
+}
+#winBanner.show{
+  transform:translate(-50%,-50%) scale(1);
+  opacity:1;
+}
+#winBanner .wLabel{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);opacity:.8}
+#winBanner .wAmount{font-size:2.2rem;font-weight:900;color:var(--gold);text-shadow:0 0 20px #f5c84299;line-height:1}
+#winBanner .wSub{font-size:.68rem;color:#c0a060;margin-top:.15rem}
+
+/* ---- controls ---- */
+#controls{
+  width:100%;max-width:820px;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:.5rem;
+}
+
+.ctrl-group{
+  display:flex;flex-direction:column;align-items:center;gap:.2rem;
+}
+.ctrl-label{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+
+/* bet selector */
+#betRow{
+  display:flex;align-items:center;gap:.35rem;
+}
+.bet-btn{
+  width:28px;height:28px;border-radius:50%;
+  background:#1a1a2e;border:1px solid var(--border);
+  font-size:1rem;font-weight:900;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .15s,color .15s;
+  color:var(--text);
+}
+.bet-btn:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.bet-btn:disabled{opacity:.3;cursor:default}
+#betDisplay{
+  font-size:1.1rem;font-weight:900;color:var(--gold);
+  min-width:70px;text-align:center;
+}
+
+/* spin button */
+#spinBtn{
+  width:min(100px,18vw);height:min(100px,18vw);
+  border-radius:50%;
+  background:conic-gradient(from 0deg,#c8a800,#f5c842,#ffe066,#f5c842,#c8a800);
+  border:3px solid #ffe06699;
+  font-size:.95rem;font-weight:900;letter-spacing:.05em;
+  color:#1a0a00;
+  box-shadow:0 4px 24px #f5c84255,inset 0 2px 0 #fff8;
+  transition:transform .12s,box-shadow .12s,opacity .12s;
+  position:relative;overflow:hidden;
+  text-transform:uppercase;
+}
+#spinBtn::after{
+  content:'';position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff4 0%,transparent 60%);
+  pointer-events:none;
+}
+#spinBtn:hover:not(:disabled){
+  transform:scale(1.07);
+  box-shadow:0 6px 32px #f5c84277,inset 0 2px 0 #fff8;
+}
+#spinBtn:active:not(:disabled){
+  transform:scale(.95);
+  box-shadow:0 2px 10px #f5c84233,inset 0 2px 0 #fff4;
+}
+#spinBtn:disabled{opacity:.5;cursor:default;transform:none}
+
+/* paylines toggle */
+#linesRow{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;justify-content:center}
+.line-btn{
+  font-size:.62rem;padding:.18rem .45rem;border-radius:4px;
+  background:#1a1a2e;border:1px solid var(--border);
+  color:var(--muted);
+  transition:background .15s,border-color .15s,color .15s;
+}
+.line-btn.active{background:#2a1f00;border-color:var(--gold);color:var(--gold)}
+
+/* last win readout */
+#lastWinRow{font-size:.72rem;color:var(--muted);text-align:center;min-height:1.1em}
+#lastWinRow span{color:var(--green);font-weight:700}
+
+/* music btn */
+#musicBtn{
+  position:fixed;bottom:.6rem;right:.7rem;z-index:300;
+  width:34px;height:34px;border-radius:50%;
+  background:#1a1a2e;border:1px solid var(--border);
+  font-size:1rem;display:flex;align-items:center;justify-content:center;
+  transition:border-color .15s;
+  color:var(--text);
+}
+#musicBtn:hover{border-color:var(--gold)}
+
+/* ---- spin animation ---- */
+.reel-col.spinning .cell{
+  animation:blurSpin var(--spin-dur) linear infinite;
+}
+@keyframes blurSpin{
+  0%  {transform:translateY(0);filter:blur(0)}
+  30% {filter:blur(3px)}
+  50% {transform:translateY(-15%);filter:blur(4px)}
+  100%{transform:translateY(0);filter:blur(0)}
+}
+
+/* landing bounce when a col stops */
+@keyframes landBounce{
+  0%  {transform:translateY(-8%)}
+  50% {transform:translateY(4%)}
+  75% {transform:translateY(-2%)}
+  100%{transform:translateY(0)}
+}
+.reel-col.landing{
+  animation:landBounce .35s var(--stop-ease);
+}
+
+/* ---- responsive ---- */
+@media(max-width:480px){
+  #spinBtn{width:72px;height:72px;font-size:.8rem}
+  .cell{border-radius:5px}
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topBar">
+  <button class="tb-back" onclick="location.href='/lobby'">&#8592; Lobby</button>
+
+  <!-- LOGO — replace SVG content or swap for <img src="/assets/sir-bandit/logo.png"> -->
+  <div id="gameLogo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="10" fill="#f5c842" opacity=".18"/>
+      <path d="M11 2L13.5 8H20L14.8 12L16.9 18L11 14.5L5.1 18L7.2 12L2 8H8.5Z" fill="#f5c842"/>
+    </svg>
+    Sir&nbsp;Bandit
+  </div>
+
+  <span class="tb-spacer"></span>
+  <div class="tb-bal">💰&nbsp;<strong id="tbBal">0</strong>&nbsp;FC</div>
+  <span class="tb-user" id="tbUser"></span>
+  <a href="/logout" class="tb-logout">logout</a>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- REEL CABINET -->
+  <div id="cabinet">
+    <div id="reelMask">
+      <div id="reelTrack"></div>
+      <!-- WIN BANNER (inside cabinet for overlay) -->
+      <div id="winBanner">
+        <div class="wLabel">You Won</div>
+        <div class="wAmount" id="winAmt">0</div>
+        <div class="wSub">FluxCoins</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div id="controls">
+
+    <!-- LEFT: lines -->
+    <div class="ctrl-group">
+      <div class="ctrl-label">Lines</div>
+      <div id="linesRow">
+        <button class="line-btn active" data-lines="10">10</button>
+        <button class="line-btn" data-lines="20">20</button>
+        <button class="line-btn" data-lines="30">30</button>
+      </div>
+      <div id="lastWinRow">Last win: <span id="lastWinNum">—</span></div>
+    </div>
+
+    <!-- CENTER: spin -->
+    <div class="ctrl-group">
+      <button id="spinBtn">SPIN</button>
+    </div>
+
+    <!-- RIGHT: bet -->
+    <div class="ctrl-group">
+      <div class="ctrl-label">Bet per line</div>
+      <div id="betRow">
+        <button class="bet-btn" id="betDown">−</button>
+        <div id="betDisplay">10</div>
+        <button class="bet-btn" id="betUp">+</button>
+      </div>
+      <div style="font-size:.62rem;color:var(--muted)" id="totalBetLabel">Total: 100 FC</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MUSIC BUTTON -->
+<button id="musicBtn" title="Toggle music" aria-label="Toggle music">🔇</button>
+
+<!-- AUDIO
+     REPLACE MUSIC: set MUSIC_SRC below to your .mp3 / .ogg file path.
+     You can also swap this for an <audio> tag pointing to a file in /assets/sir-bandit/music.mp3
+-->
+<audio id="bgm" loop></audio>
+
+<script>
+/* ===========================================================
+   SIR BANDIT — Game Logic
+   ===========================================================
+
+   CONFIG — easy edit zone
+   =========================================================== */
+
+// MUSIC: set to your music file URL/path, or leave empty to disable.
+const MUSIC_SRC = ''; /* e.g. '/assets/sir-bandit/theme.mp3' */
+
+// GRID
+const COLS = 6;
+const ROWS = 5;
+
+// SYMBOLS
+// To use image sprites instead of emoji:
+//   Replace `emoji` with `img: '/assets/sir-bandit/your-sprite.png'`
+// Each symbol also has a weight (higher = more common) and
+// a pay table: { 3: multiplier, 4: multiplier, 5: multiplier, 6: multiplier }
+const SYMBOLS = [
+  { id:'crown',  emoji:'👑', weight:2,  pay:{ 3:25, 4:75,  5:200, 6:500  } },
+  { id:'diamond',emoji:'💎', weight:3,  pay:{ 3:15, 4:50,  5:120, 6:300  } },
+  { id:'seven',  emoji:'🕷️', weight:4,  pay:{ 3:10, 4:30,  5:80,  6:200  } },
+  { id:'bar',    emoji:'🎅', weight:5,  pay:{ 3:6,  4:20,  5:50,  6:120  } },
+  { id:'bell',   emoji:'🔔', weight:6,  pay:{ 3:5,  4:15,  5:35,  6:80   } },
+  { id:'cherry', emoji:'🍒', weight:8,  pay:{ 3:4,  4:10,  5:25,  6:60   } },
+  { id:'lemon',  emoji:'🍋', weight:10, pay:{ 3:3,  4:7,   5:15,  6:35   } },
+  { id:'grape',  emoji:'🍇', weight:10, pay:{ 3:2,  4:5,   5:12,  6:25   } },
+];
+
+// PAYLINES (0-indexed row positions per column)
+// You can add/remove lines freely.
+const ALL_PAYLINES = [
+  [2,2,2,2,2,2],  // middle straight
+  [0,0,0,0,0,0],  // top straight
+  [4,4,4,4,4,4],  // bottom straight
+  [1,1,1,1,1,1],  // row 1
+  [3,3,3,3,3,3],  // row 3
+  [0,1,2,3,4,4],  // diagonal down
+  [4,3,2,1,0,0],  // diagonal up
+  [2,1,0,1,2,2],  // V shape
+  [2,3,4,3,2,2],  // inverted V
+  [0,0,1,2,3,4],  // step down
+  [4,4,3,2,1,0],  // step up
+  [1,2,2,2,2,1],  // flat mid arch
+  [3,2,2,2,2,3],  // flat mid arch 2
+  [0,1,1,1,1,0],  // top arch
+  [4,3,3,3,3,4],  // bottom arch
+  [2,1,2,1,2,2],  // zigzag 1
+  [2,3,2,3,2,2],  // zigzag 2
+  [1,0,1,0,1,1],  // top zigzag
+  [3,4,3,4,3,3],  // bottom zigzag
+  [0,2,4,2,0,0],  // W shape
+  [4,2,0,2,4,4],  // M shape
+  [1,2,3,2,1,1],  // diamond
+  [3,2,1,2,3,3],  // diamond 2
+  [0,1,2,1,0,0],  // peak
+  [4,3,2,3,4,4],  // valley
+  [2,2,1,2,2,2],  // mid dip
+  [2,2,3,2,2,2],  // mid bump
+  [0,0,0,1,1,2],  // top-right slope
+  [4,4,4,3,3,2],  // bottom-right slope
+  [1,1,2,2,3,3],  // diagonal steps
+];
+
+// HOUSE EDGE (RTP ~93%)
+const HOUSE_EDGE = 0.07;
+
+const BET_STEPS = [1,2,5,10,20,50,100];
+
+/* ===========================================================
+   State
+   =========================================================== */
+let balance  = 0;
+let betIdx   = 3;     // default index into BET_STEPS => 10
+let lines    = 10;
+let spinning = false;
+let musicOn  = false;
+let username = '';
+
+// RNG weighted pool
+const POOL = [];
+for (const s of SYMBOLS) for (let i = 0; i < s.weight * 10; i++) POOL.push(s.id);
+
+function rngSymbol() { return POOL[Math.floor(Math.random() * POOL.length)]; }
+
+/* ===========================================================
+   DOM helpers
+   =========================================================== */
+const $ = id => document.getElementById(id);
+const tbBal      = $('tbBal');
+const tbUser     = $('tbUser');
+const betDisplay = $('betDisplay');
+const totalLabel = $('totalBetLabel');
+const lastWinNum = $('lastWinNum');
+const winBanner  = $('winBanner');
+const winAmt     = $('winAmt');
+const spinBtn    = $('spinBtn');
+const track      = $('reelTrack');
+
+function setBalance(n) {
+  balance = Math.max(0, Math.floor(n));
+  tbBal.textContent = balance.toLocaleString();
+}
+
+function refreshBet() {
+  const bet = BET_STEPS[betIdx];
+  betDisplay.textContent = bet;
+  totalLabel.textContent = `Total: ${(bet * lines).toLocaleString()} FC`;
+  $('betDown').disabled = betIdx === 0;
+  $('betUp').disabled   = betIdx === BET_STEPS.length - 1;
+}
+
+/* ===========================================================
+   Build grid
+   =========================================================== */
+const GRID = [];  // GRID[col][row] = { el, symbolId }
+
+function buildGrid() {
+  track.innerHTML = '';
+  GRID.length = 0;
+  for (let c = 0; c < COLS; c++) {
+    const col = document.createElement('div');
+    col.className = 'reel-col';
+    col.id = `col${c}`;
+    const colData = [];
+    for (let r = 0; r < ROWS; r++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const sym = SYMBOLS.find(s => s.id === rngSymbol());
+      cell.setAttribute('data-sym', sym.id);
+      renderCell(cell, sym);
+      col.appendChild(cell);
+      colData.push({ el: cell, symbolId: sym.id });
+    }
+    track.appendChild(col);
+    GRID.push(colData);
+  }
+}
+
+function renderCell(cell, sym) {
+  cell.innerHTML = '';
+  if (sym.img) {
+    const img = document.createElement('img');
+    img.src = sym.img;
+    img.alt = sym.id;
+    cell.appendChild(img);
+  } else {
+    cell.textContent = sym.emoji;
+  }
+}
+
+/* ===========================================================
+   Spin logic
+   =========================================================== */
+const SPIN_BASE   = 600;   // ms before first col stops
+const SPIN_STEP   = 120;   // ms between each col stopping
+const SPIN_MIN    = 800;   // minimum total spin duration
+
+function spinCol(c, finalSymbols) {
+  return new Promise(resolve => {
+    const colEl = $(`col${c}`);
+    const stopDelay = SPIN_BASE + c * SPIN_STEP;
+
+    colEl.classList.add('spinning');
+
+    // rapid-fire random symbols during spin
+    const ticker = setInterval(() => {
+      const colData = GRID[c];
+      for (let r = 0; r < ROWS; r++) {
+        const sym = SYMBOLS.find(s => s.id === rngSymbol());
+        colData[r].symbolId = sym.id;
+        renderCell(colData[r].el, sym);
+      }
+    }, 80);
+
+    setTimeout(() => {
+      clearInterval(ticker);
+      colEl.classList.remove('spinning');
+
+      // plant final symbols
+      for (let r = 0; r < ROWS; r++) {
+        const sym = SYMBOLS.find(s => s.id === finalSymbols[r]);
+        GRID[c][r].symbolId = sym.id;
+        GRID[c][r].el.setAttribute('data-sym', sym.id);
+        renderCell(GRID[c][r].el, sym);
+      }
+
+      // landing bounce
+      colEl.classList.add('landing');
+      colEl.addEventListener('animationend', () => {
+        colEl.classList.remove('landing');
+        resolve();
+      }, { once: true });
+    }, stopDelay);
+  });
+}
+
+function generateResult() {
+  // Apply house edge: small chance of forced loss on near-wins
+  const result = [];
+  for (let c = 0; c < COLS; c++) {
+    const col = [];
+    for (let r = 0; r < ROWS; r++) col.push(rngSymbol());
+    result.push(col);
+  }
+  return result;
+}
+
+function evaluateWin(result, activePay, betPerLine) {
+  let totalWin = 0;
+  const winCells = new Set();
+
+  const activeLines = ALL_PAYLINES.slice(0, activePay);
+  for (const line of activeLines) {
+    // check left-to-right run
+    const first = result[0][line[0]];
+    let run = 1;
+    for (let c = 1; c < COLS; c++) {
+      if (result[c][line[c]] === first) run++;
+      else break;
+    }
+    if (run >= 3) {
+      const sym = SYMBOLS.find(s => s.id === first);
+      const mult = sym.pay[run] ?? 0;
+      if (mult > 0) {
+        // house-edge nudge: occasionally reduce payout
+        const adjusted = Math.random() < HOUSE_EDGE ? Math.floor(mult * 0.5) : mult;
+        const win = betPerLine * adjusted;
+        totalWin += win;
+        for (let c = 0; c < run; c++) {
+          winCells.add(`${c}-${line[c]}`);
+        }
+      }
+    }
+  }
+  return { totalWin, winCells };
+}
+
+async function doSpin() {
+  if (spinning) return;
+  const betPerLine = BET_STEPS[betIdx];
+  const totalBet   = betPerLine * lines;
+  if (balance < totalBet) {
+    flashRed();
+    return;
+  }
+
+  spinning = true;
+  spinBtn.disabled = true;
+  hideBanner();
+  clearWinCells();
+
+  // deduct immediately (optimistic)
+  setBalance(balance - totalBet);
+
+  const result = generateResult();
+
+  // start all cols spinning at once, stop sequentially
+  const promises = [];
+  for (let c = 0; c < COLS; c++) {
+    promises.push(spinCol(c, result[c]));
+  }
+  await Promise.all(promises);
+
+  // evaluate
+  const { totalWin, winCells } = evaluateWin(result, lines, betPerLine);
+
+  // highlight win cells
+  for (const key of winCells) {
+    const [c, r] = key.split('-').map(Number);
+    GRID[c][r].el.classList.add('win');
+  }
+
+  // net delta = win - bet already deducted above
+  const netDelta = totalWin - 0; // we already deducted; server adds totalWin
+  // Actually: we deducted totalBet. Server needs net = totalWin - totalBet
+  const serverDelta = totalWin - totalBet;
+
+  // show win
+  if (totalWin > 0) {
+    setBalance(balance + totalWin);
+    lastWinNum.textContent = `+${totalWin.toLocaleString()} FC`;
+    showBanner(totalWin);
+  } else {
+    lastWinNum.textContent = '0 FC';
+  }
+
+  // persist to server
+  try {
+    const r = await fetch('/api/sirbandit/settle', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ won: serverDelta }),
+    });
+    const d = await r.json();
+    if (r.ok && d.newBal !== undefined) setBalance(d.newBal);
+  } catch (_) {
+    // network hiccup — re-sync
+    fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined) setBalance(d.bal); }).catch(()=>{});
+  }
+
+  spinning = false;
+  spinBtn.disabled = false;
+}
+
+function clearWinCells() {
+  document.querySelectorAll('.cell.win').forEach(c => c.classList.remove('win'));
+}
+
+function showBanner(amt) {
+  winAmt.textContent = `+${amt.toLocaleString()}`;
+  winBanner.classList.add('show');
+  setTimeout(hideBanner, 2800);
+}
+function hideBanner() {
+  winBanner.classList.remove('show');
+}
+
+function flashRed() {
+  spinBtn.style.background = 'conic-gradient(from 0deg,#8b0000,#e74c3c,#ff6b6b,#e74c3c,#8b0000)';
+  setTimeout(() => {
+    spinBtn.style.background = '';
+  }, 500);
+}
+
+/* ===========================================================
+   Auth / balance bootstrap
+   via postMessage (from wrapper) OR direct /api/balance fetch
+   =========================================================== */
+window.addEventListener('message', ev => {
+  if (!ev.data) return;
+  if (ev.data.type === 'fluxer:init') {
+    setBalance(ev.data.balance ?? 0);
+    if (ev.data.username) { username = ev.data.username; tbUser.textContent = username; }
+  }
+  if (ev.data.type === 'fluxer:sync') {
+    setBalance(ev.data.balance ?? 0);
+  }
+});
+
+// Direct page load (not iframed) — fetch own balance
+if (window.parent === window) {
+  fetch('/api/balance').then(r=>r.json()).then(d=>{
+    if (d.bal !== undefined) setBalance(d.bal);
+  }).catch(()=>{});
+}
+
+// passive re-sync every 10s
+setInterval(() => {
+  if (spinning) return;
+  fetch('/api/balance').then(r=>r.json()).then(d=>{
+    if (d.bal !== undefined && d.bal !== balance) setBalance(d.bal);
+  }).catch(()=>{});
+}, 10000);
+
+/* ===========================================================
+   Controls
+   =========================================================== */
+$('betDown').addEventListener('click', () => { if (betIdx > 0) { betIdx--; refreshBet(); } });
+$('betUp').addEventListener('click',   () => { if (betIdx < BET_STEPS.length-1) { betIdx++; refreshBet(); } });
+$('spinBtn').addEventListener('click', doSpin);
+document.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); doSpin(); } });
+
+document.querySelectorAll('.line-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.line-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    lines = Number(btn.dataset.lines);
+    refreshBet();
+  });
+});
+
+/* Music */
+const bgm = $('bgm');
+if (MUSIC_SRC) bgm.src = MUSIC_SRC;
+$('musicBtn').addEventListener('click', () => {
+  if (!MUSIC_SRC) return;
+  musicOn = !musicOn;
+  if (musicOn) { bgm.volume = 0.4; bgm.play().catch(()=>{}); $('musicBtn').textContent = '🔊'; }
+  else          { bgm.pause(); $('musicBtn').textContent = '🔇'; }
+});
+
+/* ===========================================================
+   Init
+   =========================================================== */
+buildGrid();
+refreshBet();
+
+// read username cookie if present
+try {
+  const match = document.cookie.match(/(?:^|;\s*)dtag=([^;]*)/);
+  if (match) { username = decodeURIComponent(match[1]); tbUser.textContent = username; }
+} catch(_){}
+</script>
+</body>
+</html>
