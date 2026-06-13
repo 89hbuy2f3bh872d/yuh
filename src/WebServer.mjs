@@ -11,15 +11,6 @@ const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
-// Spin sessions  token -> { uid, bet, ts }
-// ---------------------------------------------------------------------------
-const spinSessions = new Map();
-setInterval(() => {
-  const cut = Date.now() - 10 * 60 * 1000;
-  for (const [k, v] of spinSessions) if (v.ts < cut) spinSessions.delete(k);
-}, 5 * 60 * 1000);
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function rawFetch(url, opts = {}, maxRedirects = 4) {
@@ -90,15 +81,6 @@ function readBody(req) {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
-}
-
-function rollPayout(bet) {
-  const r = Math.random();
-  if (r < 0.02) return bet * 4;
-  if (r < 0.07) return bet * 2;
-  if (r < 0.17) return bet * 1;
-  if (r < 0.47) return 0;
-  return -bet;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,11 +160,21 @@ function errPage(title, msg, href, label) {
 
 // ---------------------------------------------------------------------------
 // Fish Slot wrapper page
+//
+// The C3 game owns ALL spin UI — its own spin button, bet controls, animations.
+// This wrapper page's only jobs are:
+//   1. On iframe load: send { type:"fluxer:init", balance, bet } so the game
+//      starts with the real FC balance.
+//   2. Listen for { type:"fluxer:result", won: <net delta signed int> } from
+//      the game, then POST /api/fishslot/settle to persist the result and
+//      send { type:"fluxer:sync", balance: <new bal> } back so the C3
+//      display stays authoritative.
+//   3. Show a thin top bar: Lobby link + live balance readout + username.
+//      No spin button, no bet input — the game has those.
 // ---------------------------------------------------------------------------
-function fishslotWrapperPage(bal, tag, initBet, discordToken) {
-  const safeBal     = Number(bal)      || 0;
-  const safeInitBet = Number(initBet)  || 10;
-  const safeToken   = esc(discordToken ?? "");
+function fishslotWrapperPage(bal, tag, initBet) {
+  const safeBal     = Number(bal)     || 0;
+  const safeInitBet = Number(initBet) || 10;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -196,136 +188,92 @@ html, body { height: 100%; overflow: hidden; background: #040d04; font-family: '
 a, button { color: inherit; cursor: pointer; background: none; border: none; font: inherit; text-decoration: none; }
 #fcBar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  display: flex; align-items: center; gap: .6rem;
   padding: .38rem .75rem; background: rgba(4,13,4,.97); backdrop-filter: blur(12px);
   border-bottom: 2px solid #2ecc7133; font-size: .76rem; min-height: 42px; user-select: none;
 }
 .fc-back { background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.22rem .6rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:border-color .18s,color .18s; }
 .fc-back:hover { border-color:#2ecc71;color:#2ecc71; }
-.fc-title { font-weight:900;color:#e2ffe2;flex:1;min-width:0;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.fc-spacer { flex: 1; }
 .fc-bal { display:flex;align-items:center;gap:.28rem;background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap; }
 .fc-bal strong { color:#2ecc71;font-size:.88rem; }
-.fc-bet { display:flex;align-items:center;gap:.28rem;background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;padding:.22rem .45rem;font-weight:700; }
-.fc-bet label { color:#4a9a4a; }
-.fc-bet input { width:66px;background:#071507;border:1px solid #2ecc7122;border-radius:5px;color:#e2ffe2;font-size:.78rem;font-weight:700;text-align:right;padding:.14rem .3rem;outline:none;font-family:inherit; }
-.fc-bet input:focus { border-color:#2ecc71; }
-.fc-spin { background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;font-size:.76rem;padding:.26rem .78rem;border-radius:7px;letter-spacing:.04em;box-shadow:0 2px 10px #2ecc7144;transition:all .18s;white-space:nowrap; }
-.fc-spin:hover:not(:disabled) { box-shadow:0 4px 16px #2ecc7177;transform:translateY(-1px); }
-.fc-spin:disabled { opacity:.4;cursor:not-allowed; }
-.fc-user { font-size:.67rem;color:#4a8a4a;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis; }
+.fc-user { font-size:.67rem;color:#4a8a4a;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis; }
 .fc-logout { font-size:.64rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap; }
 .fc-logout:hover { color:#2ecc71; }
 #gameFrame { position:fixed;top:42px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 42px);border:none;display:block;background:#040d04; }
-#fcBanner { display:none;position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);z-index:99999;background:#0e230e;border:2px solid #2ecc7133;border-radius:10px;padding:.55rem 1.1rem;font-weight:700;font-size:.88rem;box-shadow:0 4px 20px #2ecc7122;pointer-events:none;white-space:nowrap; }
 </style>
 </head>
 <body>
 <div id="fcBar">
   <button class="fc-back" onclick="location.href='/lobby'">&#8592; Lobby</button>
-  <span class="fc-title">🐟 Fish Slot</span>
+  <span class="fc-spacer"></span>
   <div class="fc-bal">💰&nbsp;<strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
-  <div class="fc-bet">
-    <label for="fcBetIn">Bet:</label>
-    <input id="fcBetIn" type="number" min="1" step="1" value="${safeInitBet}">
-    <span style="color:#4a9a4a;font-size:.72rem">FC</span>
-  </div>
-  <button id="fcSpinBtn" class="fc-spin">🎰 Spin</button>
   <span class="fc-user">${esc(tag)}</span>
   <a href="/logout" class="fc-logout">logout</a>
 </div>
 <iframe id="gameFrame" src="/fishslot/game/" allow="autoplay; fullscreen" allowfullscreen></iframe>
-<div id="fcBanner"></div>
 <script>
 (function () {
-  const DISCORD_TOKEN = "${safeToken}";
-  let bal      = ${safeBal};
-  let spinning = false;
+  let bal   = ${safeBal};
+  let busy  = false;          // prevent double-settle on rapid messages
+  const frame  = document.getElementById('gameFrame');
+  const balNum = document.getElementById('fcBalNum');
 
-  const balNum  = document.getElementById("fcBalNum");
-  const betIn   = document.getElementById("fcBetIn");
-  const spinBtn = document.getElementById("fcSpinBtn");
-  const banner  = document.getElementById("fcBanner");
-  const frame   = document.getElementById("gameFrame");
-
-  function postToGame(msg) {
-    try { frame.contentWindow.postMessage(msg, "*"); } catch (_) {}
+  function post(msg) {
+    try { frame.contentWindow.postMessage(msg, '*'); } catch (_) {}
   }
 
-  frame.addEventListener("load", function () {
+  function setDisplay(n) {
+    bal = Math.max(0, Math.floor(Number(n) || 0));
+    balNum.textContent = bal.toLocaleString();
+  }
+
+  // Send real balance + initial bet to game once it loads
+  frame.addEventListener('load', function () {
     setTimeout(function () {
-      postToGame({ type: "fluxer:init", balance: bal, bet: getBet() });
+      post({ type: 'fluxer:init', balance: bal, bet: ${safeInitBet} });
     }, 800);
   });
 
-  function setBal(n) {
-    bal = Math.max(0, Math.floor(Number(n) || 0));
-    balNum.textContent = bal.toLocaleString();
-    postToGame({ type: "fluxer:sync", balance: bal });
-  }
-  function getBet() { return Math.max(1, Math.floor(Number(betIn.value) || 1)); }
+  // Listen for spin results from the C3 game
+  window.addEventListener('message', async function (ev) {
+    if (!ev.data || ev.data.type !== 'fluxer:result') return;
+    if (busy) return;
+    busy = true;
 
-  function setSpin(s) {
-    spinning = s;
-    spinBtn.disabled = s;
-    spinBtn.textContent = s ? "\u23f3 Spinning\u2026" : "\ud83c\udfb0 Spin";
-  }
+    const won = Number(ev.data.won) || 0; // net delta: positive = win, negative = loss
 
-  function showBanner(msg, win) {
-    banner.textContent = msg;
-    banner.style.borderColor = win ? "#2ecc7188" : "#e74c3c88";
-    banner.style.color = win ? "#e2ffe2" : "#ffaaaa";
-    banner.style.display = "block";
-    clearTimeout(banner._t);
-    banner._t = setTimeout(() => { banner.style.display = "none"; }, 5000);
-  }
-
-  async function doSpin() {
-    if (spinning) return;
-    const bet = getBet();
-    if (bet < 1)   { showBanner("\u26a0\ufe0f Bet must be at least 1 FC", false); return; }
-    if (bet > bal) { showBanner("\u26a0\ufe0f Not enough FC!", false); return; }
-    setSpin(true);
-    banner.style.display = "none";
-    let spinToken;
     try {
-      const r = await fetch("/api/fishslot/spin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bet, discordToken: DISCORD_TOKEN }),
+      const r = await fetch('/api/fishslot/settle', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ won }),
       });
       const d = await r.json();
-      if (!r.ok || d.error) { showBanner("\u26a0\ufe0f " + (d.error || "Spin failed"), false); setSpin(false); return; }
-      spinToken = d.spinToken;
-      setBal(d.newBal);
-    } catch { showBanner("\u26a0\ufe0f Network error", false); setSpin(false); return; }
-    await new Promise(r => setTimeout(r, 4500));
-    try {
-      const r = await fetch("/api/fishslot/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spinToken, discordToken: DISCORD_TOKEN }),
-      });
-      const d = await r.json();
-      if (!r.ok || d.error) {
-        showBanner("\u26a0\ufe0f " + (d.error || "Result error"), false);
+      if (r.ok && d.newBal !== undefined) {
+        setDisplay(d.newBal);
+        post({ type: 'fluxer:sync', balance: d.newBal });
       } else {
-        setBal(d.newBal);
-        const delta = Number(d.delta) || 0;
-        if      (delta > 0)  showBanner("\ud83c\udf89 +" + delta.toLocaleString() + " FC \u2014 you won!", true);
-        else if (delta === 0) showBanner("\ud83e\udd37 Push \u2014 bet returned.", true);
-        else                  showBanner("\ud83d\udcb8 " + Math.abs(delta).toLocaleString() + " FC lost.", false);
+        // Server rejected — re-sync balance from DB so game stays accurate
+        const rb = await fetch('/api/balance');
+        const db = await rb.json();
+        if (db.bal !== undefined) { setDisplay(db.bal); post({ type: 'fluxer:sync', balance: db.bal }); }
       }
-    } catch { showBanner("\u26a0\ufe0f Could not save result", false); }
-    finally   { setSpin(false); }
-  }
+    } catch (_) {
+      // Network error — still resync so UI isn't stuck
+      fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{});
+    } finally {
+      busy = false;
+    }
+  });
 
-  spinBtn.addEventListener("click", doSpin);
-  betIn.addEventListener("keydown", e => { if (e.key === "Enter") doSpin(); });
-
-  setInterval(() => {
-    if (spinning) return;
-    fetch("/api/balance").then(r => r.json()).then(d => { if (d.bal !== undefined) setBal(d.bal); }).catch(() => {});
-  }, 5000);
+  // Passive balance poll every 8s (safety net for drift)
+  setInterval(function () {
+    if (busy) return;
+    fetch('/api/balance').then(r=>r.json()).then(d=>{
+      if (d.bal !== undefined && d.bal !== bal) { setDisplay(d.bal); post({ type:'fluxer:sync', balance:d.bal }); }
+    }).catch(()=>{});
+  }, 8000);
 
 })();
 </script>
@@ -370,6 +318,7 @@ export class WebServer {
 
     if (path === "/") return this._redirect(res, "/lobby");
 
+    // ── Fish Slot wrapper ──────────────────────────────────────────────────
     if (path === "/fishslot" || path === "/fishslot/" || path === "/fishslot/index.html") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -389,14 +338,15 @@ export class WebServer {
           ));
         }
         initBet = sess.bet;
+        pendingSessions.delete(token);
       }
-      return this._html(res, 200, fishslotWrapperPage(bal, tag, initBet, token ?? ""));
+      return this._html(res, 200, fishslotWrapperPage(bal, tag, initBet));
     }
 
+    // ── Game static files ──────────────────────────────────────────────────
     if (path === "/fishslot/game" || path === "/fishslot/game/" || path === "/fishslot/game/index.html") {
       const asset = getFishslotAsset("/index.html");
       if (!asset) { res.writeHead(404); return res.end("Game files not found — restart the bot to re-clone."); }
-      // index.html must never be cached — it gets re-patched on every restart
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
       return res.end(asset.body);
     }
@@ -406,7 +356,6 @@ export class WebServer {
       if (assetPath.startsWith("/game/")) assetPath = assetPath.slice("/game".length);
       const asset = getFishslotAsset(assetPath);
       if (!asset) { res.writeHead(404); return res.end("Not found"); }
-      // Use per-asset cache header: no-cache for JS/HTML, 24h for images/audio/wasm
       res.writeHead(200, {
         "Content-Type":   asset.mime,
         "Cache-Control":  asset.cacheControl,
@@ -421,6 +370,7 @@ export class WebServer {
       return this._redirect(res, uid ? `/fishslot/${qs}` : `/login`);
     }
 
+    // ── Lobby ──────────────────────────────────────────────────────────────
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -432,44 +382,35 @@ export class WebServer {
       ));
     }
 
-    if (path === "/api/fishslot/spin" && req.method === "POST") {
+    // ── Settle: called by wrapper after game posts fluxer:result ───────────
+    // won = net delta from the game (positive = player won, negative = lost)
+    // The game's own RNG is authoritative; we just persist the delta.
+    if (path === "/api/fishslot/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
       try { body = JSON.parse(await readBody(req)); }
       catch { return this._json(res, 400, { error: "Bad JSON" }); }
-      const bet = Math.max(1, Math.floor(Number(body.bet) || 0));
-      if (!bet) return this._json(res, 400, { error: "Invalid bet" });
-      const user  = await this.db.getUser(uid);
-      const dbBal = Number(user?.bal ?? 0);
-      if (dbBal < bet) return this._json(res, 400, { error: "Insufficient balance" });
-      await this.db.updateBalance(uid, -bet);
-      const spinToken = crypto.randomBytes(24).toString("hex");
-      spinSessions.set(spinToken, { uid, bet, ts: Date.now() });
-      return this._json(res, 200, { ok: true, spinToken, newBal: dbBal - bet });
-    }
 
-    if (path === "/api/fishslot/resolve" && req.method === "POST") {
-      const uid = this._uid(req);
-      if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      let body;
-      try { body = JSON.parse(await readBody(req)); }
-      catch { return this._json(res, 400, { error: "Bad JSON" }); }
-      const { spinToken } = body;
-      if (!spinToken || !spinSessions.has(spinToken))
-        return this._json(res, 400, { error: "Unknown or expired spin token" });
-      const sess = spinSessions.get(spinToken);
-      if (sess.uid !== uid) return this._json(res, 403, { error: "Token mismatch" });
-      spinSessions.delete(spinToken);
-      const delta = rollPayout(sess.bet);
-      if (delta !== 0) await this.db.updateBalance(uid, delta);
-      await this.db.recordGame(uid, delta >= 0, sess.bet);
-      if (body.discordToken && pendingSessions.has(body.discordToken))
-        pendingSessions.delete(body.discordToken);
+      const won = Math.floor(Number(body.won) || 0);
+      // Sanity cap: reject impossibly large payouts (>10 000 FC net win)
+      if (won > 10_000) return this._json(res, 400, { error: "Payout out of range" });
+
+      const user   = await this.db.getUser(uid);
+      const curBal = Number(user?.bal ?? 0);
+
+      // If the player somehow sends a win that would exceed their own balance
+      // (e.g. they lost but sent a positive number) we still apply it —
+      // the C3 game is the source of truth for the RNG result.
+      // We only hard-reject obviously impossible values above.
+      if (won !== 0) await this.db.updateBalance(uid, won);
+      await this.db.recordGame(uid, won >= 0, Math.abs(won));
+
       const updated = await this.db.getUser(uid);
-      return this._json(res, 200, { ok: true, delta, newBal: Number(updated?.bal ?? 0) });
+      return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
     }
 
+    // ── Balance read ───────────────────────────────────────────────────────
     if (path === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -477,6 +418,7 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
+    // ── Auth ───────────────────────────────────────────────────────────────
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(res, 500, errPage(
