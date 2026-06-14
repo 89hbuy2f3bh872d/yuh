@@ -8,7 +8,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
 
-// __dirname must be declared AFTER all imports in ESM
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
@@ -47,6 +46,34 @@ function getMime(filePath) {
   return (
     MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream"
   );
+}
+
+// ---------------------------------------------------------------------------
+// Asset preload cache — all files under games/assets/ read into memory once
+// at startup so there are zero cold-read races on first request.
+// ---------------------------------------------------------------------------
+const _assetCache = new Map(); // normalised URL path → { buf, mime }
+
+function _preloadAssets() {
+  if (!fs.existsSync(GAMES_ASSETS_DIR)) return;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        try {
+          const buf = fs.readFileSync(full);
+          const rel =
+            "/" + path.relative(GAMES_ASSETS_DIR, full).replace(/\\/g, "/");
+          const urlKey = "/assets" + rel;
+          _assetCache.set(urlKey, { buf, mime: getMime(full) });
+        } catch (_) {}
+      }
+    }
+  };
+  walk(GAMES_ASSETS_DIR);
+  console.log(`[Web] Preloaded ${_assetCache.size} game asset(s) into memory.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +172,48 @@ function readBody(req) {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Serve a Buffer with range request support (required for <video>/<audio>)
+// ---------------------------------------------------------------------------
+function serveBufferWithRanges(
+  req,
+  res,
+  buf,
+  mime,
+  cacheControl = "public, max-age=86400",
+) {
+  const total = buf.length;
+  const rangeHeader = req.headers["range"];
+
+  if (rangeHeader) {
+    const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+    const start = match && match[1] ? parseInt(match[1], 10) : 0;
+    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+    const safeEnd = Math.min(end, total - 1);
+    const chunk = safeEnd - start + 1;
+    if (start >= total || start > safeEnd) {
+      res.writeHead(416, { "Content-Range": `bytes */${total}` });
+      return res.end();
+    }
+    res.writeHead(206, {
+      "Content-Range": `bytes ${start}-${safeEnd}/${total}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": chunk,
+      "Content-Type": mime,
+      "Cache-Control": cacheControl,
+    });
+    res.end(buf.slice(start, safeEnd + 1));
+  } else {
+    res.writeHead(200, {
+      "Content-Type": mime,
+      "Content-Length": total,
+      "Accept-Ranges": "bytes",
+      "Cache-Control": cacheControl,
+    });
+    res.end(buf);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +381,10 @@ export class WebServer {
   }
 
   async start() {
+    // Preload all game assets into memory before accepting requests
+    _preloadAssets();
     await preloadFishslotAssets();
+
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch((e) => {
         console.error("[Web]", e);
@@ -339,60 +411,14 @@ export class WebServer {
 
     if (p === "/") return this._redirect(res, "/lobby");
 
-    // ── Static game assets: /assets/* → games/assets/* ───────────────────
+    // ── Static game assets: /assets/* → served from memory cache ────────────
     if (p.startsWith("/assets/")) {
-      const rel = p
-        .slice("/assets/".length)
-        .replace(/\.\./g, "")
-        .replace(/\/+/g, "/");
-      const file = path.join(GAMES_ASSETS_DIR, rel);
-      if (
-        !file.startsWith(GAMES_ASSETS_DIR + path.sep) &&
-        file !== GAMES_ASSETS_DIR
-      ) {
-        res.writeHead(403);
-        return res.end("Forbidden");
-      }
-      let stat;
-      try {
-        stat = fs.statSync(file);
-      } catch {
-        res.writeHead(404);
+      const cached = _assetCache.get(p);
+      if (!cached) {
+        res.writeHead(404, { "Cache-Control": "no-store" });
         return res.end("Not found");
       }
-      if (!stat.isFile()) {
-        res.writeHead(404);
-        return res.end("Not found");
-      }
-
-      const mime = getMime(file);
-      const total = stat.size;
-      const rangeHeader = req.headers["range"];
-
-      if (rangeHeader) {
-        const [, rawStart, rawEnd] =
-          /bytes=(\d*)-(\d*)/.exec(rangeHeader) ?? [];
-        const start = rawStart ? parseInt(rawStart, 10) : 0;
-        const end = rawEnd ? parseInt(rawEnd, 10) : total - 1;
-        const chunk = end - start + 1;
-        res.writeHead(206, {
-          "Content-Range": `bytes ${start}-${end}/${total}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunk,
-          "Content-Type": mime,
-          "Cache-Control": "public, max-age=86400",
-        });
-        fs.createReadStream(file, { start, end }).pipe(res);
-      } else {
-        res.writeHead(200, {
-          "Content-Type": mime,
-          "Content-Length": total,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": "public, max-age=86400",
-        });
-        fs.createReadStream(file).pipe(res);
-      }
-      return;
+      return serveBufferWithRanges(req, res, cached.buf, cached.mime);
     }
 
     // ── Sir Bandit ───────────────────────────────────────────────────────────
@@ -414,7 +440,12 @@ export class WebServer {
           ),
         );
       }
-      return this._html(res, 200, html);
+      // no-cache so the browser never serves a stale copy from disk
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      });
+      return res.end(html);
     }
 
     // ── Sir Bandit settle ──────────────────────────────────────────────
