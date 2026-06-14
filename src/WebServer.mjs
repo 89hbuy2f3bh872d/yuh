@@ -7,50 +7,71 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
+const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
 
-const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
+const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
-const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
+const FLUXER_ME_URL = "https://api.fluxer.app/v1/users/@me";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function rawFetch(url, opts = {}, maxRedirects = 4) {
   return new Promise((resolve, reject) => {
-    const parsed  = new URL(url);
-    const mod     = parsed.protocol === "https:" ? https : http;
+    const parsed = new URL(url);
+    const mod = parsed.protocol === "https:" ? https : http;
     const bodyBuf = opts.body ? Buffer.from(opts.body) : Buffer.alloc(0);
     const headers = {
-      "User-Agent":      "Mozilla/5.0 (compatible; SirGreenCasino/2.0)",
-      "Accept":          "*/*",
+      "User-Agent": "Mozilla/5.0 (compatible; SirGreenCasino/2.0)",
+      Accept: "*/*",
       "Accept-Encoding": "gzip, deflate, br",
       ...(opts.headers ?? {}),
-      "Content-Length":  bodyBuf.length,
+      "Content-Length": bodyBuf.length,
     };
     const r = mod.request(
-      { hostname: parsed.hostname,
-        port:     parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path:     parsed.pathname + parsed.search,
-        method:   opts.method ?? "GET",
-        headers },
-      res => {
-        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && maxRedirects > 0)
-          return resolve(rawFetch(new URL(res.headers.location, url).toString(), opts, maxRedirects - 1));
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: opts.method ?? "GET",
+        headers,
+      },
+      (res) => {
+        if (
+          [301, 302, 303, 307, 308].includes(res.statusCode) &&
+          res.headers.location &&
+          maxRedirects > 0
+        )
+          return resolve(
+            rawFetch(
+              new URL(res.headers.location, url).toString(),
+              opts,
+              maxRedirects - 1,
+            ),
+          );
         const chunks = [];
-        res.on("data", c => chunks.push(c));
+        res.on("data", (c) => chunks.push(c));
         res.on("end", () => {
           const raw = Buffer.concat(chunks);
           const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
-          const decomp = enc === "br"      ? zlib.brotliDecompressSync(raw)
-                       : enc === "gzip"    ? zlib.gunzipSync(raw)
-                       : enc === "deflate" ? zlib.inflateSync(raw)
-                       : raw;
-          resolve({ statusCode: res.statusCode, headers: res.headers, body: decomp });
+          const decomp =
+            enc === "br"
+              ? zlib.brotliDecompressSync(raw)
+              : enc === "gzip"
+                ? zlib.gunzipSync(raw)
+                : enc === "deflate"
+                  ? zlib.inflateSync(raw)
+                  : raw;
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            body: decomp,
+          });
         });
-      }
+      },
     );
     r.on("error", reject);
     if (bodyBuf.length) r.write(bodyBuf);
@@ -66,23 +87,28 @@ async function nodeFetch(url, opts = {}) {
 function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie ?? "").split(";")) {
-    const idx = part.indexOf("="); if (idx < 0) continue;
-    out[decodeURIComponent(part.slice(0, idx).trim())] =
-      decodeURIComponent(part.slice(idx + 1).trim());
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    out[decodeURIComponent(part.slice(0, idx).trim())] = decodeURIComponent(
+      part.slice(idx + 1).trim(),
+    );
   }
   return out;
 }
 
 function esc(s) {
   return String(s ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", c => chunks.push(c));
+    req.on("data", (c) => chunks.push(c));
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
@@ -136,7 +162,9 @@ function shell(head, body) {
 }
 
 function lobbyPage(bal, tag) {
-  return shell("", `
+  return shell(
+    "",
+    `
 <nav class="nav">
   <div class="nav-logo">🎰 SirGreen Casino</div>
   <div class="nav-spacer"></div>
@@ -156,15 +184,22 @@ function lobbyPage(bal, tag) {
       <div class="game-info"><div class="game-name">🐟 Fish Slot</div><div class="game-meta">coming soon</div></div>
     </div>
   </div>
-</div>`);
+</div>`,
+  );
 }
 
 function loginPage(authUrl) {
-  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
+  return shell(
+    "",
+    `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`,
+  );
 }
 
 function errPage(title, msg, href, label) {
-  return shell("", `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href??'/login')}">${esc(label??'Back')}</a></div></div>`);
+  return shell(
+    "",
+    `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`,
+  );
 }
 
 // Fish Slot wrapper page (unchanged)
@@ -233,34 +268,41 @@ a, button { color: inherit; cursor: pointer; background: none; border: none; fon
 // ===========================================================================
 export class WebServer {
   constructor(db, config) {
-    this.db           = db;
-    this.config       = config;
-    this.port         = config.webPort            ?? 3420;
-    this.clientId     = config.fluxerClientId     ?? config.discordClientId     ?? "";
-    this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
-    this.baseUrl      = config.webBaseUrl          ?? "https://www.sirgreen.online";
-    this.redirectUri  = `${this.baseUrl}/oauth/callback`;
-    this._states      = new Map();
+    this.db = db;
+    this.config = config;
+    this.port = config.webPort ?? 3420;
+    this.clientId = config.fluxerClientId ?? config.discordClientId ?? "";
+    this.clientSecret =
+      config.fluxerClientSecret ?? config.discordClientSecret ?? "";
+    this.baseUrl = config.webBaseUrl ?? "https://www.sirgreen.online";
+    this.redirectUri = `${this.baseUrl}/oauth/callback`;
+    this._states = new Map();
   }
 
   async start() {
     await preloadFishslotAssets();
     this._server = http.createServer((req, res) =>
-      this._handle(req, res).catch(e => {
+      this._handle(req, res).catch((e) => {
         console.error("[Web]", e);
-        res.writeHead(500); res.end("Internal error");
-      })
+        res.writeHead(500);
+        res.end("Internal error");
+      }),
     );
     this._server.listen(this.port, "0.0.0.0", () =>
-      console.log(`[Web] SirGreen Casino on port ${this.port}`));
-    setInterval(() => {
-      const cut = Date.now() - 15 * 60 * 1000;
-      for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
-    }, 10 * 60 * 1000);
+      console.log(`[Web] SirGreen Casino on port ${this.port}`),
+    );
+    setInterval(
+      () => {
+        const cut = Date.now() - 15 * 60 * 1000;
+        for (const [s, ts] of this._states)
+          if (ts < cut) this._states.delete(s);
+      },
+      10 * 60 * 1000,
+    );
   }
 
   async _handle(req, res) {
-    const u    = new URL(req.url, "http://localhost");
+    const u = new URL(req.url, "http://localhost");
     const path = u.pathname;
 
     if (path === "/") return this._redirect(res, "/lobby");
@@ -270,8 +312,20 @@ export class WebServer {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       let html;
-      try { html = fs.readFileSync(SIR_BANDIT_HTML, "utf8"); }
-      catch { return this._html(res, 500, errPage("Game not found", "sir-bandit.html missing.", "/lobby", "Back to lobby")); }
+      try {
+        html = fs.readFileSync(SIR_BANDIT_HTML, "utf8");
+      } catch {
+        return this._html(
+          res,
+          500,
+          errPage(
+            "Game not found",
+            "sir-bandit.html missing.",
+            "/lobby",
+            "Back to lobby",
+          ),
+        );
+      }
       return this._html(res, 200, html);
     }
 
@@ -280,8 +334,11 @@ export class WebServer {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
-      try { body = JSON.parse(await readBody(req)); }
-      catch { return this._json(res, 400, { error: "Bad JSON" }); }
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return this._json(res, 400, { error: "Bad JSON" });
+      }
 
       const won = Math.floor(Number(body.won) || 0);
       // Sanity caps: max net win 50 000 FC, min net -100 000 FC per spin
@@ -289,7 +346,7 @@ export class WebServer {
         return this._json(res, 400, { error: "Delta out of range" });
 
       // Prevent balance going below 0
-      const user   = await this.db.getUser(uid);
+      const user = await this.db.getUser(uid);
       const curBal = Number(user?.bal ?? 0);
       const clamped = Math.max(-curBal, won);
 
@@ -297,33 +354,50 @@ export class WebServer {
       await this.db.recordGame(uid, won >= 0, Math.abs(won));
 
       const updated = await this.db.getUser(uid);
-      return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
+      return this._json(res, 200, {
+        ok: true,
+        newBal: Number(updated?.bal ?? 0),
+      });
     }
 
     // ── Fish Slot wrapper ─────────────────────────────────────────────
     if (path === "/fishslot" || path === "/fishslot/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const user    = await this.db.getUser(uid);
+      const user = await this.db.getUser(uid);
       const cookies = parseCookies(req);
-      const bal     = Number(user?.bal ?? 0);
-      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
+      const bal = Number(user?.bal ?? 0);
+      const tag = decodeURIComponent(cookies.dtag ?? "Player");
       return this._html(res, 200, fishslotWrapperPage(bal, tag));
     }
 
     // ── Fish Slot game static files ───────────────────────────────
     if (path === "/fishslot/game" || path === "/fishslot/game/") {
       const asset = getFishslotAsset("/index.html");
-      if (!asset) { res.writeHead(404); return res.end("Game files not found — restart the bot."); }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+      if (!asset) {
+        res.writeHead(404);
+        return res.end("Game files not found — restart the bot.");
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
       return res.end(asset.body);
     }
     if (path.startsWith("/fishslot/")) {
       let assetPath = path.slice("/fishslot".length);
-      if (assetPath.startsWith("/game/")) assetPath = assetPath.slice("/game".length);
+      if (assetPath.startsWith("/game/"))
+        assetPath = assetPath.slice("/game".length);
       const asset = getFishslotAsset(assetPath);
-      if (!asset) { res.writeHead(404); return res.end("Not found"); }
-      res.writeHead(200, { "Content-Type": asset.mime, "Cache-Control": asset.cacheControl, "Content-Length": asset.body.length });
+      if (!asset) {
+        res.writeHead(404);
+        return res.end("Not found");
+      }
+      res.writeHead(200, {
+        "Content-Type": asset.mime,
+        "Cache-Control": asset.cacheControl,
+        "Content-Length": asset.body.length,
+      });
       return res.end(asset.body);
     }
 
@@ -331,12 +405,16 @@ export class WebServer {
     if (path === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const user    = await this.db.getUser(uid);
+      const user = await this.db.getUser(uid);
       const cookies = parseCookies(req);
-      return this._html(res, 200, lobbyPage(
-        Number(user?.bal ?? 0),
-        decodeURIComponent(cookies.dtag ?? "Player")
-      ));
+      return this._html(
+        res,
+        200,
+        lobbyPage(
+          Number(user?.bal ?? 0),
+          decodeURIComponent(cookies.dtag ?? "Player"),
+        ),
+      );
     }
 
     // ── Fish Slot settle ────────────────────────────────────────────
@@ -344,14 +422,21 @@ export class WebServer {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
-      try { body = JSON.parse(await readBody(req)); }
-      catch { return this._json(res, 400, { error: "Bad JSON" }); }
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return this._json(res, 400, { error: "Bad JSON" });
+      }
       const won = Math.floor(Number(body.won) || 0);
-      if (won > 10_000) return this._json(res, 400, { error: "Payout out of range" });
+      if (won > 10_000)
+        return this._json(res, 400, { error: "Payout out of range" });
       if (won !== 0) await this.db.updateBalance(uid, won);
       await this.db.recordGame(uid, won >= 0, Math.abs(won));
       const updated = await this.db.getUser(uid);
-      return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
+      return this._json(res, 200, {
+        ok: true,
+        newBal: Number(updated?.bal ?? 0),
+      });
     }
 
     // ── Balance ──────────────────────────────────────────────────────────
@@ -365,11 +450,16 @@ export class WebServer {
     // ── Auth ─────────────────────────────────────────────────────────────
     if (path === "/login" && req.method === "GET") {
       if (!this.clientId) {
-        return this._html(res, 500, errPage(
-          "\u26a0\ufe0f Not Configured",
-          "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.",
-          "#", "\u2014"
-        ));
+        return this._html(
+          res,
+          500,
+          errPage(
+            "\u26a0\ufe0f Not Configured",
+            "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.",
+            "#",
+            "\u2014",
+          ),
+        );
       }
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
@@ -384,44 +474,82 @@ export class WebServer {
     }
 
     if (path === "/oauth/callback" && req.method === "GET") {
-      const code  = u.searchParams.get("code");
+      const code = u.searchParams.get("code");
       const state = u.searchParams.get("state");
       if (!code || !state || !this._states.has(state))
-        return this._html(res, 400, errPage("\u274c Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+        return this._html(
+          res,
+          400,
+          errPage(
+            "\u274c Login Failed",
+            "Invalid or expired login state.",
+            "/login",
+            "Try again",
+          ),
+        );
       this._states.delete(state);
       let tokenData;
       try {
         const raw = await nodeFetch(FLUXER_TOKEN_URL, {
-          method:  "POST",
+          method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body:    new URLSearchParams({
-            client_id:     this.clientId,
+          body: new URLSearchParams({
+            client_id: this.clientId,
             client_secret: this.clientSecret,
-            grant_type:    "authorization_code",
+            grant_type: "authorization_code",
             code,
-            redirect_uri:  this.redirectUri,
+            redirect_uri: this.redirectUri,
           }).toString(),
         });
         tokenData = JSON.parse(raw);
       } catch (e) {
         console.error("[OAuth]", e);
-        return this._html(res, 500, errPage("\u26a0\ufe0f Error", "Could not reach Fluxer.", "/login", "Retry"));
+        return this._html(
+          res,
+          500,
+          errPage(
+            "\u26a0\ufe0f Error",
+            "Could not reach Fluxer.",
+            "/login",
+            "Retry",
+          ),
+        );
       }
       if (!tokenData.access_token)
-        return this._html(res, 400, errPage("\u274c Login Failed",
-          tokenData.error_description ?? tokenData.message ?? "Unknown error",
-          "/login", "Try again"));
+        return this._html(
+          res,
+          400,
+          errPage(
+            "\u274c Login Failed",
+            tokenData.error_description ?? tokenData.message ?? "Unknown error",
+            "/login",
+            "Try again",
+          ),
+        );
       let me;
       try {
-        me = JSON.parse(await nodeFetch(FLUXER_ME_URL, {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        }));
+        me = JSON.parse(
+          await nodeFetch(FLUXER_ME_URL, {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          }),
+        );
       } catch {
-        return this._html(res, 500, errPage("\u26a0\ufe0f Error", "Could not fetch Fluxer profile.", "/login", "Retry"));
+        return this._html(
+          res,
+          500,
+          errPage(
+            "\u26a0\ufe0f Error",
+            "Could not fetch Fluxer profile.",
+            "/login",
+            "Retry",
+          ),
+        );
       }
-      const userId  = me.id;
-      const tag     = me.username ?? me.tag ?? userId;
-      const avatar  = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      const userId = me.id;
+      const tag = me.username ?? me.tag ?? userId;
+      const avatar = me.avatar
+        ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64`
+        : "";
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
       const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
@@ -436,19 +564,38 @@ export class WebServer {
 
     if (path === "/logout") {
       const uid = this._uid(req);
-      if (uid) { const c = parseCookies(req); if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {}); }
+      if (uid) {
+        const c = parseCookies(req);
+        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
+      }
       res.setHeader("Set-Cookie", [
-        "sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0",
-        "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0",
+        "sid=; Path=/; Max-Age=0",
+        "uid=; Path=/; Max-Age=0",
+        "dtag=; Path=/; Max-Age=0",
+        "dav=; Path=/; Max-Age=0",
       ]);
       return this._redirect(res, "/login");
     }
 
-    res.writeHead(404); res.end("Not found");
+    res.writeHead(404);
+    res.end("Not found");
   }
 
-  _uid(req) { const c = parseCookies(req); return (c.sid && c.uid) ? c.uid : null; }
-  _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
-  _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
-  _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }
+  _uid(req) {
+    const c = parseCookies(req);
+    return c.sid && c.uid ? c.uid : null;
+  }
+  _html(res, s, b) {
+    res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" });
+    res.end(b);
+  }
+  _json(res, s, o) {
+    res.writeHead(s, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(o));
+  }
+  _redirect(res, l) {
+    res.setHeader("Location", l);
+    res.writeHead(302);
+    res.end();
+  }
 }
