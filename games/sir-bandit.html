@@ -137,6 +137,17 @@ a{color:inherit;text-decoration:none}
 .royal.K{color:#8c7a52}.royal.Q{color:#8c7a52}.royal.J{color:#7e8c52}
 .royal.A{color:#8c7a52}.royal.T{color:#7e8c52;font-size:1.2em}
 
+/* ---- Rainbow symbol: sparkly glow so it's easy to spot ---- */
+.cell.rb-glow{z-index:4;overflow:visible;
+  filter:drop-shadow(0 0 7px #ffffffcc) drop-shadow(0 0 16px #b6e0ffaa) drop-shadow(0 0 24px #ff9cf088)}
+.cell.rb-glow::before{content:'';position:absolute;inset:-6%;border-radius:50%;z-index:-1;pointer-events:none;
+  background:radial-gradient(circle,rgba(255,255,255,.6),rgba(120,210,255,.4) 34%,rgba(255,150,235,.3) 56%,transparent 72%);
+  filter:blur(1px);animation:rbAura 1.5s ease-in-out infinite}
+.cell.rb-glow::after{content:'✦';position:absolute;top:3%;right:6%;font-size:.5em;z-index:3;pointer-events:none;color:#fff;
+  text-shadow:0 0 6px #fff,0 0 12px #8fdcff;animation:rbTwinkle 1.1s ease-in-out infinite}
+@keyframes rbAura{0%,100%{transform:scale(.9);opacity:.6}50%{transform:scale(1.14);opacity:1}}
+@keyframes rbTwinkle{0%,100%{opacity:.2;transform:scale(.6) rotate(0)}50%{opacity:1;transform:scale(1.15) rotate(90deg)}}
+
 /* ---- Coins (revealed in golden squares) ---- */
 .coin{width:84%;height:84%;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-family:'Arial Black',sans-serif;font-weight:900;color:#3a2a00;position:relative;
@@ -493,7 +504,7 @@ a{color:inherit;text-decoration:none}
    Files live in assets/sir-bandit/. A few names in the brief were
    truncated; reconstructed to their likely real filenames below —
    tweak here if any differ. Missing files just stay silent. */
-const SND_DIR = 'assets/sir-bandit/';
+const SND_DIR = '/games/assets/sir-bandit/';   /* absolute: files live in rootdir\games\assets\sir-bandit */
 const MUSIC = {
   intro:   'music_intro.webm',
   base0:   'music_level_0.webm',   // idle
@@ -594,11 +605,13 @@ let spinning=false, autoMode=false, autoTimer=null;
 let musicOn=true, sfxOn=true;
 let fsMode=false, fsSpins=0, fsType=0; // 1 Luck, 2 Glitters, 3 Treasure
 let guaranteedRainbow=false, keepGoldenAfterActivate=false;
+let guaranteedRainbowHits=0;            // forced rainbow-activation spins after a bonus buy
 let featureMode=null;                 // null | 'hunt' (1.5× bet) | 'rain' (2× bet)
 const FEATURE_COST={hunt:1.5, rain:2};
 
 const grid=[];               // grid[c][r] = symbol id
 const golden=new Set();      // fixed positions 'c-r' that are golden
+const lockedCollectors=new Set(); // 'c-r' pots that persist to the next rainbow spin (keep-golden modes)
 const reveal={};             // 'c-r' -> reveal object (during coin feature)
 for(let c=0;c<COLS;c++){grid[c]=[]; for(let r=0;r<ROWS;r++) grid[c][r]=draw(buildPool());}
 
@@ -651,12 +664,21 @@ function paintGolden(){
     }
   }
 }
+/* light up N random squares (used to guarantee a rainbow "hit" after a bonus buy) */
+function seedGoldenSquares(n){
+  const free=[];
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++) if(!golden.has(`${c}-${r}`)) free.push(`${c}-${r}`);
+  for(let i=free.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[free[i],free[j]]=[free[j],free[i]];}
+  for(let i=0;i<Math.min(n,free.length);i++) golden.add(free[i]);
+  paintGolden();
+}
 function makeCell(c,r){
   const d=document.createElement('div'); d.className='cell'; d.dataset.c=c; d.dataset.r=r;
   paintCell(d,c,r); return d;
 }
 function paintCell(d,c,r){
   const key=`${c}-${r}`;
+  d.classList.remove('rb-glow');
   // reveal state (coin feature) takes precedence
   if(reveal[key]){ d.innerHTML=''; d.appendChild(renderReveal(reveal[key])); return; }
   const s=SYM[grid[c][r]];
@@ -664,6 +686,7 @@ function paintCell(d,c,r){
   if(s.img){const img=new Image();img.src=s.img;img.alt=s.label||s.id;d.appendChild(img);}
   else if(s.glyph){const g=document.createElement('span');g.className='glyph '+(s.cls||'');g.textContent=s.glyph;d.appendChild(g);}
   else d.textContent=s.emoji;
+  if(s.special==='rainbow') d.classList.add('rb-glow');   // sparkly glow
 }
 function renderReveal(rv){
   if(rv.type==='coin'){
@@ -897,6 +920,10 @@ async function runCoinFeature(){
   let collectedTotal=0;        // value banked by pots
   let potCarry=0;
   const noBronze=(fsType===3);
+  // collectors persist to the next rainbow spin in keep-golden modes — re-seed them (once each)
+  for(const k of lockedCollectors){
+    if(golden.has(k)){ reveal[k]={type:'pot'}; const [c,r]=k.split('-').map(Number); paintCell(cellEls[c][r],c,r); }
+  }
   const tStart=performance.now();
   const fdelay=ms=>delay(performance.now()-tStart>9000?0:ms); // cap total feature length
 
@@ -906,6 +933,7 @@ async function runCoinFeature(){
     if(keys.length===0 && pass>0) break;
     for(const k of keys){
       reveal[k]=revealSymbol({noBronze});
+      if(reveal[k].type==='pot' && keepGoldenAfterActivate) lockedCollectors.add(k);  // sticky collector
       const [c,r]=k.split('-').map(Number);
       paintCell(cellEls[c][r],c,r);
       playSfx(reveal[k].type==='coin'?'coinReveal':reveal[k].type==='clover'?'clover':'potCollect');
@@ -971,7 +999,7 @@ async function runCoinFeature(){
   }
   // clear reveals & (usually) golden squares
   for(const k of Object.keys(reveal)) delete reveal[k];
-  if(!keepGoldenAfterActivate) golden.clear();
+  if(!keepGoldenAfterActivate){ golden.clear(); lockedCollectors.clear(); }
   repaintAll(); paintGolden();
   return Math.round(collectedTotal*100)/100;
 }
@@ -1052,12 +1080,14 @@ async function doSpin(opts={}){
   if(!fsMode && !opts.free) Music.base(1);
 
   // fresh paid spin clears last round's golden squares; free spins keep them
-  if(!fsMode && !opts.free){ golden.clear(); paintGolden(); }
+  if(!fsMode && !opts.free){ golden.clear(); lockedCollectors.clear(); paintGolden(); }
 
   // apply active feature-spin mode (persists each spin until toggled off)
   const spinOpts={};
   if(!fsMode && !opts.free && featureMode==='hunt') spinOpts.fsBoost=true;
   if((!fsMode && !opts.free && featureMode==='rain') || guaranteedRainbow) spinOpts.forceRainbow=true;
+  const forcedGuarHit = fsMode && guaranteedRainbowHits>0;   // bonus-buy guaranteed rainbow hits
+  if(forcedGuarHit) spinOpts.forceRainbow=true;
 
   genGrid(spinOpts);
   await animateSpin();
@@ -1088,14 +1118,17 @@ async function doSpin(opts={}){
   ctTag.classList.remove('show');
 
   // rainbow activation (coin feature)
+  // guaranteed-hit spins (after a bonus buy) seed golden squares so the rainbow always lands a real win
+  if(forcedGuarHit && hasRainbow() && golden.size===0) seedGoldenSquares(5+Math.floor(Math.random()*3));
   if(hasRainbow() && golden.size>0){
     const coinWin=await runCoinFeature();
     win+=coinWin;
     if(coinWin>0) hudWin.textContent='+'+win.toFixed(2);
+    if(forcedGuarHit) guaranteedRainbowHits=Math.max(0,guaranteedRainbowHits-1);
   } else if(hasRainbow()){
-    // rainbow but no golden squares — just clear it
-    for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++) if(grid[c][r]==='rainbow') grid[c][r]=draw(buildPool());
+    // rainbow present but nothing to activate — keep it on the board (do NOT morph it into another symbol)
     repaintAll();
+    if(forcedGuarHit) guaranteedRainbowHits=Math.max(0,guaranteedRainbowHits-1);
   }
 
   // settle
@@ -1121,11 +1154,12 @@ async function startFreeSpins(fsCount){
   else{type=1;spins=8;title='LUCK OF THE BANDIT';sub='8 Free Spins · Golden Squares persist between spins';}
   await runFreeSpins(type,spins,title,sub);
 }
-async function runFreeSpins(type,spins,title,sub){
+async function runFreeSpins(type,spins,title,sub,guarHits=0){
   fsMode=true; fsType=type; fsSpins=spins;
   guaranteedRainbow=(type===3);
-  keepGoldenAfterActivate=(type===2);
-  golden.clear(); for(const k of Object.keys(reveal)) delete reveal[k]; paintGolden();
+  keepGoldenAfterActivate=(type>=2);     // Glitters + Treasure keep Golden Squares (and collectors) lit
+  guaranteedRainbowHits=guarHits;
+  golden.clear(); lockedCollectors.clear(); for(const k of Object.keys(reveal)) delete reveal[k]; paintGolden();
 
   playSfx('bonusTrigger');
   Music.bonus(0);
@@ -1150,9 +1184,9 @@ async function runFreeSpins(type,spins,title,sub){
     await delay(450);
   }
   // end
-  fsMode=false; fsType=0; guaranteedRainbow=false; keepGoldenAfterActivate=false;
+  fsMode=false; fsType=0; guaranteedRainbow=false; keepGoldenAfterActivate=false; guaranteedRainbowHits=0;
   fsHud.classList.remove('show');
-  golden.clear(); repaintAll(); paintGolden();
+  golden.clear(); lockedCollectors.clear(); repaintAll(); paintGolden();
   Music.base(0);
   if(total>0){showBanner(total,true,'Total Feature Win');playSfx('bigWin');}
 }
@@ -1215,8 +1249,8 @@ async function purchaseBonus(b,price){
   playSfx('click');
   setBalance(balance-price); settle(-price);
   closeBonusBuy();
-  if(b.key==='luck'){ await runFreeSpins(1,8,'LUCK OF THE BANDIT','8 Free Spins · Golden Squares persist between spins'); }
-  else if(b.key==='glit'){ await runFreeSpins(2,12,'ALL THAT GLITTERS IS GOLD','12 Free Spins · Golden Squares stay lit even after activating'); }
+  if(b.key==='luck'){ await runFreeSpins(1,8,'LUCK OF THE BANDIT','8 Free Spins · Golden Squares persist between spins · 1 guaranteed Rainbow hit',1); }
+  else if(b.key==='glit'){ await runFreeSpins(2,12,'ALL THAT GLITTERS IS GOLD','12 Free Spins · Golden Squares stay lit · 2 guaranteed Rainbow hits',2); }
   maybeAuto();
 }
 function openBonusBuy(){if(spinning||fsMode)return;buildBonusBuy();$('bbOverlay').classList.add('show');playSfx('click');}
