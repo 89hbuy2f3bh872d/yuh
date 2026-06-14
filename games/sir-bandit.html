@@ -1706,6 +1706,7 @@
             const SFX = {
                 click: "scratch.webm",
                 spin: "camera_drum.webm",
+                camera: "camera_drum.webm", // played only on bonus trigger / extra spins
                 reelStop: "happy_2.webm",
                 win: "happy_1.webm",
                 cascade: "coin_swoosh.webm",
@@ -2143,15 +2144,58 @@
                 t._t = setTimeout(() => t.classList.remove("show"), 2200);
             }
 
-            /* ---- SFX: short one-shots, cloned so they can overlap ---- */
+            /* ---- Audio asset preloader ----
+   The static host serves these .webm files unreliably on first request (404 until
+   cached). To work around it we fetch each file ONCE into an in-memory blob URL and
+   play everything from memory for the rest of the session — no repeat network hits. */
+            const audioCache = {}; // filename -> object URL
+            const audioPending = {}; // filename -> Promise
+            function preloadAudio(file, tries = 4) {
+                if (audioCache[file]) return Promise.resolve(audioCache[file]);
+                if (audioPending[file]) return audioPending[file];
+                audioPending[file] = (async () => {
+                    for (let i = 0; i < tries; i++) {
+                        try {
+                            const res = await fetch(SND_DIR + file, {
+                                cache: "force-cache",
+                            });
+                            if (res.ok) {
+                                const url = URL.createObjectURL(
+                                    await res.blob(),
+                                );
+                                audioCache[file] = url;
+                                return url;
+                            }
+                        } catch (_) {}
+                        await new Promise((r) => setTimeout(r, 250 + i * 250)); // back off, then retry
+                    }
+                    return null;
+                })();
+                return audioPending[file];
+            }
+            function preloadAllAudio() {
+                const files = new Set();
+                for (const v of Object.values(SFX)) {
+                    if (Array.isArray(v)) v.forEach((f) => files.add(f));
+                    else files.add(v);
+                }
+                for (const v of Object.values(MUSIC)) files.add(v);
+                files.forEach((f) => preloadAudio(f));
+            }
+            function audioSrc(file) {
+                return audioCache[file] || SND_DIR + file;
+            }
+
+            /* ---- SFX: short one-shots, played from cached blobs so they never re-404 ---- */
             function playSfx(key) {
                 if (!sfxOn) return;
                 let file = SFX[key];
                 if (!file) return;
                 if (Array.isArray(file))
                     file = file[Math.floor(Math.random() * file.length)];
+                if (!audioCache[file]) preloadAudio(file); // warm for next time
                 try {
-                    const a = new Audio(SND_DIR + file);
+                    const a = new Audio(audioSrc(file));
                     a.volume =
                         key === "coinReveal" || key === "clover" ? 0.5 : 0.7;
                     a.play().catch(() => {});
@@ -2169,9 +2213,10 @@
                 const TARGET_BGM = 0.4,
                     TARGET_AMB = 0.18;
                 function mk(file, loop, vol) {
-                    const a = new Audio(SND_DIR + file);
+                    const a = new Audio(audioSrc(file));
                     a.loop = loop;
                     a.volume = vol;
+                    if (!audioCache[file]) preloadAudio(file);
                     return a;
                 }
                 function fade(el, to, ms = 600) {
@@ -2365,7 +2410,6 @@
             }
 
             async function animateSpin() {
-                playSfx("spin");
                 // re-render the whole board
                 for (let c = 0; c < COLS; c++) {
                     const track = reels[c].track;
@@ -2500,13 +2544,16 @@
                 Music[fsMode ? "bonus" : "base"](2);
                 flashRainbow();
                 await delay(450);
-                let carry = 0; // value currently held by the running collector (pours forward)
+                let carry = 0; // value held by the persistent collector(s)
                 let collectedTotal = 0; // banked feature value, in bet-multiples
+                let collectedOnce = false; // has a collector swept yet this feature?
+                const collectorKeys = new Set(); // golden positions currently holding a collector (they persist)
                 const noBronze = fsType === 3;
                 // sticky collectors persist to the next rainbow spin in keep-golden modes — re-seed (once each)
                 for (const k of lockedCollectors) {
                     if (golden.has(k)) {
-                        reveal[k] = { type: "pot" };
+                        reveal[k] = { type: "pot", _mult: 1 };
+                        collectorKeys.add(k);
                         const [c, r] = k.split("-").map(Number);
                         paintCell(cellEls[c][r], c, r);
                     }
@@ -2515,15 +2562,21 @@
                 const fdelay = (ms) =>
                     delay(performance.now() - tStart > 9000 ? 0 : ms); // cap total feature length
 
-                for (let pass = 0; pass < 10; pass++) {
-                    // reveal every golden square that isn't already revealed
+                for (let pass = 0; pass < 12; pass++) {
+                    // reveal golden squares that don't have a reveal yet.
+                    // collector squares KEEP their pot reveal → they stay on the board between reveals.
                     const keys = [...golden].filter((k) => !reveal[k]);
-                    if (keys.length === 0 && pass > 0) break;
+                    let newPot = false;
                     for (const k of keys) {
                         reveal[k] = revealSymbol({ noBronze });
-                        if (reveal[k].type === "pot" && keepGoldenAfterActivate)
-                            lockedCollectors.add(k); // sticky collector
                         const [c, r] = k.split("-").map(Number);
+                        if (reveal[k].type === "pot") {
+                            reveal[k]._mult = 1;
+                            collectorKeys.add(k);
+                            newPot = true;
+                            if (keepGoldenAfterActivate)
+                                lockedCollectors.add(k);
+                        } // sticky cross-spin
                         paintCell(cellEls[c][r], c, r);
                         playSfx(
                             reveal[k].type === "coin"
@@ -2538,8 +2591,8 @@
 
                     // gather reveals
                     const coins = [],
-                        pots = [],
-                        clovers = [];
+                        clovers = [],
+                        collectors = [];
                     for (const k of golden) {
                         const rv = reveal[k];
                         if (!rv) continue;
@@ -2547,14 +2600,14 @@
                         if (rv.type === "coin") {
                             rv.value = rv.base;
                             coins.push({ k, c, r, rv });
-                        } else if (rv.type === "pot") {
-                            rv._mult = rv._mult || 1;
-                            pots.push({ k, c, r, rv });
                         } else if (rv.type === "clover")
                             clovers.push({ k, c, r, rv });
+                        else if (rv.type === "pot")
+                            collectors.push({ k, c, r, rv });
                     }
 
-                    // clovers boost adjacent coins AND collectors (collector boost = the low-chance case)
+                    // clovers boost coins AND collectors within a 1-square radius (the 8 neighbours), then are consumed
+                    let collectorMult = 1;
                     if (clovers.length) {
                         for (const cv of clovers) {
                             const cvEl = cellEls[cv.c][cv.r].firstElementChild;
@@ -2566,7 +2619,7 @@
                             spawnSparkles(cellEls[cv.c][cv.r], 8, "#9be86a");
                             playSfx("clover");
                             await fdelay(120);
-                            for (const t of [...coins, ...pots]) {
+                            for (const t of [...coins, ...collectors]) {
                                 if (
                                     Math.abs(t.c - cv.c) <= 1 &&
                                     Math.abs(t.r - cv.r) <= 1 &&
@@ -2588,11 +2641,15 @@
                                             "#9be86a",
                                         );
                                     } else {
-                                        // clover lands next to a collector
-                                        t.rv._mult *= cv.rv.mult;
+                                        // clover lands next to a collector (low-chance boost)
+                                        collectorMult *= cv.rv.mult;
                                         const potEl =
                                             cellEls[t.c][t.r].firstElementChild;
-                                        if (potEl) potEl.classList.add("boost");
+                                        if (potEl) {
+                                            potEl.classList.remove("boost");
+                                            void potEl.offsetWidth;
+                                            potEl.classList.add("boost");
+                                        }
                                         spawnSparkles(
                                             cellEls[t.c][t.r],
                                             8,
@@ -2601,21 +2658,34 @@
                                     }
                                 }
                             }
+                            delete reveal[cv.k];
+                            paintCell(cellEls[cv.c][cv.r], cv.c, cv.r); // clover consumed → re-reveals next pass
                             await fdelay(clovers.length > 4 ? 160 : 280);
                         }
                     }
 
                     const coinSum = coins.reduce((a, x) => a + x.rv.value, 0);
 
-                    if (pots.length) {
-                        // collector sweeps all coins + the previous collector's carried value, then pours forward.
-                        // It collects ONCE this pass, then triggers another reveal (so it never collects twice).
-                        let grab = coinSum + carry;
-                        for (const p of pots)
-                            grab = Math.round(grab * p.rv._mult * 100) / 100; // clover-boosted collectors
+                    if (collectorKeys.size === 0) {
+                        // no collector at all this feature — loose coins simply pay their summed value
+                        collectedTotal = coinSum + carry;
+                        await sumCoinsToWin(coins);
+                        break;
+                    }
+
+                    // A collector sweeps on the pass it first appears and on any pass a NEW collector lands.
+                    // Otherwise this is the "stay" reveal: the collector does NOT collect, but a clover may still
+                    // boost it and a new collector may pour the carried value forward.
+                    const doCollect = !collectedOnce || newPot;
+                    if (doCollect) {
+                        let grab =
+                            Math.round(
+                                (coinSum + carry) * collectorMult * 100,
+                            ) / 100;
                         carry = grab;
-                        collectedTotal = carry; // the collector pays this running amount
-                        for (const p of pots) {
+                        collectedTotal = carry;
+                        collectedOnce = true;
+                        for (const p of collectors) {
                             p.rv.collected = carry;
                             paintCell(cellEls[p.c][p.r], p.c, p.r);
                             const potEl = cellEls[p.c][p.r].firstElementChild;
@@ -2625,19 +2695,34 @@
                                 potEl.classList.add("collect");
                             }
                         }
-                        playSfx("potCollect");
-                        await flyToPots(coins, pots);
-                        for (const p of pots)
+                        if (coins.length) playSfx("potCollect");
+                        await flyToPots(coins, collectors);
+                        for (const p of collectors)
                             spawnSparkles(cellEls[p.c][p.r], 12, "#ffe27a");
-                        await fdelay(520);
-                        // clear collected coins AND the collector(s) → forces another reveal next pass
-                        for (const cn of coins) delete reveal[cn.k];
-                        for (const p of pots) delete reveal[p.k];
-                        // loop continues → another reveal: clover/coins/new collector that the carry pours into
+                        await fdelay(coins.length ? 520 : 200);
+                        for (const cn of coins) delete reveal[cn.k]; // clear collected coins; collectors STAY for the re-reveal
+                        if ([...golden].filter((k) => !reveal[k]).length === 0)
+                            break; // nothing left to re-reveal
+                        // loop → another reveal (collector stays; chance for a new collector or a clover)
                     } else {
-                        // no collector this pass — loose coins add their value to the carried total, feature ends
-                        collectedTotal = coinSum + carry;
-                        await sumCoinsToWin(coins);
+                        // "stay" reveal with no new collector: apply any clover boost to the held value, then finish
+                        if (collectorMult > 1) {
+                            carry =
+                                Math.round(carry * collectorMult * 100) / 100;
+                            collectedTotal = carry;
+                            for (const p of collectors) {
+                                p.rv.collected = carry;
+                                paintCell(cellEls[p.c][p.r], p.c, p.r);
+                                const potEl =
+                                    cellEls[p.c][p.r].firstElementChild;
+                                if (potEl) {
+                                    potEl.classList.remove("collect");
+                                    void potEl.offsetWidth;
+                                    potEl.classList.add("collect");
+                                }
+                            }
+                            await fdelay(420);
+                        }
                         break;
                     }
                 }
@@ -2869,6 +2954,7 @@
                 if (!fsMode && !opts.free) {
                     const fsCount = countSpecial("fs");
                     if (fsCount >= 3) {
+                        playSfx("camera");
                         await startFreeSpins(fsCount);
                         spinning = false;
                         lockUI(false);
@@ -3014,6 +3100,7 @@
                     const extra = countSpecial("fs");
                     if (extra >= 2) {
                         fsSpins += extra >= 3 ? 4 : 2;
+                        playSfx("camera");
                         toast("+" + (extra >= 3 ? 4 : 2) + " free spins!");
                     }
                     fsSpins--;
@@ -3339,6 +3426,7 @@
             updateFeatureUI();
             setBalance(balance);
             fetchBalance();
+            preloadAllAudio(); // warm the blob cache so .webm files don't 404 on first play
             try {
                 const m = document.cookie.match(/(?:^|;\s*)dtag=([^;]*)/);
                 if (m) $("tbTag").textContent = decodeURIComponent(m[1]);
