@@ -1,1120 +1,2770 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Sir Bandit</title>
-<style>
-/* =============================================================
-   SIR BANDIT — 6×5 Cluster Pays | Cascades | Golden Squares
-   =============================================================
-
-   ASSET SWAP GUIDE
-   ----------------
-   LOGO:       Replace the <h1 id="gameTitle"> content with <img src="...">
-   BACKGROUND: Replace --bg-url var (CSS :root) with your image path
-   RACCOON:    Replace #raccoon SVG with <img id="raccoon" src="...">
-   MUSIC:      Set MUSIC_SRC constant near top of <script>
-   SYMBOLS:    Each entry in SYMBOLS[] can have .img = '/assets/...' instead of .emoji
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+        />
+        <title>Sir Bandit</title>
+        <style>
+            /* =============================================================
+   SIR BANDIT — 6×5 Cluster Pays · Super Cascades · Golden Squares
+   Faithful recreation of Hacksaw Gaming's "Le Bandit" mechanics.
+   -------------------------------------------------------------
+   ASSET / AUDIO SWAP GUIDE  (search for "SWAP:")
+     LOGO      → replace <h1 id="gameTitle"> with <img id="gameTitle" src="...">
+     BACKGROUND→ set --bg-url below to url('/assets/sir-bandit/bg.jpg')
+     SYMBOLS   → give any SYMBOLS[] entry an `img:'/path.png'` field
+     AUDIO     → fill in the SFX{} / MUSIC_SRC paths in the <script>
    ============================================================= */
 
-:root {
-  --gold:     #e8c84a;
-  --gold2:    #ffd700;
-  --gold-dim: #a08820;
-  --dark:     #1a1208;
-  --panel:    #231a0a;
-  --panel2:   #2d2210;
-  --cell-bg:  #2a2008;
-  --cell-bdr: #4a3a10;
-  --cream:    #e8ddb0;
-  --green:    #4aaa30;
-  --green2:   #2ecc71;
-  --red:      #cc3020;
-  --bg-url:   '';   /* set to url('/assets/sir-bandit/bg.jpg') to add background art */
-  --hud-h:    64px;
-}
+            :root {
+                --gold: #f2c84b;
+                --gold2: #ffe27a;
+                --gold-dim: #9c821f;
+                --bronze: #c8772e;
+                --silver: #b9c6d6;
+                --ink: #1c1206;
+                --panel: #241a0c;
+                --panel2: #2e2210;
+                --frame: #7a5e1e;
+                --frame2: #3a2c0c;
+                --cell: #221908;
+                --cell-bdr: #43340f;
+                --cream: #efe3b8;
+                --muted: #a08f5e;
+                --green: #7ad03a;
+                --green2: #5aa81f;
+                --green-ink: #214a0a;
+                --red: #cc3a26;
+                --bg-url: ""; /* SWAP: url('/assets/sir-bandit/bg.jpg') */
+                --hud-h: 90px;
+            }
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                height: 100%;
+                overflow: hidden;
+                background: #0c0a06;
+                color: var(--cream);
+                font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+                -webkit-font-smoothing: antialiased;
+                user-select: none;
+            }
+            button {
+                cursor: pointer;
+                background: none;
+                border: none;
+                color: inherit;
+                font: inherit;
+            }
+            a {
+                color: inherit;
+                text-decoration: none;
+            }
+            @media (prefers-reduced-motion: reduce) {
+                * {
+                    animation-duration: 0.001ms !important;
+                    transition-duration: 0.001ms !important;
+                }
+            }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  height: 100%; overflow: hidden;
-  font-family: 'Georgia', serif;
-  background: #12100a;
-  color: var(--cream);
-  -webkit-font-smoothing: antialiased;
-  user-select: none;
-}
+            /* ---- Scene ---- */
+            #scene {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                background:
+                    radial-gradient(
+                        ellipse 120% 90% at 50% 38%,
+                        transparent 42%,
+                        #00000088 100%
+                    ),
+                    linear-gradient(
+                        180deg,
+                        #6b6147 0%,
+                        #534a34 30%,
+                        #3a3324 60%,
+                        #241f15 100%
+                    );
+            }
+            /* SWAP background image: uncomment + set --bg-url
+#scene{background-image:var(--bg-url);background-size:cover;background-position:center} */
+            #scene::before {
+                /* faint brick / alley texture */
+                content: "";
+                position: absolute;
+                inset: 0;
+                opacity: 0.1;
+                pointer-events: none;
+                background-image:
+                    repeating-linear-gradient(
+                        90deg,
+                        #000 0 2px,
+                        transparent 2px 64px
+                    ),
+                    repeating-linear-gradient(
+                        0deg,
+                        #000 0 2px,
+                        transparent 2px 40px
+                    );
+                mask-image: radial-gradient(
+                    ellipse at center,
+                    #000 30%,
+                    transparent 75%
+                );
+            }
 
-/* ---- Scene ---- */
-#scene {
-  position: fixed; inset: 0;
-  display: flex; flex-direction: column;
-  background:
-    /* vignette */
-    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, #00000099 100%),
-    /* Paris alley feel */
-    linear-gradient(180deg, #1a1a0a 0%, #0e0e06 60%, #080808 100%);
-  /* BACKGROUND IMAGE: uncomment and set your path:
-     background-image: url('/assets/sir-bandit/bg.jpg');
-     background-size: cover; background-position: center; */
-}
+            /* ---- Top bar ---- */
+            #topBar {
+                position: relative;
+                z-index: 50;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.35rem 0.8rem;
+                min-height: 42px;
+                background: linear-gradient(180deg, #0a0800, #140f04);
+                border-bottom: 2px solid var(--frame);
+            }
+            .tb-back {
+                background: #241a0c;
+                border: 1px solid var(--frame);
+                color: var(--muted);
+                padding: 0.28rem 0.6rem;
+                border-radius: 6px;
+                font-size: 0.7rem;
+                font-weight: 700;
+                transition: 0.15s;
+            }
+            .tb-back:hover {
+                border-color: var(--gold);
+                color: var(--gold);
+            }
+            #topBar .spacer {
+                flex: 1;
+            }
+            .tb-tag {
+                font-size: 0.68rem;
+                color: #8a774a;
+            }
+            .tb-logout {
+                font-size: 0.66rem;
+                color: #6a5836;
+            }
 
-/* ---- Top bar ---- */
-#topBar {
-  position: relative; z-index: 50;
-  display: flex; align-items: center; gap: .5rem;
-  padding: .3rem .7rem;
-  background: linear-gradient(180deg, #0a0800 0%, #110d04 100%);
-  border-bottom: 2px solid #5a4010;
-  min-height: 40px;
-}
-.tb-back {
-  background: #231a0a; border: 1px solid #5a4010;
-  color: #a09060; padding: .2rem .5rem; border-radius: 5px;
-  font-size: .68rem; font-weight: 700; font-family: sans-serif;
-  transition: border-color .15s, color .15s; cursor: pointer;
-}
-.tb-back:hover { border-color: var(--gold); color: var(--gold); }
-#topBar .spacer { flex: 1; }
-.tb-tag { font-size: .65rem; color: #7a6840; font-family: sans-serif; }
-a { color: inherit; text-decoration: none; }
-button { cursor: pointer; background: none; border: none; color: inherit; font: inherit; }
+            /* ---- Main ---- */
+            #main {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.4rem 1rem;
+                position: relative;
+            }
 
-/* ---- Main area ---- */
-#main {
-  flex: 1; min-height: 0;
-  display: flex; align-items: center; justify-content: center;
-  padding: .3rem 1rem;
-  gap: 1rem;
-  position: relative;
-}
+            /* ---- Title ---- */
+            #gameTitle {
+                position: relative;
+                transform: rotate(-2deg);
+                margin: 0 0 0.35rem;
+                font-family: "Arial Black", "Trebuchet MS", sans-serif;
+                font-weight: 900;
+                font-size: clamp(1.4rem, 4vw, 2.7rem);
+                color: var(--green);
+                letter-spacing: 0.02em;
+                white-space: nowrap;
+                text-shadow:
+                    0 0 14px #7ad03a55,
+                    3px 3px 0 var(--green-ink),
+                    -2px -2px 0 var(--green-ink),
+                    2px -2px 0 var(--green-ink),
+                    -2px 2px 0 var(--green-ink),
+                    4px 6px 8px #000a;
+                pointer-events: none;
+                z-index: 12;
+                /* SWAP: replace whole element with <img id="gameTitle" src="/assets/sir-bandit/logo.png"> */
+            }
 
-/* ---- Title ---- */
-#gameTitle {
-  position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
-  font-family: 'Georgia', serif;
-  font-size: clamp(1.4rem, 4vw, 2.8rem);
-  font-weight: 900;
-  color: #5ad020;
-  text-shadow:
-    0 0 12px #4aaa2088,
-    2px 2px 0 #1a4a08,
-    -1px -1px 0 #1a4a08,
-    3px 3px 6px #00000099;
-  letter-spacing: .04em;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 10;
-  /* LOGO SWAP: replace this entire element with <img id="gameTitle" src="/assets/sir-bandit/logo.png"> */
-}
+            /* ---- Cabinet (centered, sized to fit height) ---- */
+            #cabinet {
+                position: relative;
+                z-index: 10;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: min(94vw, calc((100vh - 215px) * 1.2));
+                max-width: 700px;
+            }
 
-/* ---- Raccoon character ---- */
-#raccoon {
-  width: clamp(80px, 12vw, 160px);
-  flex-shrink: 0;
-  align-self: flex-end;
-  margin-bottom: 8px;
-  /* SPRITE SWAP: replace with <img id="raccoon" src="/assets/sir-bandit/raccoon.png"> */
-  filter: drop-shadow(0 4px 16px #00000088);
-}
+            #reelFrame {
+                position: relative;
+                width: 100%;
+                border-radius: 14px;
+                padding: 14px;
+                overflow: hidden;
+                background: linear-gradient(180deg, #241a0a, #151005);
+                border: 3px solid var(--frame);
+                box-shadow:
+                    inset 0 0 36px #000a,
+                    0 0 0 2px var(--frame2),
+                    0 10px 40px #000b;
+            }
+            /* ornate corners */
+            .corner {
+                position: absolute;
+                width: 26px;
+                height: 26px;
+                color: var(--gold);
+                opacity: 0.7;
+                z-index: 6;
+                pointer-events: none;
+                font-size: 24px;
+                line-height: 1;
+            }
+            .corner.tl {
+                top: 4px;
+                left: 8px;
+            }
+            .corner.tr {
+                top: 4px;
+                right: 8px;
+            }
+            .corner.bl {
+                bottom: 4px;
+                left: 8px;
+            }
+            .corner.br {
+                bottom: 4px;
+                right: 8px;
+            }
 
-/* ---- Cabinet ---- */
-#cabinet {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-  align-items: center;
-  max-width: 700px;
-}
+            #grid {
+                display: flex;
+                gap: 5px;
+                width: 100%;
+                aspect-ratio: 6/5;
+            }
+            .reel {
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                border-radius: 8px;
+                position: relative;
+                background: linear-gradient(180deg, #1c1407, #120d05);
+            }
+            .reel-track {
+                display: flex;
+                flex-direction: column;
+                will-change: transform;
+            }
+            .reel-track.spinning {
+                filter: blur(1.2px);
+            }
 
-#reelFrame {
-  width: 100%;
-  background: linear-gradient(180deg, #1a1408 0%, #110e04 100%);
-  border: 3px solid #6a5018;
-  border-radius: 8px;
-  padding: 6px;
-  box-shadow:
-    inset 0 0 30px #00000088,
-    0 0 0 1px #3a2808,
-    0 6px 24px #00000099;
-  position: relative;
-  overflow: hidden;
-}
-/* corner ornaments */
-#reelFrame::before, #reelFrame::after {
-  content: '♦';
-  position: absolute; z-index: 5;
-  font-size: 1.2rem; color: var(--gold);
-  opacity: .6; pointer-events: none;
-}
-#reelFrame::before { top: 4px; left: 6px; }
-#reelFrame::after  { top: 4px; right: 6px; }
+            .cell {
+                position: relative;
+                aspect-ratio: 1/1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--cell);
+                border: 1px solid var(--cell-bdr);
+                border-radius: 7px;
+                margin: 2.5px;
+                font-size: clamp(1.1rem, 3vw, 1.9rem);
+            }
+            .cell img {
+                width: 74%;
+                height: 74%;
+                object-fit: contain;
+                pointer-events: none;
+            }
+            .cell.golden {
+                background: linear-gradient(135deg, #3a2a00, #5a4400);
+                border-color: var(--gold) !important;
+                box-shadow:
+                    inset 0 0 10px #ffd76644,
+                    0 0 12px #ffd76633;
+            }
+            .cell.golden::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border-radius: 7px;
+                background: repeating-linear-gradient(
+                    45deg,
+                    #ffe27a22 0 6px,
+                    transparent 6px 12px
+                );
+                pointer-events: none;
+            }
+            .cell.win-flash {
+                animation: winFlash 0.42s ease-in-out;
+            }
+            @keyframes winFlash {
+                0%,
+                100% {
+                    transform: scale(1);
+                }
+                30% {
+                    transform: scale(1.12);
+                    box-shadow: 0 0 18px var(--gold2);
+                    border-color: var(--gold2);
+                    z-index: 3;
+                }
+            }
+            .cell.vanish {
+                animation: vanish 0.26s ease-in forwards;
+            }
+            @keyframes vanish {
+                to {
+                    transform: scale(0.1) rotate(20deg);
+                    opacity: 0;
+                }
+            }
+            .cell.drop-in {
+                animation: dropIn 0.34s cubic-bezier(0.22, 1.4, 0.4, 1);
+            }
+            @keyframes dropIn {
+                0% {
+                    transform: translateY(-60%);
+                    opacity: 0;
+                }
+                60% {
+                    transform: translateY(6%);
+                }
+                100% {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+            }
+            .cell.pop {
+                animation: pop 0.3s cubic-bezier(0.22, 1.6, 0.4, 1);
+            }
+            @keyframes pop {
+                0% {
+                    transform: scale(0);
+                }
+                100% {
+                    transform: scale(1);
+                }
+            }
 
-#grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  gap: 4px;
-  width: 100%;
-  aspect-ratio: 6/5;
-}
+            /* ---- Card royals & symbol glyphs (styled, not just emoji) ---- */
+            .glyph {
+                font-family: "Arial Black", sans-serif;
+                font-weight: 900;
+                line-height: 1;
+            }
+            .royal {
+                font-size: 1.5em;
+                color: #8c7a52;
+                text-shadow: 2px 2px 0 #00000066;
+                -webkit-text-stroke: 1px #00000044;
+            }
+            .royal.K {
+                color: #8c7a52;
+            }
+            .royal.Q {
+                color: #8c7a52;
+            }
+            .royal.J {
+                color: #7e8c52;
+            }
+            .royal.A {
+                color: #8c7a52;
+            }
+            .royal.T {
+                color: #7e8c52;
+                font-size: 1.2em;
+            }
 
-.cell {
-  background: var(--cell-bg);
-  border: 1px solid var(--cell-bdr);
-  border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: clamp(1.2rem, 2.8vw, 2rem);
-  position: relative;
-  overflow: hidden;
-  transition: border-color .2s, background .2s;
-  will-change: transform, opacity;
-}
-.cell img {
-  width: 72%; height: 72%; object-fit: contain; pointer-events: none;
-}
-/* golden square state */
-.cell.golden {
-  background: linear-gradient(135deg, #2a1f00, #3a2a00);
-  border-color: var(--gold) !important;
-  box-shadow: inset 0 0 8px #f5c84233, 0 0 10px #f5c84244;
-}
-/* win flash */
-.cell.win-flash {
-  animation: winFlash .45s ease-in-out;
-}
-@keyframes winFlash {
-  0%   { background: var(--cell-bg); }
-  30%  { background: #3a2800; border-color: var(--gold2); box-shadow: 0 0 16px #f5c84266; }
-  100% { background: var(--cell-bg); }
-}
-/* drop-in animation */
-.cell.drop-in {
-  animation: dropIn .38s cubic-bezier(0.22,1,0.36,1);
-}
-@keyframes dropIn {
-  0%   { transform: translateY(-120%); opacity: 0; }
-  70%  { transform: translateY(8%); }
-  100% { transform: translateY(0); opacity: 1; }
-}
-/* vanish */
-.cell.vanish {
-  animation: vanish .25s ease-in forwards;
-}
-@keyframes vanish {
-  0%   { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0); opacity: 0; }
-}
+            /* ---- Coins (revealed in golden squares) ---- */
+            .coin {
+                width: 84%;
+                height: 84%;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: "Arial Black", sans-serif;
+                font-weight: 900;
+                color: #3a2a00;
+                position: relative;
+                box-shadow:
+                    inset 0 -4px 8px #0006,
+                    inset 0 3px 6px #fff7,
+                    0 2px 6px #0008;
+                font-size: 0.95em;
+            }
+            .coin .v {
+                position: relative;
+                z-index: 2;
+                text-shadow: 0 1px 0 #fff5;
+            }
+            .coin.bronze {
+                background: radial-gradient(
+                    circle at 38% 32%,
+                    #f0a85a,
+                    #b5651d 70%
+                );
+                color: #4a2a00;
+            }
+            .coin.silver {
+                background: radial-gradient(
+                    circle at 38% 32%,
+                    #f2f6fb,
+                    #9fb1c4 70%
+                );
+                color: #2a3645;
+            }
+            .coin.gold {
+                background: radial-gradient(
+                    circle at 38% 32%,
+                    #fff0a0,
+                    #e0a81e 70%
+                );
+                color: #5a3e00;
+            }
+            .coin.shine {
+                animation: coinShine 0.5s ease;
+            }
+            @keyframes coinShine {
+                0% {
+                    transform: scale(0.3) rotate(-30deg);
+                    opacity: 0;
+                }
+                100% {
+                    transform: scale(1) rotate(0);
+                    opacity: 1;
+                }
+            }
+            .coin::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border-radius: 50%;
+                pointer-events: none;
+                background: linear-gradient(
+                    115deg,
+                    transparent 38%,
+                    #ffffffaa 48%,
+                    transparent 58%
+                );
+                background-size: 250% 250%;
+                animation: coinGleam 3.2s ease-in-out infinite;
+            }
+            @keyframes coinGleam {
+                0%,
+                70% {
+                    background-position: 130% 0;
+                }
+                85%,
+                100% {
+                    background-position: -30% 0;
+                }
+            }
+            .coin.boost {
+                animation: coinBoost 0.55s cubic-bezier(0.3, 1.7, 0.4, 1);
+            }
+            @keyframes coinBoost {
+                0% {
+                    transform: scale(1);
+                }
+                45% {
+                    transform: scale(1.35);
+                    filter: drop-shadow(0 0 10px #7ad03a);
+                }
+                100% {
+                    transform: scale(1);
+                }
+            }
 
-/* coin value overlay */
-.coin-overlay {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: .75rem; font-weight: 900;
-  font-family: sans-serif;
-  pointer-events: none;
-  border-radius: 6px;
-  z-index: 3;
-}
-.coin-bronze { background: #6a3a0088; color: #e8a060; }
-.coin-silver { background: #30304888; color: #c0d0e8; }
-.coin-gold   { background: #40300088; color: var(--gold); }
+            /* clover */
+            .clover {
+                font-size: 1.5em;
+                position: relative;
+                filter: drop-shadow(0 2px 3px #0007);
+                transform-origin: center;
+                animation: cloverIdle 1.9s ease-in-out infinite;
+            }
+            @keyframes cloverIdle {
+                0%,
+                100% {
+                    transform: rotate(-7deg);
+                }
+                50% {
+                    transform: rotate(7deg);
+                }
+            }
+            .clover.burst {
+                animation: cloverBurst 0.65s cubic-bezier(0.3, 1.6, 0.4, 1);
+            }
+            @keyframes cloverBurst {
+                0% {
+                    transform: scale(1) rotate(0);
+                    filter: drop-shadow(0 0 0 #7ad03a);
+                }
+                45% {
+                    transform: scale(1.6) rotate(200deg);
+                    filter: drop-shadow(0 0 14px #7ad03a);
+                }
+                100% {
+                    transform: scale(1) rotate(360deg);
+                    filter: drop-shadow(0 2px 3px #0007);
+                }
+            }
 
-/* ---- Golden Square count badge ---- */
-#gsCounter {
-  display: flex; align-items: center; gap: .4rem;
-  background: #1a1408; border: 1px solid var(--gold-dim);
-  border-radius: 6px; padding: .2rem .6rem;
-  font-size: .72rem; font-family: sans-serif;
-  margin-top: 4px;
-  align-self: flex-end;
-}
-#gsCounter span { color: var(--gold); font-weight: 700; }
+            /* pot / collector */
+            .pot {
+                font-size: 1.55em;
+                position: relative;
+                filter: drop-shadow(0 2px 4px #0008);
+                transform-origin: 50% 80%;
+                animation: potIdle 2.1s ease-in-out infinite;
+            }
+            @keyframes potIdle {
+                0%,
+                100% {
+                    transform: translateY(0) rotate(0);
+                }
+                50% {
+                    transform: translateY(-2px) rotate(0);
+                }
+            }
+            .pot.collect {
+                animation: potCollect 0.6s ease;
+            }
+            @keyframes potCollect {
+                0%,
+                100% {
+                    transform: scale(1) rotate(0);
+                }
+                18% {
+                    transform: scale(1.22) rotate(-7deg);
+                }
+                38% {
+                    transform: scale(1.14) rotate(7deg);
+                }
+                58% {
+                    transform: scale(1.2) rotate(-5deg);
+                }
+                78% {
+                    transform: scale(1.12) rotate(3deg);
+                }
+            }
+            .pot.collect::after {
+                content: "";
+                position: absolute;
+                inset: -30%;
+                border-radius: 50%;
+                pointer-events: none;
+                background: radial-gradient(circle, #ffe27a88, transparent 65%);
+                animation: potGlow 0.6s ease;
+            }
+            @keyframes potGlow {
+                0% {
+                    opacity: 0;
+                    transform: scale(0.4);
+                }
+                40% {
+                    opacity: 1;
+                }
+                100% {
+                    opacity: 0;
+                    transform: scale(1.3);
+                }
+            }
+            .pot .ptag {
+                position: absolute;
+                bottom: 6%;
+                left: 50%;
+                transform: translateX(-50%);
+                font-family: "Arial Black";
+                font-size: 0.42em;
+                color: var(--gold);
+                background: #1c1206cc;
+                padding: 0 4px;
+                border-radius: 5px;
+                white-space: nowrap;
+            }
 
-/* ---- Win banner ---- */
-#winBanner {
-  position: absolute; top: 50%; left: 50%; z-index: 60;
-  transform: translate(-50%, -50%) scale(0);
-  background: linear-gradient(135deg, #1a1000, #2d2000);
-  border: 2px solid var(--gold);
-  border-radius: 14px;
-  padding: .6rem 1.4rem;
-  text-align: center;
-  box-shadow: 0 0 40px #e8c84a55, 0 8px 32px #00000099;
-  pointer-events: none;
-  transition: transform .28s cubic-bezier(0.22,1,0.36,1), opacity .28s;
-  opacity: 0;
-}
-#winBanner.show {
-  transform: translate(-50%, -50%) scale(1);
-  opacity: 1;
-}
-.wb-label { font-size: .65rem; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); opacity: .75; font-family: sans-serif; }
-.wb-amt   { font-size: 2rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 20px #e8c84a99; line-height: 1.1; font-family: sans-serif; }
-.wb-sub   { font-size: .62rem; color: #c0a060; font-family: sans-serif; }
+            /* sparkle particles */
+            .spark {
+                position: absolute;
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 5;
+                background: radial-gradient(
+                    circle,
+                    #fff,
+                    #ffe27a 60%,
+                    transparent 70%
+                );
+                animation: sparkFly 0.6s ease-out forwards;
+            }
+            @keyframes sparkFly {
+                0% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 1;
+                }
+                100% {
+                    transform: translate(var(--dx), var(--dy)) scale(0);
+                    opacity: 0;
+                }
+            }
 
-/* ---- HUD ---- */
-#hud {
-  display: flex; align-items: center;
-  background: linear-gradient(180deg, #110d04, #0a0800);
-  border-top: 2px solid #5a4010;
-  height: var(--hud-h);
-  padding: 0 1rem;
-  gap: 1rem;
-  position: relative; z-index: 20;
-}
+            .fly {
+                position: fixed;
+                z-index: 90;
+                font-family: "Arial Black";
+                font-weight: 900;
+                color: var(--gold2);
+                text-shadow: 0 2px 6px #000;
+                pointer-events: none;
+                transition:
+                    transform 0.55s cubic-bezier(0.5, 0, 0.4, 1),
+                    opacity 0.55s;
+            }
 
-.hud-group {
-  display: flex; flex-direction: column; justify-content: center;
-  gap: .1rem;
-}
-.hud-label {
-  font-size: .58rem; letter-spacing: .18em; text-transform: uppercase;
-  color: #7a6030; font-family: sans-serif;
-}
-.hud-value {
-  font-size: .95rem; font-weight: 700; color: var(--cream);
-  font-family: sans-serif; min-width: 80px;
-}
-.hud-value.accent { color: var(--gold); }
+            /* ---- Win banner ---- */
+            #winBanner {
+                position: absolute;
+                top: 46%;
+                left: 50%;
+                z-index: 60;
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.4);
+                transition:
+                    transform 0.3s cubic-bezier(0.22, 1.5, 0.4, 1),
+                    opacity 0.3s;
+                background: linear-gradient(135deg, #241400, #3a2700);
+                border: 2px solid var(--gold);
+                border-radius: 16px;
+                padding: 0.7rem 1.8rem;
+                text-align: center;
+                box-shadow:
+                    0 0 50px #f2c84b66,
+                    0 10px 36px #000b;
+                pointer-events: none;
+            }
+            #winBanner.show {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            .wb-label {
+                font-size: 0.62rem;
+                letter-spacing: 0.22em;
+                text-transform: uppercase;
+                color: var(--gold);
+                opacity: 0.8;
+            }
+            .wb-amt {
+                font-family: "Arial Black";
+                font-size: 2.2rem;
+                color: var(--gold);
+                text-shadow: 0 0 22px #f2c84b99;
+                line-height: 1.05;
+            }
+            .wb-amt.big {
+                color: var(--gold2);
+                animation: bigPulse 1s ease infinite;
+            }
+            @keyframes bigPulse {
+                50% {
+                    transform: scale(1.08);
+                    text-shadow: 0 0 34px #ffe27a;
+                }
+            }
+            .wb-sub {
+                font-size: 0.62rem;
+                color: #c8a85e;
+            }
 
-.hud-spacer { flex: 1; }
+            /* ---- Cascade & rainbow indicators ---- */
+            #cascadeTag {
+                position: absolute;
+                top: 10px;
+                right: 12px;
+                z-index: 30;
+                opacity: 0;
+                transition: opacity 0.25s;
+                background: #1c1206cc;
+                border: 1px solid var(--frame);
+                border-radius: 9px;
+                padding: 0.3rem 0.55rem;
+                text-align: center;
+            }
+            #cascadeTag.show {
+                opacity: 1;
+            }
+            .ct-l {
+                font-size: 0.5rem;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+            .ct-n {
+                font-family: "Arial Black";
+                font-size: 1.3rem;
+                color: var(--gold);
+                line-height: 1;
+            }
 
-/* bet controls */
-#betBlock {
-  display: flex; flex-direction: column; align-items: center; gap: .1rem;
-}
-.bet-arrows {
-  display: flex; flex-direction: column; gap: 1px;
-}
-.bet-arr {
-  width: 22px; height: 18px;
-  background: #2a1f08; border: 1px solid #5a4010;
-  border-radius: 3px; font-size: .75rem; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .12s, border-color .12s;
-  color: var(--cream);
-}
-.bet-arr:hover:not(:disabled) { background: #3a2f10; border-color: var(--gold); }
-.bet-arr:disabled { opacity: .3; }
-#betDisplay {
-  font-size: .9rem; font-weight: 700; color: var(--gold); font-family: sans-serif;
-  min-width: 55px; text-align: center;
-}
+            /* ---- Bonus ribbon ---- */
+            #bonusRibbon {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                z-index: 70;
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.3);
+                transition:
+                    transform 0.4s cubic-bezier(0.22, 1.5, 0.4, 1),
+                    opacity 0.35s;
+                background: linear-gradient(135deg, #1a0a00, #3a1600);
+                border: 3px solid #e8842a;
+                border-radius: 18px;
+                padding: 1rem 2.4rem;
+                text-align: center;
+                box-shadow: 0 0 60px #e8842a66;
+                pointer-events: none;
+            }
+            #bonusRibbon.show {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            .br-title {
+                font-family: "Arial Black";
+                font-size: 1.3rem;
+                color: #f2a83a;
+                text-shadow: 0 0 16px #e8842a;
+                line-height: 1.1;
+            }
+            .br-sub {
+                font-size: 0.74rem;
+                color: #d8a060;
+                margin-top: 0.3rem;
+            }
 
-/* spin button */
-#spinBtn {
-  width: min(58px, 11vw); height: min(58px, 11vw);
-  border-radius: 50%;
-  background: conic-gradient(from 0deg, #8a7010, #e8c84a, #fff5a0, #e8c84a, #8a7010);
-  border: 3px solid #e8c84a88;
-  box-shadow: 0 2px 18px #e8c84a44, inset 0 2px 0 #fff6;
-  transition: transform .12s, box-shadow .12s, opacity .12s;
-  display: flex; align-items: center; justify-content: center;
-  color: #1a0a00; font-size: 1.3rem;
-  position: relative; overflow: hidden;
-}
-#spinBtn::after {
-  content: ''; position: absolute; inset: 0; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff4 0%, transparent 60%);
-  pointer-events: none;
-}
-#spinBtn:hover:not(:disabled) {
-  transform: scale(1.08);
-  box-shadow: 0 4px 24px #e8c84a66, inset 0 2px 0 #fff6;
-}
-#spinBtn:active:not(:disabled) {
-  transform: scale(.93);
-  box-shadow: 0 1px 8px #e8c84a22, inset 0 2px 0 #fff3;
-}
-#spinBtn:disabled { opacity: .45; cursor: default; transform: none; }
+            /* ---- Free-spins HUD chip ---- */
+            #fsHud {
+                position: absolute;
+                top: 10px;
+                left: 12px;
+                z-index: 30;
+                display: none;
+                background: #1c1206e0;
+                border: 1px solid #e8842a99;
+                border-radius: 9px;
+                padding: 0.3rem 0.6rem;
+                font-size: 0.74rem;
+                color: #f2a83a;
+                font-weight: 700;
+            }
+            #fsHud.show {
+                display: block;
+            }
+            #fsHud .mode {
+                font-size: 0.56rem;
+                color: #c8884a;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                display: block;
+            }
 
-/* auto-spin btn */
-#autoBtn {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: #1a1408; border: 1px solid #5a4010;
-  font-size: .7rem; display: flex; align-items: center; justify-content: center;
-  transition: border-color .15s; color: #a09060;
-}
-#autoBtn:hover { border-color: var(--gold); color: var(--gold); }
+            @media (max-width: 560px) {
+                #hud {
+                    gap: 0.5rem;
+                    padding: 0 0.6rem;
+                }
+                .hud-group {
+                    min-width: 0;
+                }
+                .hud-value {
+                    font-size: 0.92rem;
+                }
+                #winGroup {
+                    display: none;
+                } /* hide live Win; banner still shows it */
+                #buyBonusBtn {
+                    width: 54px;
+                    height: 54px;
+                    font-size: 0.5rem;
+                }
+                #spinBtn {
+                    width: 56px;
+                    height: 56px;
+                    border-width: 3px;
+                }
+                #spinBtn svg {
+                    width: 26px;
+                    height: 26px;
+                }
+                .hud-icon {
+                    width: 36px;
+                    height: 36px;
+                }
+                .hud-icon svg {
+                    width: 18px;
+                    height: 18px;
+                }
+                #betBox {
+                    min-width: 80px;
+                    height: 46px;
+                    padding: 0.2rem 0.55rem;
+                }
+                #betDisplay {
+                    font-size: 1rem;
+                }
+                .bet-arr {
+                    width: 26px;
+                    height: 20px;
+                }
+                #menuPop {
+                    left: 62px;
+                }
+                #infoBadge {
+                    display: none;
+                }
+            }
 
-/* music btn */
-#musicBtn {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: #1a1408; border: 1px solid #5a4010;
-  font-size: .75rem; display: flex; align-items: center; justify-content: center;
-  transition: border-color .15s; color: #a09060;
-}
-#musicBtn:hover { border-color: var(--gold); color: var(--gold); }
+            /* ---- HUD (control bar) ---- */
+            #hud {
+                position: relative;
+                z-index: 20;
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                height: var(--hud-h);
+                padding: 0 1.4rem;
+                background: linear-gradient(
+                    180deg,
+                    rgba(28, 20, 8, 0.86),
+                    rgba(14, 10, 4, 0.96)
+                );
+                border-top: 2px solid var(--frame);
+                box-shadow: 0 -6px 24px #0007;
+                backdrop-filter: blur(2px);
+            }
 
-/* info badge */
-#infoBadge {
-  position: absolute; bottom: calc(var(--hud-h) + 6px); left: 10px;
-  background: #1a1408cc; border: 1px solid #4a3810;
-  border-radius: 8px; padding: .28rem .55rem;
-  font-size: .62rem; font-family: sans-serif; color: #a09060;
-  pointer-events: none; z-index: 30;
-  display: flex; gap: .8rem;
-}
-.ib-item strong { color: var(--gold); }
+            .hud-group {
+                display: flex;
+                flex-direction: column;
+                gap: 0.12rem;
+                min-width: 90px;
+            }
+            .hud-label {
+                font-size: 0.6rem;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: #9a8657;
+            }
+            .hud-value {
+                font-size: 1.15rem;
+                font-weight: 700;
+                color: var(--cream);
+                font-variant-numeric: tabular-nums;
+            }
+            .hud-value.accent {
+                color: var(--gold);
+            }
+            .hud-spacer {
+                flex: 1;
+            }
 
-/* cascade counter */
-#cascadeCounter {
-  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
-  background: #1a140888; border: 1px solid #4a3810;
-  border-radius: 8px; padding: .3rem .5rem;
-  font-family: sans-serif; text-align: center;
-  pointer-events: none; z-index: 30;
-  opacity: 0; transition: opacity .3s;
-}
-#cascadeCounter.show { opacity: 1; }
-.cc-label { font-size: .55rem; letter-spacing: .15em; text-transform: uppercase; color: #7a6030; }
-.cc-num   { font-size: 1.4rem; font-weight: 900; color: var(--gold); line-height: 1; }
+            /* BUY BONUS coin — overlaps the top edge of the bar */
+            #buyBonusBtn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                width: 70px;
+                height: 70px;
+                border-radius: 50%;
+                flex-shrink: 0;
+                transform: translateY(-10px);
+                background: radial-gradient(
+                    circle at 40% 32%,
+                    #fff0a8,
+                    #f2c233 55%,
+                    #caa017
+                );
+                color: #3a2700;
+                font-family: "Arial Black";
+                font-size: 0.6rem;
+                line-height: 1.05;
+                text-align: center;
+                letter-spacing: 0.02em;
+                border: 3px solid #fff6;
+                box-shadow:
+                    0 4px 14px #f2c84b66,
+                    inset 0 2px 0 #fff8,
+                    0 0 0 3px #00000022;
+                transition: transform 0.12s;
+            }
+            #buyBonusBtn:hover {
+                transform: translateY(-13px) scale(1.05);
+            }
+            #buyBonusBtn:active {
+                transform: translateY(-8px) scale(0.95);
+            }
+            #buyBonusBtn:disabled {
+                opacity: 0.45;
+                cursor: default;
+                transform: translateY(-10px);
+            }
 
-/* bonus ribbon */
-#bonusRibbon {
-  position: absolute; top: 50%; left: 50%; z-index: 70;
-  transform: translate(-50%,-50%) scale(0);
-  background: linear-gradient(135deg, #1a0800, #3a1400);
-  border: 2px solid #e87020;
-  border-radius: 16px; padding: .8rem 2rem;
-  text-align: center;
-  box-shadow: 0 0 40px #e8702055;
-  pointer-events: none;
-  transition: transform .35s cubic-bezier(0.22,1,0.36,1), opacity .3s;
-  opacity: 0;
-}
-#bonusRibbon.show { transform: translate(-50%,-50%) scale(1); opacity: 1; }
-.br-title { font-size: 1.1rem; font-weight: 900; color: #e8a030; text-shadow: 0 0 12px #e8702099; }
-.br-sub   { font-size: .7rem; color: #c08050; font-family: sans-serif; margin-top: .15rem; }
+            /* icon buttons (menu / autoplay) */
+            .hud-icon {
+                width: 42px;
+                height: 42px;
+                border-radius: 10px;
+                flex-shrink: 0;
+                background: #241a0c;
+                border: 1px solid var(--frame);
+                color: #bda66e;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: 0.15s;
+            }
+            .hud-icon:hover {
+                border-color: var(--gold);
+                color: var(--gold);
+            }
+            .hud-icon.on {
+                border-color: var(--gold);
+                color: var(--gold);
+            }
+            .hud-icon svg {
+                width: 22px;
+                height: 22px;
+            }
 
-/* feature spins hud */
-#fsHud {
-  position: absolute; top: 6px; right: 8px;
-  background: #1a1408cc; border: 1px solid #e8702088;
-  border-radius: 8px; padding: .25rem .55rem;
-  font-family: sans-serif; font-size: .7rem;
-  color: #e8a030; display: none; z-index: 30;
-}
-#fsHud.show { display: block; }
+            /* BET box */
+            #betBox {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+                min-width: 110px;
+                height: 54px;
+                padding: 0.25rem 0.8rem;
+                border-radius: 10px;
+                background: #120d05;
+                border: 1px solid var(--frame);
+                border-bottom: 3px solid var(--gold);
+            }
+            #betBox .hud-label {
+                margin-bottom: 0.05rem;
+            }
+            #betDisplay {
+                font-family: "Arial Black";
+                font-size: 1.2rem;
+                color: var(--cream);
+                font-variant-numeric: tabular-nums;
+            }
+            .bet-arrows {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+            .bet-arr {
+                width: 30px;
+                height: 24px;
+                background: #241a0c;
+                border: 1px solid var(--frame);
+                border-radius: 6px;
+                font-size: 0.7rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--cream);
+                transition: 0.12s;
+            }
+            .bet-arr:hover:not(:disabled) {
+                border-color: var(--gold);
+                color: var(--gold);
+                background: #33260f;
+            }
+            .bet-arr:disabled {
+                opacity: 0.3;
+            }
 
-@media (max-width: 520px) {
-  #raccoon { display: none; }
-  #hud { gap: .5rem; padding: 0 .5rem; }
-  .hud-value { font-size: .8rem; min-width: 60px; }
-  #spinBtn { width: 48px; height: 48px; font-size: 1.1rem; }
-}
-</style>
-</head>
-<body>
-<div id="scene">
+            /* SPIN — dark disc, light ring, white arrow (reference style) */
+            #spinBtn {
+                position: relative;
+                width: min(72px, 15vw);
+                height: min(72px, 15vw);
+                border-radius: 50%;
+                flex-shrink: 0;
+                background: radial-gradient(
+                    circle at 42% 36%,
+                    #3a3024,
+                    #1a130a 70%
+                );
+                border: 4px solid #efe3b8;
+                box-shadow:
+                    0 4px 18px #000a,
+                    inset 0 2px 4px #fff2,
+                    0 0 0 2px #00000044;
+                color: #efe3b8;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition:
+                    transform 0.1s,
+                    box-shadow 0.15s;
+            }
+            #spinBtn:hover:not(:disabled) {
+                transform: scale(1.06);
+                box-shadow:
+                    0 4px 22px #f2c84b55,
+                    inset 0 2px 4px #fff3,
+                    0 0 0 2px #f2c84b66;
+            }
+            #spinBtn:active:not(:disabled) {
+                transform: scale(0.92);
+            }
+            #spinBtn:disabled {
+                opacity: 0.5;
+                cursor: default;
+            }
+            #spinBtn svg {
+                width: 32px;
+                height: 32px;
+            }
+            #spinBtn.spinning svg {
+                animation: rot 0.65s linear infinite;
+            }
+            @keyframes rot {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
 
-  <!-- TOP BAR -->
-  <div id="topBar">
-    <button class="tb-back" onclick="location.href='/lobby'">&#8592; Lobby</button>
-    <span class="spacer"></span>
-    <span class="tb-tag" id="tbTag"></span>
-    <a href="/logout" style="font-size:.62rem;color:#5a4030;font-family:sans-serif">logout</a>
-  </div>
+            /* menu popover (music / sfx) */
+            #menuPop {
+                position: absolute;
+                bottom: calc(var(--hud-h) - 6px);
+                left: 84px;
+                z-index: 40;
+                display: none;
+                flex-direction: column;
+                gap: 0.1rem;
+                min-width: 160px;
+                padding: 0.4rem;
+                background: #1c1408f2;
+                border: 1px solid var(--frame);
+                border-radius: 10px;
+                box-shadow: 0 8px 24px #000a;
+            }
+            #menuPop.show {
+                display: flex;
+            }
+            #menuPop .row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.8rem;
+                padding: 0.4rem 0.55rem;
+                border-radius: 7px;
+                font-size: 0.78rem;
+                color: var(--cream);
+            }
+            #menuPop .row:hover {
+                background: #2a2010;
+            }
+            #menuPop .row .state {
+                font-size: 0.7rem;
+                color: var(--muted);
+            }
+            #menuPop .row.on .state {
+                color: var(--gold);
+            }
 
-  <!-- MAIN -->
-  <div id="main">
+            /* info strip */
+            #infoBadge {
+                position: absolute;
+                left: 14px;
+                bottom: calc(var(--hud-h) + 8px);
+                z-index: 30;
+                display: flex;
+                gap: 0.9rem;
+                background: #1c1206cc;
+                border: 1px solid var(--frame2);
+                border-radius: 8px;
+                padding: 0.3rem 0.6rem;
+                font-size: 0.62rem;
+                color: var(--muted);
+            }
+            #infoBadge strong {
+                color: var(--gold);
+            }
 
-    <!-- TITLE / LOGO -->
-    <h1 id="gameTitle">Sir Bandit</h1>
+            /* ---- Bonus-buy modal ---- */
+            #bbOverlay {
+                position: fixed;
+                inset: 0;
+                z-index: 100;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                background: #000a;
+                backdrop-filter: blur(3px);
+                padding: 1rem;
+            }
+            #bbOverlay.show {
+                display: flex;
+            }
+            #bbModal {
+                width: min(960px, 96vw);
+                max-height: 92vh;
+                overflow: auto;
+                background: linear-gradient(180deg, #241a0c, #15100620);
+                border: 2px solid var(--frame);
+                border-radius: 16px;
+                padding: 1rem 1.1rem 1.4rem;
+                box-shadow: 0 20px 60px #000c;
+                position: relative;
+            }
+            #bbModal h2 {
+                text-align: center;
+                font-family: "Arial Black";
+                color: var(--green);
+                letter-spacing: 0.04em;
+                text-shadow: 2px 2px 0 var(--green-ink);
+                font-size: 1.4rem;
+                margin-bottom: 0.2rem;
+            }
+            .bb-bet {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.7rem;
+                margin: 0.4rem 0 1rem;
+            }
+            .bb-bet .lbl {
+                font-size: 0.6rem;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+            .bb-bet .amt {
+                font-family: "Arial Black";
+                color: var(--gold);
+                font-size: 1.2rem;
+            }
+            .bb-close {
+                position: absolute;
+                top: 10px;
+                right: 12px;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                border: 1px solid var(--frame);
+                color: var(--muted);
+                font-size: 1rem;
+            }
+            .bb-close:hover {
+                border-color: var(--gold);
+                color: var(--gold);
+            }
+            .bb-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.7rem;
+            }
+            @media (max-width: 720px) {
+                .bb-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+            }
+            .bb-card {
+                background: #fff;
+                color: #222;
+                border-radius: 12px;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 6px 18px #0007;
+            }
+            .bb-card .body {
+                padding: 0.8rem 0.7rem;
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 0.45rem;
+            }
+            .bb-card h3 {
+                font-size: 0.82rem;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                line-height: 1.15;
+                color: #1a1a1a;
+            }
+            .bb-card p {
+                font-size: 0.68rem;
+                color: #555;
+                line-height: 1.3;
+                flex: 1;
+            }
+            .bb-icon {
+                font-size: 2.1rem;
+                margin: 0.2rem 0;
+            }
+            .bb-vol {
+                font-size: 0.6rem;
+                font-style: italic;
+                color: #777;
+            }
+            .bb-price {
+                font-family: "Arial Black";
+                font-size: 1.15rem;
+                color: #1a1a1a;
+            }
+            .bb-buy {
+                padding: 0.7rem;
+                font-family: "Arial Black";
+                font-size: 0.95rem;
+                color: #fff;
+                letter-spacing: 0.06em;
+                transition: filter 0.12s;
+            }
+            .bb-buy:hover {
+                filter: brightness(1.08);
+            }
+            .bb-buy.activate {
+                background: #e8842a;
+            }
+            .bb-buy.buy {
+                background: var(--green2);
+            }
+            .bb-buy:disabled {
+                background: #999;
+                cursor: default;
+            }
 
-    <!-- RACCOON -->
-    <!-- SPRITE SWAP: replace SVG with <img id="raccoon" src="/assets/sir-bandit/raccoon.png"> -->
-    <svg id="raccoon" viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Raccoon character">
-      <!-- simple placeholder raccoon silhouette -->
-      <ellipse cx="60" cy="90" rx="38" ry="52" fill="#666" />
-      <ellipse cx="60" cy="90" rx="34" ry="48" fill="#888" />
-      <!-- belly -->
-      <ellipse cx="60" cy="105" rx="20" ry="28" fill="#bbb" />
-      <!-- head -->
-      <ellipse cx="60" cy="46" rx="32" ry="28" fill="#888" />
-      <!-- mask -->
-      <ellipse cx="48" cy="44" rx="10" ry="8" fill="#333" />
-      <ellipse cx="72" cy="44" rx="10" ry="8" fill="#333" />
-      <!-- ears -->
-      <ellipse cx="36" cy="24" rx="10" ry="13" fill="#777" />
-      <ellipse cx="84" cy="24" rx="10" ry="13" fill="#777" />
-      <!-- inner ears -->
-      <ellipse cx="36" cy="24" rx="6" ry="8" fill="#aaa" />
-      <ellipse cx="84" cy="24" rx="6" ry="8" fill="#aaa" />
-      <!-- hat -->
-      <rect x="30" y="14" width="60" height="8" rx="3" fill="#3a3a20" />
-      <rect x="38" y="2" width="44" height="16" rx="4" fill="#2a2a18" />
-      <!-- eyes -->
-      <circle cx="49" cy="44" r="5" fill="white" />
-      <circle cx="71" cy="44" r="5" fill="white" />
-      <circle cx="50" cy="44" r="3" fill="#111" />
-      <circle cx="72" cy="44" r="3" fill="#111" />
-      <!-- nose -->
-      <ellipse cx="60" cy="54" rx="5" ry="3.5" fill="#333" />
-      <!-- moustache -->
-      <path d="M44 58 Q52 54 60 58 Q68 54 76 58" stroke="#111" stroke-width="2" fill="none"/>
-      <!-- crowbar -->
-      <rect x="90" y="80" width="8" height="90" rx="4" fill="#555" transform="rotate(-15 90 80)"/>
-      <path d="M96 78 Q110 68 112 80 Q108 92 96 86" fill="#444"/>
-    </svg>
+            /* toast */
+            #toast {
+                position: fixed;
+                bottom: calc(var(--hud-h) + 16px);
+                left: 50%;
+                transform: translateX(-50%) translateY(20px);
+                z-index: 110;
+                background: #241a0cf0;
+                border: 1px solid var(--frame);
+                border-radius: 10px;
+                padding: 0.6rem 1rem;
+                font-size: 0.78rem;
+                color: var(--cream);
+                opacity: 0;
+                transition: 0.25s;
+                pointer-events: none;
+                max-width: 90vw;
+                text-align: center;
+            }
+            #toast.show {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="scene">
+            <!-- TOP BAR -->
+            <div id="topBar">
+                <button class="tb-back" onclick="location.href = '/lobby'">
+                    &#8592; Lobby
+                </button>
+                <span class="spacer"></span>
+                <span class="tb-tag" id="tbTag"></span>
+                <a class="tb-logout" href="/logout">logout</a>
+            </div>
 
-    <!-- CABINET -->
-    <div id="cabinet">
-      <div id="reelFrame">
-        <div id="grid"></div>
-        <div id="winBanner">
-          <div class="wb-label">Win</div>
-          <div class="wb-amt" id="wbAmt">0</div>
-          <div class="wb-sub">FluxCoins</div>
+            <!-- MAIN -->
+            <div id="main">
+                <!-- CABINET -->
+                <div id="cabinet">
+                    <h1 id="gameTitle">Sir Bandit</h1>
+                    <div id="reelFrame">
+                        <span class="corner tl">&#9670;</span
+                        ><span class="corner tr">&#9670;</span>
+                        <span class="corner bl">&#9670;</span
+                        ><span class="corner br">&#9670;</span>
+                        <div id="grid"></div>
+
+                        <div id="winBanner">
+                            <div class="wb-label" id="wbLabel">Win</div>
+                            <div class="wb-amt" id="wbAmt">0</div>
+                            <div class="wb-sub">FluxCoins</div>
+                        </div>
+                        <div id="cascadeTag">
+                            <div class="ct-l">Cascade</div>
+                            <div class="ct-n" id="ctNum">0</div>
+                        </div>
+                        <div id="fsHud">
+                            <span class="mode" id="fsMode">Free Spins</span
+                            >Spins left: <strong id="fsLeft">0</strong>
+                        </div>
+                        <div id="bonusRibbon">
+                            <div class="br-title" id="brTitle">BONUS!</div>
+                            <div class="br-sub" id="brSub"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="infoBadge">
+                    <span>RTP <strong>96.34%</strong></span>
+                    <span>Max <strong>10,000×</strong></span>
+                    <span>Cluster Pays</span>
+                </div>
+            </div>
+
+            <!-- HUD -->
+            <div id="hud">
+                <button id="buyBonusBtn">BUY<br />BONUS</button>
+                <button
+                    id="menuBtn"
+                    class="hud-icon"
+                    title="Menu"
+                    aria-label="Menu"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                    >
+                        <path d="M4 7h16M4 12h16M4 17h16" />
+                    </svg>
+                </button>
+                <div class="hud-group">
+                    <div class="hud-label">Balance</div>
+                    <div class="hud-value" id="hudBal">0.00</div>
+                </div>
+                <div class="hud-group" id="winGroup">
+                    <div class="hud-label">Win</div>
+                    <div class="hud-value accent" id="hudWin">—</div>
+                </div>
+
+                <div class="hud-spacer"></div>
+
+                <div id="betBox">
+                    <div class="hud-label">Bet</div>
+                    <div id="betDisplay">2.00</div>
+                </div>
+                <div class="bet-arrows">
+                    <button
+                        class="bet-arr"
+                        id="betUp"
+                        aria-label="Increase bet"
+                    >
+                        &#9650;
+                    </button>
+                    <button
+                        class="bet-arr"
+                        id="betDown"
+                        aria-label="Decrease bet"
+                    >
+                        &#9660;
+                    </button>
+                </div>
+
+                <button id="spinBtn" aria-label="Spin">
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M21 12a9 9 0 1 1-3.4-7" />
+                        <path d="M21 3v6h-6" />
+                    </svg>
+                </button>
+                <button
+                    id="autoBtn"
+                    class="hud-icon"
+                    title="Autoplay"
+                    aria-label="Autoplay"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M17 2.1 21 6l-4 3.9" />
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                        <path d="M7 21.9 3 18l4-3.9" />
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    </svg>
+                </button>
+
+                <div id="menuPop">
+                    <div class="row on" id="musicRow">
+                        Music <span class="state" id="musicState">Off</span>
+                    </div>
+                    <div class="row on" id="sfxRow">
+                        Sound effects
+                        <span class="state" id="sfxState">On</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div id="cascadeCounter">
-          <div class="cc-label">Cascade</div>
-          <div class="cc-num" id="ccNum">0</div>
+
+        <!-- BONUS BUY MODAL -->
+        <div id="bbOverlay">
+            <div id="bbModal">
+                <button class="bb-close" id="bbClose">&#10005;</button>
+                <h2>BONUS BUY</h2>
+                <div class="bb-bet">
+                    <span class="lbl">Bet</span
+                    ><span class="amt" id="bbBet">2.00</span>
+                </div>
+                <div class="bb-grid" id="bbGrid"></div>
+            </div>
         </div>
-        <div id="fsHud">Free Spins: <strong id="fsLeft">0</strong></div>
-        <div id="bonusRibbon">
-          <div class="br-title" id="brTitle">BONUS!</div>
-          <div class="br-sub" id="brSub">Free Spins Triggered</div>
-        </div>
-      </div>
-      <div id="gsCounter">
-        <span style="color:#a09060;font-family:sans-serif;font-size:.65rem">Golden Squares:</span>
-        <span id="gsNum">0</span>
-      </div>
-    </div>
 
-    <!-- info badge -->
-    <div id="infoBadge">
-      <span class="ib-item">RTP <strong>96.34%</strong></span>
-      <span class="ib-item">Max <strong>10,000x</strong></span>
-      <span class="ib-item">Cluster Pays</span>
-    </div>
+        <div id="toast"></div>
 
-  </div><!-- /main -->
+        <!-- AUDIO: src filled from script. SWAP the file paths in SFX{}/MUSIC_SRC below. -->
+        <audio id="bgm" loop></audio>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div class="hud-group">
-      <div class="hud-label">Balance</div>
-      <div class="hud-value accent" id="hudBal">0.00</div>
-    </div>
-    <div class="hud-group">
-      <div class="hud-label">Win</div>
-      <div class="hud-value" id="hudWin">—</div>
-    </div>
-
-    <div class="hud-spacer"></div>
-
-    <!-- bet -->
-    <div id="betBlock">
-      <div class="hud-label" style="text-align:center">Bet</div>
-      <div style="display:flex;align-items:center;gap:.35rem">
-        <div class="bet-arrows">
-          <button class="bet-arr" id="betUp">▲</button>
-          <button class="bet-arr" id="betDown">▼</button>
-        </div>
-        <div id="betDisplay">2.00</div>
-      </div>
-    </div>
-
-    <!-- spin -->
-    <button id="spinBtn" aria-label="Spin">
-      <!-- spin icon -->
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21.5 2v6h-6"/>
-        <path d="M2.5 12a10 10 0 0 1 17.8-6.3L21.5 8"/>
-        <path d="M2.5 22v-6h6"/>
-        <path d="M21.5 12a10 10 0 0 1-17.8 6.3L2.5 16"/>
-      </svg>
-    </button>
-
-    <!-- auto -->
-    <button id="autoBtn" title="Auto spin">A</button>
-    <button id="musicBtn" title="Music">🔇</button>
-  </div>
-
-</div><!-- /scene -->
-
-<audio id="bgm" loop></audio>
-
-<script>
-/* =============================================================
+        <script>
+            /* =============================================================
    SIR BANDIT — GAME LOGIC
-   =============================================================
-
-   KEY NUMBERS (matching Hacksaw Gaming's Le Bandit)
-   RTP:        96.34%  (house edge ~3.66%)
-   Volatility: Medium  (3/5)
-   Mechanic:   Cluster Pays (5+ touching same symbol, up to 6 reel adjacency)
-   Grid:       6 columns × 5 rows
-   Max win:    10,000× stake
-   Bet range:  0.10 – 100.00 FC
-   Bonus:      3 FS symbols = Luck of the Bandit (8 spins)
-               4 FS symbols = All That Glitters Is Gold (12 spins)
-               5 FS symbols = Treasure at the End of the Rainbow (12 spins, guaranteed rainbow)
+   Mechanics modelled on Hacksaw Gaming "Le Bandit":
+   · 6×5 cluster pays (5+ orthogonally-connected matching symbols)
+   · Wild substitutes for paytable symbols
+   · Super Cascades: winning symbols clear, new ones drop
+   · Golden Squares form behind winning positions, persist until a Rainbow lands
+   · Rainbow activation reveals Coins (bronze/silver/gold), Four-Leaf Clovers
+     (×2–×10 to adjacent coins/pots) and Pots of Gold (collector that sweeps the
+     board then re-reveals → chain). Clovers apply first, pots collect after.
+   · Free Spins: 3 FS = Luck of the Bandit (8), 4 FS = All That Glitters (12),
+     5 FS = Treasure at the End of the Rainbow (12, rainbow guaranteed).
+   · Bonus Buy: BonusHunt 3×, Rainbow FeatureSpins 50×, Luck 100×, Glitters 250×.
    ============================================================= */
 
-const MUSIC_SRC = ''; /* set to '/assets/sir-bandit/theme.mp3' */
+            /* ============ AUDIO PLACEHOLDERS — fill these in ============
+   Drop your files in /assets/sir-bandit/sfx/ and set the paths.
+   Each plays via playSfx('key'). Leaving a path '' simply no-ops. */
+            const MUSIC_SRC = "/assets/sir-bandit/theme.webm"; // SWAP: '/assets/sir-bandit/theme.mp3'
+            const SFX = {
+                click: "/assets/sir-bandit/sfx/click.mp3", // SWAP: '/assets/sir-bandit/sfx/click.mp3'
+                spin: "", // reels start
+                reelStop: "", // each reel lands
+                win: "", // cluster win
+                cascade: "", // symbols drop after a clear
+                goldenForm: "", // a golden square is created
+                rainbow: "", // rainbow lands / activation begins
+                coinReveal: "", // a coin is revealed
+                clover: "", // clover multiplier pops
+                potCollect: "", // pot of gold sweeps the board
+                bonusTrigger: "", // free spins triggered
+                bigWin: "", // big win banner
+                noFunds: "", // not enough balance
+            };
+            /* ============================================================ */
 
-const COLS = 6, ROWS = 5;
-const HOUSE_EDGE = 0.0366; /* ~96.34% RTP */
+            const COLS = 6,
+                ROWS = 5;
+            const HOUSE_EDGE = 0.0366;
 
-/* --- Bet steps --- */
-const BET_STEPS = [0.10,0.20,0.50,1,2,5,10,20,50,100];
-let betIdx = 4; /* default 2.00 */
+            const BET_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+            let betIdx = 4;
 
-/* --- Symbols ---
-   To use image sprites, add: img: '/assets/sir-bandit/sym-crown.png'
-   The renderer will automatically switch from emoji to <img>.
-   clusterMin: minimum cluster size to win
-   pay: { 5: mult, 8: mult, 12: mult, 15+: mult } multipliers of BET
-*/
-const SYMBOLS = [
-  /* high pays */
-  { id:'camera',  emoji:'📷', label:'Camera',    weight:4,  clusterMin:5, pay:{ 5:3,  8:8,   12:20,  15:50  } },
-  { id:'cheese',  emoji:'🧀', label:'Cheese',    weight:5,  clusterMin:5, pay:{ 5:2,  8:6,   12:15,  15:35  } },
-  { id:'hat',     emoji:'🎩', label:'Top Hat',   weight:5,  clusterMin:5, pay:{ 5:2,  8:5,   12:12,  15:28  } },
-  { id:'beer',    emoji:'🍺', label:'Beer',      weight:6,  clusterMin:5, pay:{ 5:1.5,8:4,   12:10,  15:22  } },
-  { id:'baguette',emoji:'🥖', label:'Baguette',  weight:6,  clusterMin:5, pay:{ 5:1.2,8:3,   12:7,   15:16  } },
-  { id:'crowbar', emoji:'🔧', label:'Crowbar',   weight:7,  clusterMin:5, pay:{ 5:1,  8:2.5, 12:5,   15:12  } },
-  /* low pays (card suits style) */
-  { id:'ace',     emoji:'🃏', label:'A',         weight:10, clusterMin:5, pay:{ 5:0.5,8:1.5, 12:3,   15:7   } },
-  { id:'king',    emoji:'👑', label:'K',         weight:10, clusterMin:5, pay:{ 5:0.4,8:1.2, 12:2.5, 15:6   } },
-  { id:'queen',   emoji:'👸', label:'Q',         weight:10, clusterMin:5, pay:{ 5:0.3,8:1,   12:2,   15:5   } },
-  { id:'jack',    emoji:'🤹', label:'J',         weight:10, clusterMin:5, pay:{ 5:0.2,8:0.8, 12:1.5, 15:4   } },
-  { id:'ten',     emoji:'🔟', label:'10',        weight:12, clusterMin:5, pay:{ 5:0.2,8:0.6, 12:1.2, 15:3   } },
-  /* special */
-  { id:'rainbow', emoji:'🌈', label:'Rainbow',   weight:1,  clusterMin:1, pay:{ 1:0 }, special:'rainbow' },
-  { id:'fs',      emoji:'⭐',     label:'Bonus',     weight:1,  clusterMin:3, pay:{ 3:0, 4:0, 5:0 }, special:'fs' },
-];
+            /* ---- Symbols ----
+   Paytable symbols cluster (5+). To use art: add  img:'/assets/...'  to any entry.
+   pay = cluster-size → multiplier-of-bet brackets. */
+            const SYMBOLS = [
+                {
+                    id: "reward",
+                    emoji: "📷",
+                    label: "Camera",
+                    weight: 4,
+                    pay: { 5: 3, 8: 8, 12: 20, 15: 50 },
+                }, // top pay
+                {
+                    id: "cheese",
+                    emoji: "🧀",
+                    label: "Cheese",
+                    weight: 5,
+                    pay: { 5: 2, 8: 6, 12: 15, 15: 35 },
+                },
+                {
+                    id: "hat",
+                    emoji: "🎩",
+                    label: "Top Hat",
+                    weight: 5,
+                    pay: { 5: 2, 8: 5, 12: 12, 15: 28 },
+                },
+                {
+                    id: "trap",
+                    emoji: "🪤",
+                    label: "Trap",
+                    weight: 6,
+                    pay: { 5: 1.5, 8: 4, 12: 10, 15: 22 },
+                },
+                {
+                    id: "ace",
+                    glyph: "A",
+                    cls: "royal A",
+                    weight: 9,
+                    pay: { 5: 0.5, 8: 1.5, 12: 3, 15: 7 },
+                },
+                {
+                    id: "king",
+                    glyph: "K",
+                    cls: "royal K",
+                    weight: 9,
+                    pay: { 5: 0.4, 8: 1.2, 12: 2.5, 15: 6 },
+                },
+                {
+                    id: "queen",
+                    glyph: "Q",
+                    cls: "royal Q",
+                    weight: 9,
+                    pay: { 5: 0.3, 8: 1, 12: 2, 15: 5 },
+                },
+                {
+                    id: "jack",
+                    glyph: "J",
+                    cls: "royal J",
+                    weight: 10,
+                    pay: { 5: 0.25, 8: 0.8, 12: 1.6, 15: 4 },
+                },
+                {
+                    id: "ten",
+                    glyph: "10",
+                    cls: "royal T",
+                    weight: 11,
+                    pay: { 5: 0.2, 8: 0.6, 12: 1.2, 15: 3 },
+                },
+                /* specials (no cluster pay) */
+                {
+                    id: "wild",
+                    emoji: "🦝",
+                    label: "Wild",
+                    weight: 2,
+                    special: "wild",
+                },
+                {
+                    id: "rainbow",
+                    emoji: "🌈",
+                    label: "Rainbow",
+                    weight: 2,
+                    special: "rainbow",
+                },
+                {
+                    id: "fs",
+                    emoji: "⭐",
+                    label: "Bonus",
+                    weight: 1,
+                    special: "fs",
+                },
+            ];
+            const SYM = Object.fromEntries(SYMBOLS.map((s) => [s.id, s]));
+            const PAYTABLE = SYMBOLS.filter((s) => !s.special).map((s) => s.id);
 
-const SYM_MAP = {};
-for (const s of SYMBOLS) SYM_MAP[s.id] = s;
+            /* weighted draw pool (specials kept rare) */
+            function buildPool(opts = {}) {
+                const pool = [];
+                for (const s of SYMBOLS) {
+                    let w = s.weight;
+                    if (s.special === "fs")
+                        w = opts.fsBoost ? s.weight * 5 : s.weight; // BonusHunt boost
+                    if (s.special === "rainbow")
+                        w = opts.noRainbow ? 0 : s.weight;
+                    if (!s.special) w = s.weight * 9;
+                    for (let i = 0; i < w; i++) pool.push(s.id);
+                }
+                return pool;
+            }
+            function draw(pool) {
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
 
-/* weighted RNG pool */
-const POOL = [];
-for (const s of SYMBOLS) {
-  if (s.special) { /* spawn special symbols less often */
-    for (let i = 0; i < s.weight; i++) POOL.push(s.id);
-  } else {
-    for (let i = 0; i < s.weight * 8; i++) POOL.push(s.id);
-  }
-}
-function rng() { return POOL[Math.floor(Math.random() * POOL.length)]; }
+            /* ---- Coin / clover / pot reveal pools (golden square activation) ---- */
+            const COIN_TIERS = {
+                bronze: [0.2, 0.5, 1, 2, 3, 4],
+                silver: [5, 10, 15, 20],
+                gold: [25, 50, 100, 250, 500],
+            };
+            const CLOVER_MULTS = [2, 3, 4, 5, 10];
+            function revealSymbol(opts = {}) {
+                const r = Math.random();
+                // probabilities; Treasure mode forbids bronze
+                if (!opts.noBronze && r < 0.5) return coinReveal("bronze");
+                if (r < 0.78) return coinReveal("silver");
+                if (r < 0.9) return coinReveal("gold");
+                if (r < 0.965)
+                    return {
+                        type: "clover",
+                        mult: CLOVER_MULTS[
+                            Math.floor(Math.random() * CLOVER_MULTS.length)
+                        ],
+                    };
+                return { type: "pot" }; // ~3.5% collector
+            }
+            function coinReveal(tier) {
+                const arr = COIN_TIERS[tier];
+                return {
+                    type: "coin",
+                    tier,
+                    base: arr[Math.floor(Math.random() * arr.length)],
+                };
+            }
 
-/* =============================================================
-   State
+            /* =============================================================
+   STATE
    ============================================================= */
-let balance     = 0;
-let spinning    = false;
-let musicOn     = false;
-let gsSet       = new Set(); /* golden square positions 'c-r' */
-let totalWinThisSpin = 0;
-let cascadeCount = 0;
-let autoMode    = false;
-let autoTimer   = null;
-let fsMode      = false;  /* in free spins */
-let fsSpins     = 0;
-let fsType      = 0;  /* 1=luck, 2=allgold, 3=rainbow */
-let guaranteedRainbow = false;
+            let balance = 1000; // demo default; overwritten by /api/balance if available
+            let spinning = false,
+                autoMode = false,
+                autoTimer = null;
+            let musicOn = false,
+                sfxOn = true;
+            let fsMode = false,
+                fsSpins = 0,
+                fsType = 0; // 1 Luck, 2 Glitters, 3 Treasure
+            let guaranteedRainbow = false,
+                keepGoldenAfterActivate = false;
+            let pendingRainbow = false,
+                pendingFsBoost = false; // bonus-buy "activate" flags
 
-/* grid[c][r] = symbolId */
-const grid = [];
-for (let c = 0; c < COLS; c++) {
-  grid[c] = [];
-  for (let r = 0; r < ROWS; r++) grid[c][r] = rng();
-}
+            const grid = []; // grid[c][r] = symbol id
+            const golden = new Set(); // fixed positions 'c-r' that are golden
+            const reveal = {}; // 'c-r' -> reveal object (during coin feature)
+            for (let c = 0; c < COLS; c++) {
+                grid[c] = [];
+                for (let r = 0; r < ROWS; r++) grid[c][r] = draw(buildPool());
+            }
 
-/* =============================================================
+            /* =============================================================
    DOM
    ============================================================= */
-const $ = id => document.getElementById(id);
-const gridEl    = $('grid');
-const hudBal    = $('hudBal');
-const hudWin    = $('hudWin');
-const betDisp   = $('betDisplay');
-const gsNum     = $('gsNum');
-const wbAmt     = $('wbAmt');
-const winBanner = $('winBanner');
-const ccNum     = $('ccNum');
-const ccBox     = $('cascadeCounter');
-const fsHud     = $('fsHud');
-const fsLeft    = $('fsLeft');
-const brTitle   = $('brTitle');
-const brSub     = $('brSub');
-const bonusRib  = $('bonusRibbon');
+            const $ = (id) => document.getElementById(id);
+            const gridEl = $("grid"),
+                hudBal = $("hudBal"),
+                hudWin = $("hudWin"),
+                betDisp = $("betDisplay");
+            const winBanner = $("winBanner"),
+                wbAmt = $("wbAmt"),
+                wbLabel = $("wbLabel");
+            const ctTag = $("cascadeTag"),
+                ctNum = $("ctNum"),
+                fsHud = $("fsHud"),
+                fsLeftEl = $("fsLeft"),
+                fsModeEl = $("fsMode");
+            const bonusRib = $("bonusRibbon"),
+                brTitle = $("brTitle"),
+                brSub = $("brSub");
 
-/* cell DOM refs: cells[c][r] */
-const cells = [];
+            const reels = []; // reels[c] = {el, track}
+            const cellEls = []; // cellEls[c][r]
 
-function buildGrid() {
-  gridEl.innerHTML = '';
-  cells.length = 0;
-  for (let c = 0; c < COLS; c++) {
-    cells[c] = [];
-    for (let r = 0; r < ROWS; r++) {
-      const d = document.createElement('div');
-      d.className = 'cell';
-      d.dataset.c = c; d.dataset.r = r;
-      gridEl.appendChild(d);
-      cells[c][r] = d;
-    }
-  }
-  renderAll();
-}
+            function buildBoard() {
+                gridEl.innerHTML = "";
+                reels.length = 0;
+                cellEls.length = 0;
+                for (let c = 0; c < COLS; c++) {
+                    const reel = document.createElement("div");
+                    reel.className = "reel";
+                    const track = document.createElement("div");
+                    track.className = "reel-track";
+                    reel.appendChild(track);
+                    gridEl.appendChild(reel);
+                    reels[c] = { el: reel, track };
+                    cellEls[c] = [];
+                    for (let r = 0; r < ROWS; r++) {
+                        const cell = makeCell(c, r);
+                        track.appendChild(cell);
+                        cellEls[c][r] = cell;
+                    }
+                }
+            }
+            function makeCell(c, r) {
+                const d = document.createElement("div");
+                d.className = "cell";
+                d.dataset.c = c;
+                d.dataset.r = r;
+                paintCell(d, c, r);
+                return d;
+            }
+            function paintCell(d, c, r) {
+                const key = `${c}-${r}`;
+                d.classList.toggle("golden", golden.has(key));
+                // reveal state (coin feature) takes precedence
+                if (reveal[key]) {
+                    d.innerHTML = "";
+                    d.appendChild(renderReveal(reveal[key]));
+                    return;
+                }
+                const s = SYM[grid[c][r]];
+                d.innerHTML = "";
+                if (s.img) {
+                    const img = new Image();
+                    img.src = s.img;
+                    img.alt = s.label || s.id;
+                    d.appendChild(img);
+                } else if (s.glyph) {
+                    const g = document.createElement("span");
+                    g.className = "glyph " + (s.cls || "");
+                    g.textContent = s.glyph;
+                    d.appendChild(g);
+                } else d.textContent = s.emoji;
+            }
+            function renderReveal(rv) {
+                if (rv.type === "coin") {
+                    const c = document.createElement("div");
+                    c.className = `coin ${rv.tier} shine`;
+                    const v = document.createElement("span");
+                    v.className = "v";
+                    v.textContent = rv.value ?? rv.base;
+                    c.appendChild(v);
+                    return c;
+                }
+                if (rv.type === "clover") {
+                    const e = document.createElement("div");
+                    e.className = "clover pop";
+                    e.textContent = "🍀";
+                    const t = document.createElement("span");
+                    t.style.cssText =
+                        "position:absolute;bottom:2px;right:4px;font-family:Arial Black;font-size:.5em;color:#7ad03a";
+                    t.textContent = "×" + rv.mult;
+                    e.appendChild(t);
+                    return e;
+                }
+                // pot
+                const e = document.createElement("div");
+                e.className = "pot pop";
+                e.textContent = "💰";
+                const t = document.createElement("span");
+                t.className = "ptag";
+                t.textContent =
+                    rv.collected != null
+                        ? rv.collected.toFixed(0) + "×"
+                        : "COLLECT";
+                e.appendChild(t);
+                return e;
+            }
+            function repaintAll() {
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++)
+                        paintCell(cellEls[c][r], c, r);
+            }
 
-function renderCell(c, r) {
-  const d = cells[c][r];
-  const sym = SYM_MAP[grid[c][r]];
-  d.innerHTML = '';
-  if (sym.img) {
-    const img = document.createElement('img');
-    img.src = sym.img; img.alt = sym.label;
-    d.appendChild(img);
-  } else {
-    d.textContent = sym.emoji;
-  }
-  /* golden state */
-  if (gsSet.has(`${c}-${r}`)) d.classList.add('golden');
-  else d.classList.remove('golden');
-}
-
-function renderAll() {
-  for (let c = 0; c < COLS; c++)
-    for (let r = 0; r < ROWS; r++) renderCell(c, r);
-}
-
-function setBalance(n) {
-  balance = Math.max(0, parseFloat(n) || 0);
-  hudBal.textContent = balance.toFixed(2);
-}
-
-function refreshBet() {
-  const b = BET_STEPS[betIdx];
-  betDisp.textContent = b.toFixed(2);
-  $('betDown').disabled = betIdx === 0;
-  $('betUp').disabled   = betIdx === BET_STEPS.length - 1;
-}
-
-function updateGsDisplay() {
-  gsNum.textContent = gsSet.size;
-}
-
-/* =============================================================
-   CLUSTER DETECTION
-   Find all connected groups of same symbol (4-directional flood)
+            /* =============================================================
+   HELPERS
    ============================================================= */
-function findClusters() {
-  const visited = Array.from({length: COLS}, () => Array(ROWS).fill(false));
-  const clusters = [];
+            const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+            const bet = () => BET_STEPS[betIdx];
+            function setBalance(n) {
+                balance = Math.max(0, Math.round((+n || 0) * 100) / 100);
+                hudBal.textContent = balance.toFixed(2);
+            }
+            function refreshBet() {
+                betDisp.textContent = bet().toFixed(2);
+                $("bbBet").textContent = bet().toFixed(2);
+                $("betDown").disabled = betIdx === 0;
+                $("betUp").disabled = betIdx === BET_STEPS.length - 1;
+            }
+            function toast(msg) {
+                const t = $("toast");
+                t.textContent = msg;
+                t.classList.add("show");
+                clearTimeout(t._t);
+                t._t = setTimeout(() => t.classList.remove("show"), 2200);
+            }
 
-  function flood(c, r, id) {
-    if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return [];
-    if (visited[c][r]) return [];
-    if (grid[c][r] !== id) return [];
-    visited[c][r] = true;
-    const group = [[c, r]];
-    for (const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-      group.push(...flood(c+dc, r+dr, id));
-    }
-    return group;
-  }
+            let audioCtx = null;
+            function playSfx(key) {
+                if (!sfxOn) return;
+                const src = SFX[key];
+                if (src) {
+                    const a = new Audio(src);
+                    a.volume = 0.6;
+                    a.play().catch(() => {});
+                    return;
+                }
+                // graceful fallback beep so the game feels alive before you add files
+                try {
+                    audioCtx =
+                        audioCtx ||
+                        new (
+                            window.AudioContext || window.webkitAudioContext
+                        )();
+                    const map = {
+                        click: 520,
+                        spin: 300,
+                        reelStop: 380,
+                        win: 660,
+                        cascade: 440,
+                        goldenForm: 720,
+                        rainbow: 880,
+                        coinReveal: 780,
+                        clover: 990,
+                        potCollect: 560,
+                        bonusTrigger: 840,
+                        bigWin: 1040,
+                        noFunds: 160,
+                    };
+                    const o = audioCtx.createOscillator(),
+                        g = audioCtx.createGain();
+                    o.frequency.value = map[key] || 500;
+                    o.type = "triangle";
+                    g.gain.value = 0.04;
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    o.start();
+                    g.gain.exponentialRampToValueAtTime(
+                        0.0001,
+                        audioCtx.currentTime + 0.18,
+                    );
+                    o.stop(audioCtx.currentTime + 0.2);
+                } catch (_) {}
+            }
 
-  for (let c = 0; c < COLS; c++) {
-    for (let r = 0; r < ROWS; r++) {
-      if (!visited[c][r]) {
-        const sym = SYM_MAP[grid[c][r]];
-        if (sym.special) continue; /* specials don't cluster-pay */
-        const group = flood(c, r, grid[c][r]);
-        if (group.length >= (sym.clusterMin ?? 5)) {
-          clusters.push({ symId: grid[c][r], cells: group });
-        }
-      }
-    }
-  }
-  return clusters;
-}
-
-/* =============================================================
-   EVALUATE WIN
+            /* =============================================================
+   CLUSTER DETECTION (flood fill, wild substitutes)
    ============================================================= */
-function calcWin(clusters, bet) {
-  let total = 0;
-  for (const cl of clusters) {
-    const sym  = SYM_MAP[cl.symId];
-    const size = cl.cells.length;
-    /* find highest pay bracket */
-    let mult = 0;
-    const brackets = Object.keys(sym.pay).map(Number).sort((a,b) => b-a);
-    for (const thresh of brackets) {
-      if (size >= thresh) { mult = sym.pay[thresh]; break; }
-    }
-    /* house edge: small chance of reduced payout */
-    if (Math.random() < HOUSE_EDGE * 0.5) mult = Math.max(0, mult * 0.7);
-    total += mult * bet;
-  }
-  return Math.round(total * 100) / 100;
-}
+            function findClusters() {
+                const seen = Array.from({ length: COLS }, () =>
+                    Array(ROWS).fill(false),
+                );
+                const clusters = [];
+                const matches = (c, r, id) =>
+                    grid[c][r] === id || grid[c][r] === "wild";
+                function flood(c, r, id, group) {
+                    if (
+                        c < 0 ||
+                        c >= COLS ||
+                        r < 0 ||
+                        r >= ROWS ||
+                        seen[c][r] ||
+                        !matches(c, r, id)
+                    )
+                        return;
+                    seen[c][r] = true;
+                    group.push([c, r]);
+                    flood(c + 1, r, id, group);
+                    flood(c - 1, r, id, group);
+                    flood(c, r + 1, id, group);
+                    flood(c, r - 1, id, group);
+                }
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++) {
+                        if (seen[c][r]) continue;
+                        const id = grid[c][r];
+                        if (SYM[id].special) continue; // seeds only from paytable symbols
+                        const group = [];
+                        flood(c, r, id, group);
+                        if (group.length >= 5)
+                            clusters.push({ id, cells: group });
+                        else
+                            group.forEach(([gc, gr]) => (seen[gc][gr] = false)); // release wilds for other seeds
+                    }
+                return clusters;
+            }
+            function payCluster(cl) {
+                const s = SYM[cl.id],
+                    n = cl.cells.length;
+                const brk = Object.keys(s.pay)
+                    .map(Number)
+                    .sort((a, b) => b - a);
+                let mult = 0;
+                for (const t of brk) {
+                    if (n >= t) {
+                        mult = s.pay[t];
+                        break;
+                    }
+                }
+                if (Math.random() < HOUSE_EDGE * 0.5) mult *= 0.7; // RTP shave
+                return Math.round(mult * bet() * 100) / 100;
+            }
+            const countSpecial = (type) => {
+                let n = 0;
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++)
+                        if (SYM[grid[c][r]].special === type) n++;
+                return n;
+            };
+            const hasRainbow = () => countSpecial("rainbow") > 0;
 
-/* =============================================================
-   COUNT SPECIAL SYMBOLS
+            /* =============================================================
+   SPIN ANIMATION — real scrolling reels, staggered stop
    ============================================================= */
-function countSpecial(specialType) {
-  let n = 0;
-  for (let c = 0; c < COLS; c++)
-    for (let r = 0; r < ROWS; r++)
-      if (SYM_MAP[grid[c][r]].special === specialType) n++;
-  return n;
-}
+            function genGrid(opts) {
+                const pool = buildPool(opts);
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++) grid[c][r] = draw(pool);
+                if (opts.forceRainbow && !hasRainbow()) {
+                    grid[Math.floor(Math.random() * COLS)][
+                        Math.floor(Math.random() * ROWS)
+                    ] = "rainbow";
+                }
+            }
+            async function animateSpin() {
+                playSfx("spin");
+                const SPIN_CELLS = 18;
+                const pool = buildPool();
+                const promises = [];
+                for (let c = 0; c < COLS; c++) {
+                    const { track } = reels[c];
+                    track.classList.add("spinning");
+                    // build padded track: random cells on top + final 5
+                    track.innerHTML = "";
+                    const pads = [];
+                    for (let i = 0; i < SPIN_CELLS; i++) {
+                        const d = document.createElement("div");
+                        d.className = "cell";
+                        d.textContent = SYM[draw(pool)].emoji || "?";
+                        const sid = draw(pool),
+                            s = SYM[sid];
+                        d.innerHTML = "";
+                        if (s.glyph) {
+                            const g = document.createElement("span");
+                            g.className = "glyph " + (s.cls || "");
+                            g.textContent = s.glyph;
+                            d.appendChild(g);
+                        } else d.textContent = s.emoji;
+                        track.appendChild(d);
+                        pads.push(d);
+                    }
+                    cellEls[c] = [];
+                    for (let r = 0; r < ROWS; r++) {
+                        const cell = makeCell(c, r);
+                        track.appendChild(cell);
+                        cellEls[c][r] = cell;
+                    }
+                    // start scrolled so pads are visible, then slide down to reveal final 5
+                    const cellH =
+                        track.children[0].getBoundingClientRect().height || 60;
+                    const shift = SPIN_CELLS * cellH; // distance to scroll pads out, finals in
+                    track.style.transition = "none";
+                    track.style.transform = "translateY(0)"; // start: pad symbols visible
+                    track.getBoundingClientRect(); // reflow
+                    const dur = 650 + c * 130;
+                    track.style.transition = `transform ${dur}ms cubic-bezier(.18,.7,.2,1.08)`;
+                    track.style.transform = `translateY(${-shift}px)`; // end: final symbols visible
+                    promises.push(
+                        new Promise((res) => {
+                            setTimeout(() => {
+                                track.classList.remove("spinning");
+                                // strip pads, keep only final cells
+                                pads.forEach((p) => p.remove());
+                                track.style.transition = "none";
+                                track.style.transform = "translateY(0)";
+                                playSfx("reelStop");
+                                res();
+                            }, dur + 20);
+                        }),
+                    );
+                }
+                await Promise.all(promises);
+            }
 
-/* =============================================================
-   ANIMATION HELPERS
+            /* =============================================================
+   CASCADE STEP — clear winners → golden squares → gravity drop
+   (per-column arrays = no index corruption / infinite vanish)
    ============================================================= */
-const delay = ms => new Promise(r => setTimeout(r, ms));
+            async function cascadeStep(clusters) {
+                const removed = new Set();
+                for (const cl of clusters)
+                    for (const [c, r] of cl.cells) removed.add(`${c}-${r}`);
 
-async function flashWinCells(cellList) {
-  for (const [c, r] of cellList) cells[c][r].classList.add('win-flash');
-  await delay(460);
-  for (const [c, r] of cellList) cells[c][r].classList.remove('win-flash');
-}
+                // golden squares form behind winning positions (persist)
+                let formed = false;
+                for (const key of removed) {
+                    if (!golden.has(key)) {
+                        golden.add(key);
+                        formed = true;
+                    }
+                }
+                if (formed) playSfx("goldenForm");
 
-async function vanishCells(positions) {
-  const ps = [];
-  for (const [c, r] of positions) {
-    cells[c][r].classList.add('vanish');
-    ps.push(new Promise(res => cells[c][r].addEventListener('animationend', res, {once:true})));
-  }
-  await Promise.all(ps);
-}
+                // flash + vanish
+                for (const key of removed) {
+                    const [c, r] = key.split("-").map(Number);
+                    cellEls[c][r].classList.add("win-flash");
+                }
+                await delay(420);
+                const vps = [];
+                for (const key of removed) {
+                    const [c, r] = key.split("-").map(Number);
+                    const el = cellEls[c][r];
+                    el.classList.remove("win-flash");
+                    el.classList.add("vanish");
+                    vps.push(
+                        new Promise((res) =>
+                            el.addEventListener("animationend", res, {
+                                once: true,
+                            }),
+                        ),
+                    );
+                }
+                await Promise.all(vps);
 
-async function dropIn(c) {
-  /* mark golden squares for positions that were part of win */
-  for (let r = 0; r < ROWS; r++) {
-    renderCell(c, r);
-    if (cells[c][r].innerHTML !== '') {
-      cells[c][r].classList.add('drop-in');
-      cells[c][r].addEventListener('animationend', () => cells[c][r].classList.remove('drop-in'), {once:true});
-    }
-  }
-}
+                // gravity per column (clean rebuild) — track how far each cell falls
+                const pool = buildPool();
+                const dist = []; // dist[c][r] = rows fallen (0 = didn't move)
+                for (let c = 0; c < COLS; c++) {
+                    const survivors = []; // {sym, oldR}
+                    for (let r = 0; r < ROWS; r++)
+                        if (!removed.has(`${c}-${r}`))
+                            survivors.push({ sym: grid[c][r], oldR: r });
+                    const newCount = ROWS - survivors.length;
+                    const fresh = [];
+                    for (let i = 0; i < newCount; i++) fresh.push(draw(pool));
+                    grid[c] = fresh.concat(survivors.map((s) => s.sym));
+                    dist[c] = [];
+                    for (let r = 0; r < newCount; r++)
+                        dist[c][r] = newCount - r + 0.5; // new symbols fall in from above the board
+                    for (let j = 0; j < survivors.length; j++) {
+                        const nr = newCount + j;
+                        dist[c][nr] = nr - survivors[j].oldR;
+                    } // survivors sink
+                }
+                // re-render columns
+                for (let c = 0; c < COLS; c++) {
+                    const track = reels[c].track;
+                    track.innerHTML = "";
+                    cellEls[c] = [];
+                    for (let r = 0; r < ROWS; r++) {
+                        const cell = makeCell(c, r);
+                        track.appendChild(cell);
+                        cellEls[c][r] = cell;
+                    }
+                }
+                // measure a cell's height, then animate the real fall (bouncy landing)
+                const cellH =
+                    cellEls[0][0].getBoundingClientRect().height || 60;
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++) {
+                        const d = dist[c][r] || 0;
+                        if (d <= 0) continue; // static survivors stay put
+                        const cell = cellEls[c][r];
+                        cell.style.transition = "none";
+                        cell.style.transform = `translateY(${-(d * cellH).toFixed(1)}px)`;
+                    }
+                gridEl.getBoundingClientRect(); // reflow so the start offset sticks
+                for (let c = 0; c < COLS; c++)
+                    for (let r = 0; r < ROWS; r++) {
+                        const d = dist[c][r] || 0;
+                        if (d <= 0) continue;
+                        const cell = cellEls[c][r];
+                        const dur = 240 + Math.min(d, 5) * 60;
+                        cell.style.transition = `transform ${dur}ms cubic-bezier(.34,1.5,.5,1)`;
+                        cell.style.transform = "translateY(0)";
+                    }
+                playSfx("cascade");
+                await delay(430);
+            }
 
-/* =============================================================
-   GOLDEN SQUARES ACTIVATION (triggered by rainbow symbol)
+            /* =============================================================
+   COIN FEATURE — rainbow activates golden squares
+   reveal → clovers multiply → pots collect → re-reveal chain
    ============================================================= */
-function activateGoldenSquares(bet) {
-  if (gsSet.size === 0) return 0;
-  let totalCoinVal = 0;
-  /* assign coin values to golden positions */
-  const coinValues = [];
-  for (const key of gsSet) {
-    const [c, r] = key.split('-').map(Number);
-    const roll = Math.random();
-    let tier, val;
-    if (roll < 0.55)      { tier = 'bronze'; val = (0.2 + Math.random() * 3.8) * bet; }
-    else if (roll < 0.85) { tier = 'silver'; val = (5   + Math.random() * 15)  * bet; }
-    else                  { tier = 'gold';   val = (50  + Math.random() * 450) * bet; }
-    coinValues.push({ c, r, tier, val });
-    totalCoinVal += val;
-    /* show overlay briefly */
-    const ov = document.createElement('div');
-    ov.className = `coin-overlay coin-${tier}`;
-    ov.textContent = `${val.toFixed(0)}x`;
-    cells[c][r].appendChild(ov);
-  }
-  gsSet.clear();
-  updateGsDisplay();
-  return Math.round(totalCoinVal * 100) / 100;
-}
+            async function runCoinFeature() {
+                playSfx("rainbow");
+                flashRainbow();
+                await delay(450);
+                let collectedTotal = 0; // value banked by pots
+                let potCarry = 0;
+                const noBronze = fsType === 3;
+                const tStart = performance.now();
+                const fdelay = (ms) =>
+                    delay(performance.now() - tStart > 9000 ? 0 : ms); // cap total feature length
 
-/* =============================================================
-   CASCADE STEP
-   Remove winning cells, mark golden squares, drop new symbols
+                for (let pass = 0; pass < 8; pass++) {
+                    // reveal every golden square that isn't already revealed
+                    const keys = [...golden].filter((k) => !reveal[k]);
+                    if (keys.length === 0 && pass > 0) break;
+                    for (const k of keys) {
+                        reveal[k] = revealSymbol({ noBronze });
+                        const [c, r] = k.split("-").map(Number);
+                        paintCell(cellEls[c][r], c, r);
+                        playSfx(
+                            reveal[k].type === "coin"
+                                ? "coinReveal"
+                                : reveal[k].type === "clover"
+                                  ? "clover"
+                                  : "potCollect",
+                        );
+                        await fdelay(keys.length > 14 ? 40 : 65);
+                    }
+                    await fdelay(180);
+
+                    // clovers multiply adjacent coins & pots (8-neighbour)
+                    const coins = [],
+                        pots = [],
+                        clovers = [];
+                    for (const k of golden) {
+                        const rv = reveal[k];
+                        if (!rv) continue;
+                        const [c, r] = k.split("-").map(Number);
+                        if (rv.type === "coin") {
+                            rv.value = rv.base;
+                            coins.push({ k, c, r, rv });
+                        } else if (rv.type === "pot")
+                            pots.push({ k, c, r, rv });
+                        else if (rv.type === "clover")
+                            clovers.push({ k, c, r, rv });
+                    }
+                    if (clovers.length) {
+                        for (const cv of clovers) {
+                            const cvEl = cellEls[cv.c][cv.r].firstElementChild;
+                            if (cvEl) {
+                                cvEl.classList.remove("burst");
+                                void cvEl.offsetWidth;
+                                cvEl.classList.add("burst");
+                            }
+                            spawnSparkles(cellEls[cv.c][cv.r], 10, "#7ad03a");
+                            playSfx("clover");
+                            await fdelay(120);
+                            for (const t of [...coins, ...pots]) {
+                                if (
+                                    Math.abs(t.c - cv.c) <= 1 &&
+                                    Math.abs(t.r - cv.r) <= 1 &&
+                                    !(t.c === cv.c && t.r === cv.r)
+                                ) {
+                                    if (t.rv.type === "coin") {
+                                        t.rv.value =
+                                            Math.round(
+                                                t.rv.value * cv.rv.mult * 100,
+                                            ) / 100;
+                                        paintCell(cellEls[t.c][t.r], t.c, t.r);
+                                        const coinEl =
+                                            cellEls[t.c][t.r].firstElementChild;
+                                        if (coinEl) {
+                                            coinEl.classList.add("boost");
+                                        }
+                                        spawnSparkles(
+                                            cellEls[t.c][t.r],
+                                            6,
+                                            "#7ad03a",
+                                        );
+                                    } else
+                                        t.rv._mult =
+                                            (t.rv._mult || 1) * cv.rv.mult;
+                                }
+                            }
+                            await fdelay(clovers.length > 4 ? 180 : 300);
+                        }
+                    }
+
+                    const coinSum = coins.reduce((a, x) => a + x.rv.value, 0);
+
+                    if (pots.length) {
+                        // pots sweep all coins + carried pot value
+                        const grab = coinSum + potCarry;
+                        potCarry = grab;
+                        for (const p of pots) {
+                            p.rv.collected =
+                                Math.round(grab * (p.rv._mult || 1) * 100) /
+                                100;
+                            paintCell(cellEls[p.c][p.r], p.c, p.r);
+                            const potEl = cellEls[p.c][p.r].firstElementChild;
+                            if (potEl) {
+                                potEl.classList.remove("collect");
+                                void potEl.offsetWidth;
+                                potEl.classList.add("collect");
+                            }
+                        }
+                        playSfx("potCollect");
+                        await flyToPots(coins, pots);
+                        for (const p of pots)
+                            spawnSparkles(cellEls[p.c][p.r], 14, "#ffe27a");
+                        await fdelay(550);
+                        // clear coin reveals (collected), keep golden squares → re-reveal next pass
+                        for (const cn of coins) {
+                            delete reveal[cn.k];
+                        }
+                        for (const p of pots) {
+                            delete reveal[p.k];
+                        } // pots re-roll too
+                        collectedTotal = Math.max(collectedTotal, potCarry);
+                        // continue loop to re-reveal
+                    } else {
+                        // no collector: coins simply pay their summed value (+ any banked pot)
+                        collectedTotal = coinSum + potCarry;
+                        await sumCoinsToWin(coins);
+                        break;
+                    }
+                }
+                // clear reveals & (usually) golden squares
+                for (const k of Object.keys(reveal)) delete reveal[k];
+                if (!keepGoldenAfterActivate) golden.clear();
+                repaintAll();
+                return Math.round(collectedTotal * 100) / 100;
+            }
+
+            /* fly animations */
+            function spawnSparkles(cell, n = 8, color) {
+                for (let i = 0; i < n; i++) {
+                    const s = document.createElement("div");
+                    s.className = "spark";
+                    const ang = Math.random() * Math.PI * 2,
+                        dist = 16 + Math.random() * 24;
+                    s.style.left = "50%";
+                    s.style.top = "50%";
+                    s.style.setProperty(
+                        "--dx",
+                        (Math.cos(ang) * dist).toFixed(1) + "px",
+                    );
+                    s.style.setProperty(
+                        "--dy",
+                        (Math.sin(ang) * dist).toFixed(1) + "px",
+                    );
+                    if (color)
+                        s.style.background = `radial-gradient(circle,#fff,${color} 60%,transparent 70%)`;
+                    cell.appendChild(s);
+                    setTimeout(() => s.remove(), 660);
+                }
+            }
+            function cellCenter(c, r) {
+                const b = cellEls[c][r].getBoundingClientRect();
+                return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+            }
+            async function flyToPots(coins, pots) {
+                if (!pots.length) return;
+                const target = cellCenter(pots[0].c, pots[0].r);
+                const ps = [];
+                for (const cn of coins) {
+                    const from = cellCenter(cn.c, cn.r);
+                    const f = document.createElement("div");
+                    f.className = "fly";
+                    f.textContent = "🪙";
+                    f.style.fontSize = "22px";
+                    f.style.left = from.x + "px";
+                    f.style.top = from.y + "px";
+                    f.style.transform = "translate(-50%,-50%)";
+                    document.body.appendChild(f);
+                    f.getBoundingClientRect();
+                    f.style.transform = `translate(${target.x - from.x - 0}px,${target.y - from.y}px) translate(-50%,-50%) scale(.4)`;
+                    f.style.opacity = "0";
+                    ps.push(
+                        new Promise((res) =>
+                            setTimeout(() => {
+                                f.remove();
+                                res();
+                            }, 560),
+                        ),
+                    );
+                }
+                await Promise.all(ps);
+            }
+            async function sumCoinsToWin(coins) {
+                // little fly-to-banner flourish
+                for (const cn of coins) {
+                    const from = cellCenter(cn.c, cn.r);
+                    const f = document.createElement("div");
+                    f.className = "fly";
+                    f.textContent = "+" + cn.rv.value;
+                    f.style.fontSize = "16px";
+                    f.style.left = from.x + "px";
+                    f.style.top = from.y + "px";
+                    f.style.transform = "translate(-50%,-50%)";
+                    document.body.appendChild(f);
+                    f.getBoundingClientRect();
+                    f.style.transform = "translate(-50%,-90px)";
+                    f.style.opacity = "0";
+                    setTimeout(() => f.remove(), 560);
+                }
+                await delay(560);
+            }
+            function flashRainbow() {
+                for (const k of golden) {
+                    const [c, r] = k.split("-").map(Number);
+                    cellEls[c][r].animate(
+                        [
+                            { filter: "brightness(1)" },
+                            { filter: "brightness(2.2)" },
+                            { filter: "brightness(1)" },
+                        ],
+                        { duration: 500 },
+                    );
+                }
+            }
+
+            /* =============================================================
+   MAIN SPIN
    ============================================================= */
-async function cascadeStep(clusters) {
-  const toRemove = new Set();
-  for (const cl of clusters) for (const pos of cl.cells) toRemove.add(`${pos[0]}-${pos[1]}`);
+            async function doSpin(opts = {}) {
+                if (spinning) return;
+                const cost = bet();
+                if (!fsMode && !opts.free) {
+                    if (balance < cost) {
+                        playSfx("noFunds");
+                        flashSpinRed();
+                        toast("Not enough balance for this bet.");
+                        return;
+                    }
+                    setBalance(balance - cost);
+                }
+                spinning = true;
+                lockUI(true);
+                hideBanner();
+                ctTag.classList.remove("show");
+                hudWin.textContent = "—";
 
-  /* mark golden squares on positions being removed */
-  for (const key of toRemove) gsSet.add(key);
-  updateGsDisplay();
+                // fresh paid spin clears last round's golden squares; free spins keep them
+                if (!fsMode && !opts.free) golden.clear();
 
-  /* flash then vanish */
-  await flashWinCells([...toRemove].map(k => k.split('-').map(Number)));
-  await vanishCells([...toRemove].map(k => k.split('-').map(Number)));
+                // consume bonus-buy "activate" flags
+                const spinOpts = {};
+                if (pendingFsBoost) {
+                    spinOpts.fsBoost = true;
+                }
+                if (pendingRainbow || guaranteedRainbow) {
+                    spinOpts.forceRainbow = true;
+                }
 
-  /* gravity: for each column, collapse symbols down */
-  for (let c = 0; c < COLS; c++) {
-    let writeRow = ROWS - 1;
-    for (let r = ROWS - 1; r >= 0; r--) {
-      if (!toRemove.has(`${c}-${r}`)) {
-        grid[c][writeRow] = grid[c][r];
-        writeRow--;
-      }
-    }
-    /* fill top with new symbols */
-    for (let r = writeRow; r >= 0; r--) grid[c][r] = rng();
-  }
+                genGrid(spinOpts);
+                await animateSpin();
+                // ensure final reveal matches state
+                repaintAll();
+                await delay(120);
 
-  /* drop-in animation */
-  for (let c = 0; c < COLS; c++) await dropIn(c);
-  await delay(80);
-}
+                // base-game free-spin trigger
+                if (!fsMode && !opts.free) {
+                    pendingFsBoost = false;
+                    pendingRainbow = false;
+                    const fsCount = countSpecial("fs");
+                    if (fsCount >= 3) {
+                        await startFreeSpins(fsCount);
+                        spinning = false;
+                        lockUI(false);
+                        maybeAuto();
+                        return;
+                    }
+                }
 
-/* =============================================================
-   MAIN SPIN SEQUENCE
+                let win = 0,
+                    cascade = 0;
+                while (true) {
+                    const clusters = findClusters();
+                    if (clusters.length === 0) break;
+                    cascade++;
+                    if (cascade > 1) {
+                        ctNum.textContent = cascade;
+                        ctTag.classList.add("show");
+                    }
+                    let stepWin = 0;
+                    for (const cl of clusters) stepWin += payCluster(cl);
+                    win += stepWin;
+                    if (stepWin > 0) {
+                        playSfx("win");
+                        hudWin.textContent = "+" + win.toFixed(2);
+                    }
+                    await cascadeStep(clusters);
+                    await delay(80);
+                }
+                ctTag.classList.remove("show");
+
+                // rainbow activation (coin feature)
+                if (hasRainbow() && golden.size > 0) {
+                    const coinWin = await runCoinFeature();
+                    win += coinWin;
+                    if (coinWin > 0) hudWin.textContent = "+" + win.toFixed(2);
+                } else if (hasRainbow()) {
+                    // rainbow but no golden squares — just clear it
+                    for (let c = 0; c < COLS; c++)
+                        for (let r = 0; r < ROWS; r++)
+                            if (grid[c][r] === "rainbow")
+                                grid[c][r] = draw(buildPool());
+                    repaintAll();
+                }
+
+                // settle
+                if (win > 0) {
+                    setBalance(balance + win);
+                    showBanner(win, win >= cost * 20);
+                    hudWin.textContent = "+" + win.toFixed(2);
+                }
+                settle(opts.free || fsMode ? win : win - cost);
+
+                spinning = false;
+                lockUI(false);
+                return win;
+            }
+
+            /* =============================================================
+   FREE SPINS
    ============================================================= */
-async function doSpin() {
-  if (spinning) return;
-  const bet = BET_STEPS[betIdx];
+            async function startFreeSpins(fsCount) {
+                let type, spins, title, sub;
+                if (fsCount >= 5) {
+                    type = 3;
+                    spins = 12;
+                    title = "TREASURE AT THE END OF THE RAINBOW";
+                    sub =
+                        "12 Free Spins · Rainbow guaranteed every spin · no bronze coins";
+                } else if (fsCount >= 4) {
+                    type = 2;
+                    spins = 12;
+                    title = "ALL THAT GLITTERS IS GOLD";
+                    sub =
+                        "12 Free Spins · Golden Squares stay lit even after they activate";
+                } else {
+                    type = 1;
+                    spins = 8;
+                    title = "LUCK OF THE BANDIT";
+                    sub = "8 Free Spins · Golden Squares persist between spins";
+                }
+                await runFreeSpins(type, spins, title, sub);
+            }
+            async function runFreeSpins(type, spins, title, sub) {
+                fsMode = true;
+                fsType = type;
+                fsSpins = spins;
+                guaranteedRainbow = type === 3;
+                keepGoldenAfterActivate = type === 2;
+                golden.clear();
+                for (const k of Object.keys(reveal)) delete reveal[k];
 
-  /* free spin mode doesn't deduct */
-  if (!fsMode) {
-    if (balance < bet) { flashRed(); return; }
-    setBalance(balance - bet);
-  }
+                playSfx("bonusTrigger");
+                brTitle.textContent = title;
+                brSub.textContent = sub;
+                bonusRib.classList.add("show");
+                await delay(2600);
+                bonusRib.classList.remove("show");
 
-  spinning      = true;
-  $('spinBtn').disabled = true;
-  $('betDown').disabled = true;
-  $('betUp').disabled   = true;
-  hideBanner();
-  totalWinThisSpin = 0;
-  cascadeCount = 0;
-  ccBox.classList.remove('show');
-  hudWin.textContent = '—';
+                fsModeEl.textContent = title;
+                fsHud.classList.add("show");
+                fsLeftEl.textContent = fsSpins;
 
-  /* ---- spin animation: shuffle grid quickly ---- */
-  const spinFrames = 14;
-  for (let f = 0; f < spinFrames; f++) {
-    for (let c = 0; c < COLS; c++)
-      for (let r = 0; r < ROWS; r++) {
-        /* staggered stop: cols stop left-to-right */
-        if (f < spinFrames - 1 - c * 1.2) grid[c][r] = rng();
-      }
-    renderAll();
-    await delay(70 + f * 4);
-  }
+                let total = 0;
+                while (fsSpins > 0) {
+                    fsLeftEl.textContent = fsSpins;
+                    const w = (await doSpin({ free: true })) || 0;
+                    total += w;
+                    // retrigger: more FS symbols add spins
+                    const extra = countSpecial("fs");
+                    if (extra >= 2) {
+                        fsSpins += extra >= 3 ? 4 : 2;
+                        toast("+" + (extra >= 3 ? 4 : 2) + " free spins!");
+                    }
+                    fsSpins--;
+                    await delay(450);
+                }
+                // end
+                fsMode = false;
+                fsType = 0;
+                guaranteedRainbow = false;
+                keepGoldenAfterActivate = false;
+                fsHud.classList.remove("show");
+                golden.clear();
+                repaintAll();
+                if (total > 0) {
+                    showBanner(total, true, "Total Feature Win");
+                    playSfx("bigWin");
+                }
+            }
 
-  /* land final grid (optionally guarantee rainbow in TREASURE mode) */
-  if (fsMode && fsType === 3 && guaranteedRainbow) {
-    /* place a rainbow on a random position */
-    const rc = Math.floor(Math.random() * COLS);
-    const rr = Math.floor(Math.random() * ROWS);
-    grid[rc][rr] = 'rainbow';
-  }
-  renderAll();
-  await delay(120);
-
-  /* ---- check free spin triggers ---- */
-  if (!fsMode) {
-    const fsCount = countSpecial('fs');
-    if (fsCount >= 3) {
-      await triggerFreeSpins(fsCount, bet);
-      spinning = false;
-      $('spinBtn').disabled = false;
-      refreshBet();
-      return;
-    }
-  } else {
-    fsSpins--;
-    fsLeft.textContent = fsSpins;
-    if (fsSpins <= 0) await endFreeSpins();
-  }
-
-  /* ---- cascade loop ---- */
-  let cascadeWin = 0;
-  for (let pass = 0; pass < 30; pass++) {
-    const clusters = findClusters();
-
-    /* check for rainbow activation */
-    const rainbowCount = countSpecial('rainbow');
-    if (rainbowCount > 0 && gsSet.size > 0) {
-      /* activate golden squares */
-      const gsWin = activateGoldenSquares(bet);
-      if (gsWin > 0) {
-        cascadeWin += gsWin;
-        totalWinThisSpin += gsWin;
-        hudWin.textContent = `+${cascadeWin.toFixed(2)}`;
-        await delay(700);
-        /* clear coin overlays */
-        document.querySelectorAll('.coin-overlay').forEach(e => e.remove());
-      }
-      /* remove rainbow(s) */
-      for (let c = 0; c < COLS; c++)
-        for (let r = 0; r < ROWS; r++)
-          if (grid[c][r] === 'rainbow') grid[c][r] = rng();
-      renderAll();
-    }
-
-    if (clusters.length === 0) break;
-
-    cascadeCount++;
-    if (cascadeCount > 1) {
-      ccNum.textContent = cascadeCount;
-      ccBox.classList.add('show');
-    }
-
-    const win = calcWin(clusters, bet);
-    cascadeWin += win;
-    totalWinThisSpin += win;
-    hudWin.textContent = `+${cascadeWin.toFixed(2)}`;
-
-    await cascadeStep(clusters);
-    await delay(120);
-  }
-
-  ccBox.classList.remove('show');
-
-  /* persist to server */
-  if (!fsMode) {
-    const netDelta = totalWinThisSpin - bet; /* bet already deducted above */
-    /* actually: we deducted bet, server needs full win to add back */
-    await settle(totalWinThisSpin - bet);
-  } else {
-    /* in fs mode, no initial deduction — just add winnings */
-    if (totalWinThisSpin > 0) {
-      setBalance(balance + totalWinThisSpin);
-      await settle(totalWinThisSpin);
-    }
-  }
-
-  if (totalWinThisSpin > 0) {
-    setBalance(balance + (fsMode ? 0 : totalWinThisSpin)); /* already added above in non-fs */
-    showBanner(totalWinThisSpin);
-    hudWin.textContent = `+${totalWinThisSpin.toFixed(2)}`;
-  }
-
-  /* re-sync from server */
-  fetchBalance();
-
-  spinning = false;
-  $('spinBtn').disabled = false;
-  refreshBet();
-
-  if (autoMode && !fsMode) {
-    autoTimer = setTimeout(doSpin, 600);
-  }
-}
-
-/* =============================================================
-   FREE SPINS FLOW
+            /* =============================================================
+   BONUS BUY
    ============================================================= */
-async function triggerFreeSpins(fsCount, bet) {
-  let title, sub, spins, type;
-  if (fsCount >= 5)      { type=3; spins=12; title='TREASURE AT THE END OF THE RAINBOW'; sub='12 Free Spins — Rainbow Guaranteed Every Spin!'; guaranteedRainbow=true; }
-  else if (fsCount >= 4) { type=2; spins=12; title='ALL THAT GLITTERS IS GOLD';          sub='12 Free Spins — Golden Squares persist every spin!'; guaranteedRainbow=false; }
-  else                   { type=1; spins=8;  title='LUCK OF THE BANDIT';                 sub='8 Free Spins — Golden Squares persist!'; guaranteedRainbow=false; }
+            const BONUS_BUYS = [
+                {
+                    key: "hunt",
+                    title: "BONUSHUNT FEATURESPINS",
+                    desc: "Each spin is 5× more likely to trigger a bonus game.",
+                    icon: "📷",
+                    vol: "High",
+                    mult: 3,
+                    action: "activate",
+                },
+                {
+                    key: "rain",
+                    title: "RAINBOW FEATURESPINS",
+                    desc: "Each spin guarantees that a Rainbow symbol lands.",
+                    icon: "🌈",
+                    vol: "Medium",
+                    mult: 50,
+                    action: "activate",
+                },
+                {
+                    key: "luck",
+                    title: "LUCK OF THE BANDIT",
+                    desc: "Bonus with 8 free spins where Golden Squares stay lit until activated.",
+                    icon: "📷📷",
+                    vol: "Medium",
+                    mult: 100,
+                    action: "buy",
+                },
+                {
+                    key: "glit",
+                    title: "ALL THAT GLITTERS IS GOLD",
+                    desc: "Bonus with 12 free spins where Golden Squares stay lit even after activating.",
+                    icon: "📷📷📷📷",
+                    vol: "Medium",
+                    mult: 250,
+                    action: "buy",
+                },
+            ];
+            function buildBonusBuy() {
+                const g = $("bbGrid");
+                g.innerHTML = "";
+                for (const b of BONUS_BUYS) {
+                    const price = Math.round(b.mult * bet() * 100) / 100;
+                    const card = document.createElement("div");
+                    card.className = "bb-card";
+                    card.innerHTML = `<div class="body">
+        <h3>${b.title}</h3><div class="bb-icon">${b.icon}</div>
+        <p>${b.desc}</p><div class="bb-vol">Volatility: ${b.vol}</div>
+        <div class="bb-price">${price.toFixed(2)} FC</div></div>`;
+                    const btn = document.createElement("button");
+                    btn.className =
+                        "bb-buy " +
+                        (b.action === "activate" ? "activate" : "buy");
+                    btn.textContent =
+                        b.action === "activate" ? "ACTIVATE" : "BUY";
+                    btn.disabled = balance < price;
+                    btn.onclick = () => purchaseBonus(b, price);
+                    card.appendChild(btn);
+                    g.appendChild(card);
+                }
+            }
+            async function purchaseBonus(b, price) {
+                if (spinning) return;
+                if (balance < price) {
+                    toast("Not enough balance.");
+                    return;
+                }
+                playSfx("click");
+                setBalance(balance - price);
+                settle(-price);
+                closeBonusBuy();
+                if (b.key === "hunt") {
+                    pendingFsBoost = true;
+                    toast(
+                        "BonusHunt active — next spin is 5× more likely to trigger.",
+                    );
+                } else if (b.key === "rain") {
+                    pendingRainbow = true;
+                    toast("Rainbow guaranteed on your next spin.");
+                } else if (b.key === "luck") {
+                    await runFreeSpins(
+                        1,
+                        8,
+                        "LUCK OF THE BANDIT",
+                        "8 Free Spins · Golden Squares persist between spins",
+                    );
+                } else if (b.key === "glit") {
+                    await runFreeSpins(
+                        2,
+                        12,
+                        "ALL THAT GLITTERS IS GOLD",
+                        "12 Free Spins · Golden Squares stay lit even after activating",
+                    );
+                }
+            }
+            function openBonusBuy() {
+                if (spinning || fsMode) return;
+                buildBonusBuy();
+                $("bbOverlay").classList.add("show");
+                playSfx("click");
+            }
+            function closeBonusBuy() {
+                $("bbOverlay").classList.remove("show");
+            }
 
-  fsMode = true; fsType = type; fsSpins = spins;
-  brTitle.textContent = title;
-  brSub.textContent   = sub;
-  bonusRib.classList.add('show');
-  await delay(2800);
-  bonusRib.classList.remove('show');
-
-  fsHud.classList.add('show');
-  fsLeft.textContent = fsSpins;
-
-  /* run free spins */
-  for (let i = 0; i < spins; i++) {
-    if (fsSpins <= 0) break;
-    await doSpin();
-    await delay(400);
-  }
-  await endFreeSpins();
-}
-
-async function endFreeSpins() {
-  fsMode = false; fsType = 0; fsSpins = 0; guaranteedRainbow = false;
-  fsHud.classList.remove('show');
-  gsSet.clear(); updateGsDisplay();
-  if (totalWinThisSpin > 0) showBanner(totalWinThisSpin);
-}
-
-/* =============================================================
-   SERVER PERSIST
+            /* =============================================================
+   UI BANNERS / LOCKS
    ============================================================= */
-async function settle(delta) {
-  if (delta === 0) return;
-  try {
-    const r = await fetch('/api/sirbandit/settle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ won: Math.round(delta * 100) / 100 }),
-    });
-    const d = await r.json();
-    if (r.ok && d.newBal !== undefined) setBalance(d.newBal);
-  } catch (_) { fetchBalance(); }
-}
+            function showBanner(amt, big = false, label = "Win") {
+                wbLabel.textContent = label;
+                wbAmt.textContent = "+" + amt.toFixed(2);
+                wbAmt.classList.toggle("big", big);
+                winBanner.classList.add("show");
+                if (big) playSfx("bigWin");
+                clearTimeout(winBanner._t);
+                winBanner._t = setTimeout(
+                    () => winBanner.classList.remove("show"),
+                    big ? 3200 : 2400,
+                );
+            }
+            function hideBanner() {
+                winBanner.classList.remove("show");
+            }
+            function flashSpinRed() {
+                const b = $("spinBtn");
+                b.style.background =
+                    "conic-gradient(from 0deg,#600,#c22,#f66,#c22,#600)";
+                setTimeout(() => (b.style.background = ""), 500);
+            }
+            function lockUI(on) {
+                spinning = on;
+                $("spinBtn").disabled = on;
+                $("spinBtn").classList.toggle("spinning", on);
+                $("betUp").disabled = on || betIdx === BET_STEPS.length - 1;
+                $("betDown").disabled = on || betIdx === 0;
+                $("buyBonusBtn").disabled = on;
+            }
+            function maybeAuto() {
+                if (autoMode && !fsMode && !spinning)
+                    autoTimer = setTimeout(() => doSpin(), 650);
+            }
 
-function fetchBalance() {
-  fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined) setBalance(d.bal); }).catch(()=>{});
-}
-
-/* balance from parent postMessage (if ever iframed) */
-window.addEventListener('message', ev => {
-  if (!ev.data) return;
-  if (ev.data.type === 'fluxer:init' || ev.data.type === 'fluxer:sync')
-    setBalance(ev.data.balance ?? 0);
-});
-
-/* =============================================================
-   UI HELPERS
+            /* =============================================================
+   SERVER HOOKS (no-op friendly for standalone testing)
    ============================================================= */
-function showBanner(amt) {
-  wbAmt.textContent = `+${amt.toFixed(2)}`;
-  winBanner.classList.add('show');
-  setTimeout(() => winBanner.classList.remove('show'), 2800);
-}
-function hideBanner() { winBanner.classList.remove('show'); }
+            async function settle(delta) {
+                if (!delta) return;
+                try {
+                    const r = await fetch("/api/sirbandit/settle", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            won: Math.round(delta * 100) / 100,
+                        }),
+                    });
+                    if (r.ok) {
+                        const d = await r.json();
+                        if (d && d.newBal != null) setBalance(d.newBal);
+                    }
+                } catch (_) {
+                    /* offline / demo: keep local balance */
+                }
+            }
+            function fetchBalance() {
+                fetch("/api/balance")
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((d) => {
+                        if (d && d.bal != null) setBalance(d.bal);
+                    })
+                    .catch(() => {});
+            }
+            window.addEventListener("message", (ev) => {
+                if (!ev.data) return;
+                if (
+                    ev.data.type === "fluxer:init" ||
+                    ev.data.type === "fluxer:sync"
+                )
+                    setBalance(ev.data.balance ?? balance);
+            });
 
-function flashRed() {
-  $('spinBtn').style.background = 'conic-gradient(from 0deg,#600,#c00,#f66,#c00,#600)';
-  setTimeout(() => { $('spinBtn').style.background = ''; }, 500);
-}
-
-/* =============================================================
+            /* =============================================================
    CONTROLS
    ============================================================= */
-$('betDown').addEventListener('click', () => { if (betIdx > 0) { betIdx--; refreshBet(); } });
-$('betUp').addEventListener('click',   () => { if (betIdx < BET_STEPS.length-1) { betIdx++; refreshBet(); } });
-$('spinBtn').addEventListener('click', doSpin);
-document.addEventListener('keydown', e => { if (e.code === 'Space' && !spinning) { e.preventDefault(); doSpin(); } });
+            $("betDown").onclick = () => {
+                if (betIdx > 0) {
+                    betIdx--;
+                    refreshBet();
+                    playSfx("click");
+                }
+            };
+            $("betUp").onclick = () => {
+                if (betIdx < BET_STEPS.length - 1) {
+                    betIdx++;
+                    refreshBet();
+                    playSfx("click");
+                }
+            };
+            $("spinBtn").onclick = () => doSpin();
+            $("buyBonusBtn").onclick = openBonusBuy;
+            $("bbClose").onclick = closeBonusBuy;
+            $("bbOverlay").onclick = (e) => {
+                if (e.target === $("bbOverlay")) closeBonusBuy();
+            };
+            document.addEventListener("keydown", (e) => {
+                if (
+                    e.code === "Space" &&
+                    !spinning &&
+                    !$("bbOverlay").classList.contains("show")
+                ) {
+                    e.preventDefault();
+                    doSpin();
+                }
+            });
+            $("autoBtn").onclick = () => {
+                autoMode = !autoMode;
+                $("autoBtn").classList.toggle("on", autoMode);
+                if (!autoMode && autoTimer) {
+                    clearTimeout(autoTimer);
+                    autoTimer = null;
+                } else if (autoMode && !spinning) doSpin();
+            };
 
-$('autoBtn').addEventListener('click', () => {
-  autoMode = !autoMode;
-  $('autoBtn').style.color = autoMode ? 'var(--gold)' : '';
-  $('autoBtn').style.borderColor = autoMode ? 'var(--gold)' : '';
-  if (!autoMode && autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
-  else if (autoMode && !spinning) doSpin();
-});
+            /* menu popover */
+            const menuPop = $("menuPop");
+            $("menuBtn").onclick = (e) => {
+                e.stopPropagation();
+                const open = menuPop.classList.toggle("show");
+                $("menuBtn").classList.toggle("on", open);
+                playSfx("click");
+            };
+            document.addEventListener("click", (e) => {
+                if (!menuPop.contains(e.target) && e.target !== $("menuBtn")) {
+                    menuPop.classList.remove("show");
+                    $("menuBtn").classList.remove("on");
+                }
+            });
 
-const bgm = $('bgm');
-if (MUSIC_SRC) bgm.src = MUSIC_SRC;
-$('musicBtn').addEventListener('click', () => {
-  if (!MUSIC_SRC) return;
-  musicOn = !musicOn;
-  if (musicOn) { bgm.volume = 0.35; bgm.play().catch(()=>{}); $('musicBtn').textContent = '🔊'; }
-  else          { bgm.pause(); $('musicBtn').textContent = '🔇'; }
-});
+            const bgm = $("bgm");
+            if (MUSIC_SRC) bgm.src = MUSIC_SRC;
+            $("musicRow").onclick = () => {
+                if (!MUSIC_SRC) {
+                    toast("Add MUSIC_SRC in the script to enable music.");
+                    return;
+                }
+                musicOn = !musicOn;
+                $("musicRow").classList.toggle("on", musicOn);
+                $("musicState").textContent = musicOn ? "On" : "Off";
+                if (musicOn) {
+                    bgm.volume = 0.35;
+                    bgm.play().catch(() => {});
+                } else bgm.pause();
+            };
+            $("sfxRow").onclick = () => {
+                sfxOn = !sfxOn;
+                $("sfxRow").classList.toggle("on", sfxOn);
+                $("sfxState").textContent = sfxOn ? "On" : "Off";
+                if (sfxOn) playSfx("click");
+            };
+            /* init menu states */
+            $("musicRow").classList.toggle("on", musicOn);
+            $("musicState").textContent = musicOn ? "On" : "Off";
+            $("sfxRow").classList.toggle("on", sfxOn);
+            $("sfxState").textContent = sfxOn ? "On" : "Off";
 
-/* =============================================================
+            /* =============================================================
    INIT
    ============================================================= */
-buildGrid();
-refreshBet();
-fetchBalance();
-
-/* read username from cookie */
-try {
-  const m = document.cookie.match(/(?:^|;\s*)dtag=([^;]*)/);
-  if (m) $('tbTag').textContent = decodeURIComponent(m[1]);
-} catch(_){}
-
-/* passive balance poll */
-setInterval(() => {
-  if (!spinning) fetchBalance();
-}, 12000);
-</script>
-</body>
+            buildBoard();
+            refreshBet();
+            setBalance(balance);
+            fetchBalance();
+            try {
+                const m = document.cookie.match(/(?:^|;\s*)dtag=([^;]*)/);
+                if (m) $("tbTag").textContent = decodeURIComponent(m[1]);
+            } catch (_) {}
+            setInterval(() => {
+                if (!spinning) fetchBalance();
+            }, 15000);
+        </script>
+    </body>
 </html>
