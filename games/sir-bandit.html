@@ -1690,8 +1690,7 @@
    Files live in assets/sir-bandit/. A few names in the brief were
    truncated; reconstructed to their likely real filenames below —
    tweak here if any differ. Missing files just stay silent. */
-            const SND_DIR =
-                "/assets/sir-bandit/"; /* absolute: files live in rootdir\games\assets\sir-bandit */
+            const SNDDIR = "/assets/sir-bandit/";
             const MUSIC = {
                 intro: "music_intro.webm",
                 base0: "music_level_0.webm", // idle
@@ -2156,7 +2155,7 @@
                 audioPending[file] = (async () => {
                     for (let i = 0; i < tries; i++) {
                         try {
-                            const res = await fetch(SND_DIR + file, {
+                            const res = await fetch(SNDDIR + file, {
                                 cache: "force-cache",
                             });
                             if (res.ok) {
@@ -2183,7 +2182,7 @@
                 files.forEach((f) => preloadAudio(f));
             }
             function audioSrc(file) {
-                return audioCache[file] || SND_DIR + file;
+                return audioCache[file] || SNDDIR + file;
             }
 
             /* ---- SFX: short one-shots, played from cached blobs so they never re-404 ---- */
