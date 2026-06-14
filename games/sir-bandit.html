@@ -92,38 +92,43 @@ a{color:inherit;text-decoration:none}
 .corner.tl{top:7px;left:11px}.corner.tr{top:7px;right:11px}
 .corner.bl{bottom:7px;left:11px}.corner.br{bottom:7px;right:11px}
 
+/* fixed slot layer — tiles + golden markers live here and NEVER move.
+   Symbols (the #grid layer) drop on top of these. */
+#slots{position:absolute;inset:18px;display:flex;gap:6px;z-index:1;pointer-events:none}
+.slot-col{flex:1;min-width:0;display:flex;flex-direction:column}
+.slot{aspect-ratio:1/1;margin:2px;border-radius:6px;position:relative;
+  background:rgba(28,20,10,.45);border:1px solid #ffffff10;
+  transition:background .18s,border-color .18s,box-shadow .18s}
+.slot.golden{background:linear-gradient(135deg,#3a2a00,#5a4400);border-color:var(--gold);
+  box-shadow:inset 0 0 12px #ffd76655,0 0 16px #ffd76640}
+.slot.golden::after{content:'';position:absolute;inset:0;border-radius:6px;pointer-events:none;
+  background:repeating-linear-gradient(45deg,#ffe27a22 0 6px,transparent 6px 12px)}
+.slot.gold-pop{animation:goldPop .42s cubic-bezier(.22,1.7,.4,1)}
+@keyframes goldPop{0%{transform:scale(.55)}55%{transform:scale(1.1)}100%{transform:scale(1)}}
+
 #grid{display:flex;gap:6px;width:100%;aspect-ratio:6/5;position:relative;z-index:2}
-.reel{flex:1;min-width:0;overflow:hidden;border-radius:6px;position:relative;
-  background:linear-gradient(180deg,#15100a99,#0d0a0699)}
+.reel{flex:1;min-width:0;overflow:hidden;border-radius:6px;position:relative;background:transparent}
 .reel-track{display:flex;flex-direction:column;will-change:transform}
 .reel-track.spinning{filter:blur(1.2px)}
 
 .cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;
-  background:rgba(28,20,10,.45);border:1px solid #ffffff10;border-radius:6px;margin:2px;
+  background:transparent;border:1px solid transparent;border-radius:6px;margin:2px;
   font-size:clamp(1.3rem,3.7vw,2.6rem)}
 .cell img{width:82%;height:82%;object-fit:contain;pointer-events:none}
-.cell.golden{background:linear-gradient(135deg,#3a2a00,#5a4400);
-  border-color:var(--gold)!important;box-shadow:inset 0 0 10px #ffd76644,0 0 12px #ffd76633}
-.cell.golden::after{content:'';position:absolute;inset:0;border-radius:7px;
-  background:repeating-linear-gradient(45deg,#ffe27a22 0 6px,transparent 6px 12px);pointer-events:none}
-.cell.win-flash{animation:winFlash .5s cubic-bezier(.3,1.5,.4,1);z-index:3}
-@keyframes winFlash{0%{transform:scale(1)}35%{transform:scale(1.22);
-  box-shadow:0 0 22px var(--gold2);border-color:var(--gold2)}70%{transform:scale(.96)}100%{transform:scale(1)}}
+.cell.win-flash{animation:winFlash .45s ease-out;z-index:3}
+@keyframes winFlash{0%{transform:scale(1)}40%{transform:scale(1.14);
+  filter:drop-shadow(0 0 12px var(--gold2))}100%{transform:scale(1)}}
 .cell.vanish{animation:vanish .26s cubic-bezier(.5,0,.7,0) forwards}
 @keyframes vanish{60%{opacity:.5}to{transform:scale(.05) rotate(35deg);opacity:0}}
-/* real falling drop — distance set per-cell via --fall (in % of cell height) */
-.cell.falling{animation:dropFall var(--dropdur,.5s) cubic-bezier(.3,.85,.4,1) both;animation-delay:var(--dropdel,0s)}
+/* real falling drop — distance set per-cell via --fall (in % of cell height).
+   Single smooth decelerating motion (no multi-step overshoot = no jitter). */
+.cell.falling{animation:dropFall var(--dropdur,.5s) cubic-bezier(.16,.7,.28,1) both;animation-delay:var(--dropdel,0s)}
 @keyframes dropFall{
-  0%{transform:translateY(var(--fall,-300%));opacity:.35}
-  55%{opacity:1}
-  78%{transform:translateY(0)}
-  88%{transform:translateY(7%)}
-  96%{transform:translateY(-2%)}
-  100%{transform:translateY(0)}}
+  0%{transform:translateY(var(--fall,-300%));opacity:0}
+  18%{opacity:1}
+  100%{transform:translateY(0);opacity:1}}
 .cell.pop{animation:pop .34s cubic-bezier(.22,1.7,.4,1)}
 @keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
-.cell.land{animation:land .26s cubic-bezier(.3,1.6,.4,1)}
-@keyframes land{0%{transform:scale(1)}40%{transform:scale(1.06,.94)}100%{transform:scale(1)}}
 
 /* ---- Card royals & symbol glyphs (styled, not just emoji) ---- */
 .glyph{font-family:'Arial Black',sans-serif;font-weight:900;line-height:1}
@@ -388,6 +393,7 @@ a{color:inherit;text-decoration:none}
       <div id="reelFrame">
         <span class="corner tl">&#9670;</span><span class="corner tr">&#9670;</span>
         <span class="corner bl">&#9670;</span><span class="corner br">&#9670;</span>
+        <div id="slots"></div>
         <div id="grid"></div>
 
         <div id="winBanner">
@@ -606,9 +612,18 @@ const ctTag=$('cascadeTag'), ctNum=$('ctNum'), fsHud=$('fsHud'), fsLeftEl=$('fsL
 const bonusRib=$('bonusRibbon'), brTitle=$('brTitle'), brSub=$('brSub');
 
 const reels=[];      // reels[c] = {el, track}
-const cellEls=[];    // cellEls[c][r]
+const cellEls=[];    // cellEls[c][r]  (moving symbols)
+const slotEls=[];    // slotEls[c][r]  (fixed golden-square markers)
 
 function buildBoard(){
+  // fixed slot layer (golden markers + tiles — never move)
+  const slotsEl=$('slots'); slotsEl.innerHTML=''; slotEls.length=0;
+  for(let c=0;c<COLS;c++){
+    const col=document.createElement('div'); col.className='slot-col';
+    slotsEl.appendChild(col); slotEls[c]=[];
+    for(let r=0;r<ROWS;r++){const s=document.createElement('div');s.className='slot';col.appendChild(s);slotEls[c][r]=s;}
+  }
+  // moving symbol layer
   gridEl.innerHTML=''; reels.length=0; cellEls.length=0;
   for(let c=0;c<COLS;c++){
     const reel=document.createElement('div'); reel.className='reel';
@@ -621,6 +636,20 @@ function buildBoard(){
       track.appendChild(cell); cellEls[c][r]=cell;
     }
   }
+  paintGolden();
+}
+/* sync the fixed golden markers to the golden Set (pop newly-lit ones) */
+function paintGolden(){
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++){
+    const s=slotEls[c]&&slotEls[c][r]; if(!s) continue;
+    const on=golden.has(`${c}-${r}`);
+    if(on && !s.classList.contains('golden')){
+      s.classList.add('golden','gold-pop');
+      setTimeout(()=>s.classList.remove('gold-pop'),440);
+    } else if(!on){
+      s.classList.remove('golden','gold-pop');
+    }
+  }
 }
 function makeCell(c,r){
   const d=document.createElement('div'); d.className='cell'; d.dataset.c=c; d.dataset.r=r;
@@ -628,7 +657,6 @@ function makeCell(c,r){
 }
 function paintCell(d,c,r){
   const key=`${c}-${r}`;
-  d.classList.toggle('golden', golden.has(key));
   // reveal state (coin feature) takes precedence
   if(reveal[key]){ d.innerHTML=''; d.appendChild(renderReveal(reveal[key])); return; }
   const s=SYM[grid[c][r]];
@@ -763,34 +791,39 @@ function genGrid(opts){
     grid[Math.floor(Math.random()*COLS)][Math.floor(Math.random()*ROWS)]='rainbow';
   }
 }
-/* drop a single cell in from above; fallPct in % of its own height (one row = 100%) */
+/* drop a single freshly-created cell in from above; fallPct in % of its own height (one row = 100%).
+   No forced reflow — cells are brand new each render, so adding the class starts the animation
+   from keyframe 0% on the next paint (one layout for the whole board → smooth). */
 function dropCell(cell, fallPct, delayMs=0, durMs=500){
-  cell.classList.remove('falling','land');
   cell.style.setProperty('--fall', (-Math.abs(fallPct))+'%');
   cell.style.setProperty('--dropdel', delayMs+'ms');
   cell.style.setProperty('--dropdur', durMs+'ms');
-  void cell.offsetWidth;                 // reflow so the animation re-triggers
   cell.classList.add('falling');
 }
 
 async function animateSpin(){
   playSfx('spin');
-  // re-render the whole board, then tumble it in from the top (authentic Le Bandit drop)
+  // re-render the whole board
   for(let c=0;c<COLS;c++){
     const track=reels[c].track; track.innerHTML=''; cellEls[c]=[];
     for(let r=0;r<ROWS;r++){const cell=makeCell(c,r);track.appendChild(cell);cellEls[c][r]=cell;}
+    // start the whole column above the reel (clipped by overflow:hidden)
+    track.style.transition='none';
+    track.style.transform='translateY(-112%)';
   }
+  gridEl.getBoundingClientRect();          // single reflow for the whole board
+  // slide each column down smoothly, staggered left→right
   let maxEnd=0;
-  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++){
-    const fall=(ROWS-r+1)*100+90;          // top rows start a touch higher (off-screen)
-    const del=c*60+(ROWS-1-r)*42;          // column cascade, bottom rows land first
-    const dur=440;
-    dropCell(cellEls[c][r], fall, del, dur);
+  for(let c=0;c<COLS;c++){
+    const del=c*75, dur=480;
+    const track=reels[c].track;
+    track.style.transition=`transform ${dur}ms cubic-bezier(.16,.72,.26,1) ${del}ms`;
+    track.style.transform='translateY(0)';
     maxEnd=Math.max(maxEnd, del+dur);
   }
-  await delay(maxEnd*0.55);
+  await delay(Math.round(maxEnd*0.55));
   playSfx('reelStop');
-  await delay(maxEnd-maxEnd*0.55+40);
+  await delay(Math.round(maxEnd*0.45)+60);
 }
 
 /* =============================================================
@@ -816,6 +849,7 @@ async function cascadeStep(clusters, fast=false){
   } else {
     for(const key of removed){const [c,r]=key.split('-').map(Number);cellEls[c][r].classList.remove('win-flash');}
   }
+  paintGolden();   // gold markers light up at the cleared positions (fixed; symbols drop onto them)
 
   // gravity per column (clean rebuild) — track how far each cell falls
   const pool=buildPool();
@@ -830,9 +864,10 @@ async function cascadeStep(clusters, fast=false){
     for(let r=0;r<newCount;r++) dist[c][r]=newCount-r+0.5;          // new symbols fall in from above the board
     for(let j=0;j<survivors.length;j++){const nr=newCount+j; dist[c][nr]=nr-survivors[j].oldR;} // survivors sink
   }
-  // re-render columns
+  // re-render columns (clear any leftover column-strip transform from the spin)
   for(let c=0;c<COLS;c++){
-    const track=reels[c].track; track.innerHTML=''; cellEls[c]=[];
+    const track=reels[c].track; track.style.transition='none'; track.style.transform='none';
+    track.innerHTML=''; cellEls[c]=[];
     for(let r=0;r<ROWS;r++){const cell=makeCell(c,r);track.appendChild(cell);cellEls[c][r]=cell;}
   }
   if(fast){ await delay(40); return; }
@@ -937,7 +972,7 @@ async function runCoinFeature(){
   // clear reveals & (usually) golden squares
   for(const k of Object.keys(reveal)) delete reveal[k];
   if(!keepGoldenAfterActivate) golden.clear();
-  repaintAll();
+  repaintAll(); paintGolden();
   return Math.round(collectedTotal*100)/100;
 }
 
@@ -998,7 +1033,7 @@ async function sumCoinsToWin(coins){
 }
 function flashRainbow(){
   for(const k of golden){const [c,r]=k.split('-').map(Number);
-    cellEls[c][r].animate([{filter:'brightness(1)'},{filter:'brightness(2.2)'},{filter:'brightness(1)'}],{duration:500});}
+    slotEls[c][r].animate([{filter:'brightness(1)'},{filter:'brightness(2.4)'},{filter:'brightness(1)'}],{duration:500});}
 }
 
 /* =============================================================
@@ -1017,7 +1052,7 @@ async function doSpin(opts={}){
   if(!fsMode && !opts.free) Music.base(1);
 
   // fresh paid spin clears last round's golden squares; free spins keep them
-  if(!fsMode && !opts.free) golden.clear();
+  if(!fsMode && !opts.free){ golden.clear(); paintGolden(); }
 
   // apply active feature-spin mode (persists each spin until toggled off)
   const spinOpts={};
@@ -1090,7 +1125,7 @@ async function runFreeSpins(type,spins,title,sub){
   fsMode=true; fsType=type; fsSpins=spins;
   guaranteedRainbow=(type===3);
   keepGoldenAfterActivate=(type===2);
-  golden.clear(); for(const k of Object.keys(reveal)) delete reveal[k];
+  golden.clear(); for(const k of Object.keys(reveal)) delete reveal[k]; paintGolden();
 
   playSfx('bonusTrigger');
   Music.bonus(0);
@@ -1117,7 +1152,7 @@ async function runFreeSpins(type,spins,title,sub){
   // end
   fsMode=false; fsType=0; guaranteedRainbow=false; keepGoldenAfterActivate=false;
   fsHud.classList.remove('show');
-  golden.clear(); repaintAll();
+  golden.clear(); repaintAll(); paintGolden();
   Music.base(0);
   if(total>0){showBanner(total,true,'Total Feature Win');playSfx('bigWin');}
 }
