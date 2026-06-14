@@ -7,14 +7,47 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
-const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 
+// __dirname must be declared AFTER all imports in ESM
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
+const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 
 const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL = "https://api.fluxer.app/v1/users/@me";
+
+// ---------------------------------------------------------------------------
+// MIME types
+// ---------------------------------------------------------------------------
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+};
+function getMime(filePath) {
+  return (
+    MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,7 +235,6 @@ function errPage(title, msg, href, label) {
   );
 }
 
-// Fish Slot wrapper page (unchanged)
 function fishslotWrapperPage(bal, tag) {
   const safeBal = Number(bal) || 0;
   return `<!DOCTYPE html>
@@ -303,12 +335,68 @@ export class WebServer {
 
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
-    const path = u.pathname;
+    const p = u.pathname;
 
-    if (path === "/") return this._redirect(res, "/lobby");
+    if (p === "/") return this._redirect(res, "/lobby");
+
+    // ── Static game assets: /assets/* → games/assets/* ───────────────────
+    if (p.startsWith("/assets/")) {
+      const rel = p
+        .slice("/assets/".length)
+        .replace(/\.\./g, "")
+        .replace(/\/+/g, "/");
+      const file = path.join(GAMES_ASSETS_DIR, rel);
+      if (
+        !file.startsWith(GAMES_ASSETS_DIR + path.sep) &&
+        file !== GAMES_ASSETS_DIR
+      ) {
+        res.writeHead(403);
+        return res.end("Forbidden");
+      }
+      let stat;
+      try {
+        stat = fs.statSync(file);
+      } catch {
+        res.writeHead(404);
+        return res.end("Not found");
+      }
+      if (!stat.isFile()) {
+        res.writeHead(404);
+        return res.end("Not found");
+      }
+
+      const mime = getMime(file);
+      const total = stat.size;
+      const rangeHeader = req.headers["range"];
+
+      if (rangeHeader) {
+        const [, rawStart, rawEnd] =
+          /bytes=(\d*)-(\d*)/.exec(rangeHeader) ?? [];
+        const start = rawStart ? parseInt(rawStart, 10) : 0;
+        const end = rawEnd ? parseInt(rawEnd, 10) : total - 1;
+        const chunk = end - start + 1;
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunk,
+          "Content-Type": mime,
+          "Cache-Control": "public, max-age=86400",
+        });
+        fs.createReadStream(file, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          "Content-Type": mime,
+          "Content-Length": total,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=86400",
+        });
+        fs.createReadStream(file).pipe(res);
+      }
+      return;
+    }
 
     // ── Sir Bandit ───────────────────────────────────────────────────────────
-    if (path === "/sirbandit" || path === "/sirbandit/") {
+    if (p === "/sirbandit" || p === "/sirbandit/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       let html;
@@ -330,7 +418,7 @@ export class WebServer {
     }
 
     // ── Sir Bandit settle ──────────────────────────────────────────────
-    if (path === "/api/sirbandit/settle" && req.method === "POST") {
+    if (p === "/api/sirbandit/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
@@ -341,11 +429,9 @@ export class WebServer {
       }
 
       const won = Math.floor(Number(body.won) || 0);
-      // Sanity caps: max net win 50 000 FC, min net -100 000 FC per spin
       if (won > 50_000 || won < -100_000)
         return this._json(res, 400, { error: "Delta out of range" });
 
-      // Prevent balance going below 0
       const user = await this.db.getUser(uid);
       const curBal = Number(user?.bal ?? 0);
       const clamped = Math.max(-curBal, won);
@@ -361,7 +447,7 @@ export class WebServer {
     }
 
     // ── Fish Slot wrapper ─────────────────────────────────────────────
-    if (path === "/fishslot" || path === "/fishslot/") {
+    if (p === "/fishslot" || p === "/fishslot/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       const user = await this.db.getUser(uid);
@@ -372,7 +458,7 @@ export class WebServer {
     }
 
     // ── Fish Slot game static files ───────────────────────────────
-    if (path === "/fishslot/game" || path === "/fishslot/game/") {
+    if (p === "/fishslot/game" || p === "/fishslot/game/") {
       const asset = getFishslotAsset("/index.html");
       if (!asset) {
         res.writeHead(404);
@@ -384,8 +470,8 @@ export class WebServer {
       });
       return res.end(asset.body);
     }
-    if (path.startsWith("/fishslot/")) {
-      let assetPath = path.slice("/fishslot".length);
+    if (p.startsWith("/fishslot/")) {
+      let assetPath = p.slice("/fishslot".length);
       if (assetPath.startsWith("/game/"))
         assetPath = assetPath.slice("/game".length);
       const asset = getFishslotAsset(assetPath);
@@ -402,7 +488,7 @@ export class WebServer {
     }
 
     // ── Lobby ────────────────────────────────────────────────────────────
-    if (path === "/lobby" && req.method === "GET") {
+    if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       const user = await this.db.getUser(uid);
@@ -418,7 +504,7 @@ export class WebServer {
     }
 
     // ── Fish Slot settle ────────────────────────────────────────────
-    if (path === "/api/fishslot/settle" && req.method === "POST") {
+    if (p === "/api/fishslot/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       let body;
@@ -440,7 +526,7 @@ export class WebServer {
     }
 
     // ── Balance ──────────────────────────────────────────────────────────
-    if (path === "/api/balance" && req.method === "GET") {
+    if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const user = await this.db.getUser(uid);
@@ -448,7 +534,7 @@ export class WebServer {
     }
 
     // ── Auth ─────────────────────────────────────────────────────────────
-    if (path === "/login" && req.method === "GET") {
+    if (p === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(
           res,
@@ -473,7 +559,7 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl));
     }
 
-    if (path === "/oauth/callback" && req.method === "GET") {
+    if (p === "/oauth/callback" && req.method === "GET") {
       const code = u.searchParams.get("code");
       const state = u.searchParams.get("state");
       if (!code || !state || !this._states.has(state))
@@ -562,7 +648,7 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
-    if (path === "/logout") {
+    if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
         const c = parseCookies(req);
