@@ -9,8 +9,9 @@ import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets/sir-bandit");
+const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
+const FAVICON_PATH = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
 const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
@@ -54,24 +55,68 @@ function getMime(filePath) {
 // ---------------------------------------------------------------------------
 const _assetCache = new Map(); // normalised URL path → { buf, mime }
 
+function normalizeAssetUrlPath(p) {
+  const clean = String(p || "")
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/\\/g, "/");
+  const norm = path.posix.normalize(clean);
+  return norm.startsWith("/") ? norm : `/${norm}`;
+}
+
+function assetUrlToDiskPath(urlPath) {
+  const normalized = normalizeAssetUrlPath(urlPath);
+  if (!normalized.startsWith("/assets/")) return null;
+
+  const rel = normalized.slice("/assets/".length);
+  if (
+    rel.includes("\0") ||
+    rel.startsWith("/") ||
+    rel.includes("../") ||
+    rel === ".."
+  ) {
+    return null;
+  }
+
+  const diskPath = path.resolve(GAMES_ASSETS_DIR, rel);
+  const relCheck = path
+    .relative(GAMES_ASSETS_DIR, diskPath)
+    .replace(/\\/g, "/");
+  if (relCheck.startsWith("..") || path.isAbsolute(relCheck)) return null;
+
+  return diskPath;
+}
+
 function _preloadAssets() {
-  if (!fs.existsSync(GAMES_ASSETS_DIR)) return;
+  _assetCache.clear();
+
+  if (!fs.existsSync(GAMES_ASSETS_DIR)) {
+    console.warn(`[Web] Assets directory missing: ${GAMES_ASSETS_DIR}`);
+    return;
+  }
+
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
+
       if (entry.isDirectory()) {
         walk(full);
-      } else if (entry.isFile()) {
-        try {
-          const buf = fs.readFileSync(full);
-          const rel =
-            "/" + path.relative(GAMES_ASSETS_DIR, full).replace(/\\/g, "/");
-          const urlKey = "/assets" + rel;
-          _assetCache.set(urlKey, { buf, mime: getMime(full) });
-        } catch (_) {}
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      try {
+        const buf = fs.readFileSync(full);
+        const rel = path.relative(GAMES_ASSETS_DIR, full).replace(/\\/g, "/");
+        const urlKey = normalizeAssetUrlPath(`/assets/${rel}`);
+        _assetCache.set(urlKey, { buf, mime: getMime(full) });
+      } catch (err) {
+        console.error(`[Web] Failed to preload asset: ${full}`, err);
       }
     }
   };
+
   walk(GAMES_ASSETS_DIR);
   console.log(`[Web] Preloaded ${_assetCache.size} game asset(s) into memory.`);
 }
@@ -104,7 +149,7 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
           [301, 302, 303, 307, 308].includes(res.statusCode) &&
           res.headers.location &&
           maxRedirects > 0
-        )
+        ) {
           return resolve(
             rawFetch(
               new URL(res.headers.location, url).toString(),
@@ -112,6 +157,8 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
               maxRedirects - 1,
             ),
           );
+        }
+
         const chunks = [];
         res.on("data", (c) => chunks.push(c));
         res.on("end", () => {
@@ -185,7 +232,7 @@ function serveBufferWithRanges(
   cacheControl = "public, max-age=86400",
 ) {
   const total = buf.length;
-  const rangeHeader = req.headers["range"];
+  const rangeHeader = req.headers.range;
 
   if (rangeHeader) {
     const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
@@ -193,10 +240,12 @@ function serveBufferWithRanges(
     const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
     const safeEnd = Math.min(end, total - 1);
     const chunk = safeEnd - start + 1;
+
     if (start >= total || start > safeEnd) {
       res.writeHead(416, { "Content-Range": `bytes */${total}` });
       return res.end();
     }
+
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${safeEnd}/${total}`,
       "Accept-Ranges": "bytes",
@@ -204,16 +253,64 @@ function serveBufferWithRanges(
       "Content-Type": mime,
       "Cache-Control": cacheControl,
     });
-    res.end(buf.slice(start, safeEnd + 1));
-  } else {
-    res.writeHead(200, {
-      "Content-Type": mime,
-      "Content-Length": total,
+    return res.end(buf.slice(start, safeEnd + 1));
+  }
+
+  res.writeHead(200, {
+    "Content-Type": mime,
+    "Content-Length": total,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": cacheControl,
+  });
+  res.end(buf);
+}
+
+function serveFileWithRanges(
+  req,
+  res,
+  filePath,
+  mime = getMime(filePath),
+  cacheControl = "public, max-age=86400",
+) {
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404, { "Cache-Control": "no-store" });
+      return res.end("Not found");
+    }
+
+    const total = stat.size;
+    const rangeHeader = req.headers.range;
+
+    if (!rangeHeader) {
+      res.writeHead(200, {
+        "Content-Type": mime,
+        "Content-Length": total,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cacheControl,
+      });
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+    const start = match && match[1] ? parseInt(match[1], 10) : 0;
+    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+    const safeEnd = Math.min(end, total - 1);
+
+    if (start >= total || start > safeEnd) {
+      res.writeHead(416, { "Content-Range": `bytes */${total}` });
+      return res.end();
+    }
+
+    res.writeHead(206, {
+      "Content-Range": `bytes ${start}-${safeEnd}/${total}`,
       "Accept-Ranges": "bytes",
+      "Content-Length": safeEnd - start + 1,
+      "Content-Type": mime,
       "Cache-Control": cacheControl,
     });
-    res.end(buf);
-  }
+
+    fs.createReadStream(filePath, { start, end: safeEnd }).pipe(res);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -381,7 +478,6 @@ export class WebServer {
   }
 
   async start() {
-    // Preload all game assets into memory before accepting requests
     _preloadAssets();
     await preloadFishslotAssets();
 
@@ -392,14 +488,17 @@ export class WebServer {
         res.end("Internal error");
       }),
     );
+
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] SirGreen Casino on port ${this.port}`),
     );
+
     setInterval(
       () => {
         const cut = Date.now() - 15 * 60 * 1000;
-        for (const [s, ts] of this._states)
+        for (const [s, ts] of this._states) {
           if (ts < cut) this._states.delete(s);
+        }
       },
       10 * 60 * 1000,
     );
@@ -407,24 +506,40 @@ export class WebServer {
 
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
-    const p = u.pathname;
+    const p = normalizeAssetUrlPath(u.pathname);
 
     if (p === "/") return this._redirect(res, "/lobby");
 
-    // ── Static game assets: /assets/* → served from memory cache ────────────
+    if (p === "/favicon.ico") {
+      if (fs.existsSync(FAVICON_PATH)) {
+        return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
+      }
+      res.writeHead(204);
+      return res.end();
+    }
+
+    // ── Static game assets: /assets/* → served from memory cache, fallback disk
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
-      if (!cached) {
-        res.writeHead(404, { "Cache-Control": "no-store" });
-        return res.end("Not found");
+      if (cached) {
+        return serveBufferWithRanges(req, res, cached.buf, cached.mime);
       }
-      return serveBufferWithRanges(req, res, cached.buf, cached.mime);
+
+      const diskPath = assetUrlToDiskPath(p);
+      if (diskPath && fs.existsSync(diskPath)) {
+        console.warn(`[Web] Asset cache miss, serving from disk: ${p}`);
+        return serveFileWithRanges(req, res, diskPath, getMime(diskPath));
+      }
+
+      res.writeHead(404, { "Cache-Control": "no-store" });
+      return res.end("Not found");
     }
 
     // ── Sir Bandit ───────────────────────────────────────────────────────────
     if (p === "/sirbandit" || p === "/sirbandit/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
+
       let html;
       try {
         html = fs.readFileSync(SIR_BANDIT_HTML, "utf8");
@@ -440,7 +555,7 @@ export class WebServer {
           ),
         );
       }
-      // no-cache so the browser never serves a stale copy from disk
+
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -448,10 +563,11 @@ export class WebServer {
       return res.end(html);
     }
 
-    // ── Sir Bandit settle ──────────────────────────────────────────────
+    // ── Sir Bandit settle ────────────────────────────────────────────────────
     if (p === "/api/sirbandit/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+
       let body;
       try {
         body = JSON.parse(await readBody(req));
@@ -460,8 +576,9 @@ export class WebServer {
       }
 
       const won = Math.floor(Number(body.won) || 0);
-      if (won > 50_000 || won < -100_000)
+      if (won > 50_000 || won < -100_000) {
         return this._json(res, 400, { error: "Delta out of range" });
+      }
 
       const user = await this.db.getUser(uid);
       const curBal = Number(user?.bal ?? 0);
@@ -477,10 +594,11 @@ export class WebServer {
       });
     }
 
-    // ── Fish Slot wrapper ─────────────────────────────────────────────
+    // ── Fish Slot wrapper ────────────────────────────────────────────────────
     if (p === "/fishslot" || p === "/fishslot/") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
+
       const user = await this.db.getUser(uid);
       const cookies = parseCookies(req);
       const bal = Number(user?.bal ?? 0);
@@ -488,7 +606,7 @@ export class WebServer {
       return this._html(res, 200, fishslotWrapperPage(bal, tag));
     }
 
-    // ── Fish Slot game static files ───────────────────────────────
+    // ── Fish Slot game static files ─────────────────────────────────────────
     if (p === "/fishslot/game" || p === "/fishslot/game/") {
       const asset = getFishslotAsset("/index.html");
       if (!asset) {
@@ -501,15 +619,18 @@ export class WebServer {
       });
       return res.end(asset.body);
     }
+
     if (p.startsWith("/fishslot/")) {
       let assetPath = p.slice("/fishslot".length);
       if (assetPath.startsWith("/game/"))
         assetPath = assetPath.slice("/game".length);
+
       const asset = getFishslotAsset(assetPath);
       if (!asset) {
         res.writeHead(404);
         return res.end("Not found");
       }
+
       res.writeHead(200, {
         "Content-Type": asset.mime,
         "Cache-Control": asset.cacheControl,
@@ -518,10 +639,11 @@ export class WebServer {
       return res.end(asset.body);
     }
 
-    // ── Lobby ────────────────────────────────────────────────────────────
+    // ── Lobby ────────────────────────────────────────────────────────────────
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
+
       const user = await this.db.getUser(uid);
       const cookies = parseCookies(req);
       return this._html(
@@ -534,21 +656,26 @@ export class WebServer {
       );
     }
 
-    // ── Fish Slot settle ────────────────────────────────────────────
+    // ── Fish Slot settle ────────────────────────────────────────────────────
     if (p === "/api/fishslot/settle" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+
       let body;
       try {
         body = JSON.parse(await readBody(req));
       } catch {
         return this._json(res, 400, { error: "Bad JSON" });
       }
+
       const won = Math.floor(Number(body.won) || 0);
-      if (won > 10_000)
+      if (won > 10_000) {
         return this._json(res, 400, { error: "Payout out of range" });
+      }
+
       if (won !== 0) await this.db.updateBalance(uid, won);
       await this.db.recordGame(uid, won >= 0, Math.abs(won));
+
       const updated = await this.db.getUser(uid);
       return this._json(res, 200, {
         ok: true,
@@ -556,30 +683,33 @@ export class WebServer {
       });
     }
 
-    // ── Balance ──────────────────────────────────────────────────────────
+    // ── Balance ─────────────────────────────────────────────────────────────
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+
       const user = await this.db.getUser(uid);
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Auth ─────────────────────────────────────────────────────────────
+    // ── Auth ────────────────────────────────────────────────────────────────
     if (p === "/login" && req.method === "GET") {
       if (!this.clientId) {
         return this._html(
           res,
           500,
           errPage(
-            "\u26a0\ufe0f Not Configured",
+            "⚠️ Not Configured",
             "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.",
             "#",
-            "\u2014",
+            "—",
           ),
         );
       }
+
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
+
       const authUrl =
         `${FLUXER_AUTH_URL}` +
         `?client_id=${encodeURIComponent(this.clientId)}` +
@@ -587,24 +717,29 @@ export class WebServer {
         `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
         `&response_type=code` +
         `&state=${encodeURIComponent(state)}`;
+
       return this._html(res, 200, loginPage(authUrl));
     }
 
     if (p === "/oauth/callback" && req.method === "GET") {
       const code = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-      if (!code || !state || !this._states.has(state))
+
+      if (!code || !state || !this._states.has(state)) {
         return this._html(
           res,
           400,
           errPage(
-            "\u274c Login Failed",
+            "❌ Login Failed",
             "Invalid or expired login state.",
             "/login",
             "Try again",
           ),
         );
+      }
+
       this._states.delete(state);
+
       let tokenData;
       try {
         const raw = await nodeFetch(FLUXER_TOKEN_URL, {
@@ -624,25 +759,23 @@ export class WebServer {
         return this._html(
           res,
           500,
-          errPage(
-            "\u26a0\ufe0f Error",
-            "Could not reach Fluxer.",
-            "/login",
-            "Retry",
-          ),
+          errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"),
         );
       }
-      if (!tokenData.access_token)
+
+      if (!tokenData.access_token) {
         return this._html(
           res,
           400,
           errPage(
-            "\u274c Login Failed",
+            "❌ Login Failed",
             tokenData.error_description ?? tokenData.message ?? "Unknown error",
             "/login",
             "Try again",
           ),
         );
+      }
+
       let me;
       try {
         me = JSON.parse(
@@ -655,20 +788,23 @@ export class WebServer {
           res,
           500,
           errPage(
-            "\u26a0\ufe0f Error",
+            "⚠️ Error",
             "Could not fetch Fluxer profile.",
             "/login",
             "Retry",
           ),
         );
       }
+
       const userId = me.id;
       const tag = me.username ?? me.tag ?? userId;
       const avatar = me.avatar
         ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64`
         : "";
+
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
+
       const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
       res.setHeader("Set-Cookie", [
         `sid=${session}; ${base}`,
@@ -676,6 +812,7 @@ export class WebServer {
         `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
         `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
       ]);
+
       return this._redirect(res, "/lobby");
     }
 
@@ -685,6 +822,7 @@ export class WebServer {
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }
+
       res.setHeader("Set-Cookie", [
         "sid=; Path=/; Max-Age=0",
         "uid=; Path=/; Max-Age=0",
@@ -702,14 +840,17 @@ export class WebServer {
     const c = parseCookies(req);
     return c.sid && c.uid ? c.uid : null;
   }
+
   _html(res, s, b) {
     res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" });
     res.end(b);
   }
+
   _json(res, s, o) {
     res.writeHead(s, { "Content-Type": "application/json" });
     res.end(JSON.stringify(o));
   }
+
   _redirect(res, l) {
     res.setHeader("Location", l);
     res.writeHead(302);
