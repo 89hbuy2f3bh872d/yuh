@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
+const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets/sir-bandit");
 const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
 
 const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
