@@ -21,6 +21,25 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 const FC_TO_GS_RATIO = 1;
 
+// ── Provider ID → name map (GoldSlot uses numeric provider_id) ──────────────
+const PROVIDER_NAMES = {
+  1:  "Pragmatic Play",
+  2:  "CQ9",
+  3:  "PG Soft",
+  4:  "Booongo",
+  5:  "Playson",
+  6:  "Habanero",
+  7:  "Jili",
+  8:  "PlayStar",
+  9:  "XGaming",
+  10: "Hacksaw",
+  11: "Live",
+};
+
+function providerName(id) {
+  return PROVIDER_NAMES[Number(id)] ?? `Provider ${id}`;
+}
+
 // ── MIME map ────────────────────────────────────────────────────────────────
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -241,18 +260,18 @@ function lobbyPage(bal, tag, gamesByProvider) {
   if (!gamesByProvider || gamesByProvider.length === 0) {
     sections = `<p style="color:#4a9a4a;font-size:.82rem">No games available right now. Please check back later.</p>`;
   } else {
-    for (const { provider, providerName, games } of gamesByProvider) {
+    for (const { provider, providerName: pn, games } of gamesByProvider) {
       const cards = games.map(g => {
-        const gid = String(g.game_id ?? g.id ?? g.code ?? "");
-        const thumb = g.image_url
-          ? `<img src="${esc(g.image_url)}" alt="${esc(g.name)}" loading="lazy">`
+        const gid = esc(String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? ""));
+        const thumb = g.game_image
+          ? `<img src="${esc(g.game_image)}" alt="${esc(g.game_name ?? g.name)}" loading="lazy">`
           : `<span style="font-size:2.5rem">🎰</span>`;
-        return `<div class="game-card" onclick="location.href='/game/${esc(gid)}'">
+        return `<div class="game-card" onclick="location.href='/game/${gid}'">
   <div class="game-thumb">${thumb}</div>
-  <div class="game-info"><div class="game-name">${esc(g.name)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? provider)}</div></div>
+  <div class="game-info"><div class="game-name">${esc(g.game_name ?? g.name ?? gid)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? pn ?? provider)}</div></div>
 </div>`;
       }).join("\n");
-      sections += `<div class="provider-title">🎮 ${esc(providerName ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
+      sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
   }
   return shell("",
@@ -379,59 +398,40 @@ export class WebServer {
       if (resp.code === 0 && Array.isArray(resp.data) && resp.data.length > 0) {
         const first = resp.data[0];
 
+        // Shape A: array of provider objects each with a .games array
         if (Array.isArray(first?.games)) {
           for (const prov of resp.data) {
             const games = Array.isArray(prov.games) ? prov.games : [];
             const pc = String(prov.provider ?? prov.code ?? prov.id ?? "UNKNOWN");
-            const pn = String(prov.name ?? pc);
-            for (const g of games)
-              this._gameById.set(String(g.game_id ?? g.id ?? g.code ?? ""), { ...g, providerCode: pc, providerName: pn });
+            const pn = String(prov.name ?? providerName(pc) ?? pc);
+            for (const g of games) {
+              const key = String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? "");
+              this._gameById.set(key, { ...g, providerCode: pc, providerName: pn });
+            }
             if (games.length) grouped.push({ provider: pc, providerName: pn, games });
           }
-        } else if (first?.game_id !== undefined || first?.id !== undefined || first?.code !== undefined) {
+
+        // Shape B (actual API): flat array of game objects with provider_id + game_code
+        } else if (first?.game_code !== undefined || first?.game_id !== undefined || first?.id !== undefined || first?.code !== undefined) {
           const byProv = new Map();
           for (const g of resp.data) {
-            const pc = String(g.provider_code ?? g.provider ?? "UNKNOWN");
-            const pn = String(g.provider_name ?? pc);
+            // Resolve provider identity — API uses numeric provider_id
+            const pid = g.provider_id ?? g.provider ?? g.provider_code ?? "UNKNOWN";
+            const pc  = String(pid);
+            const pn  = g.provider_name ?? providerName(pid);
             if (!byProv.has(pc)) byProv.set(pc, { provider: pc, providerName: pn, games: [] });
             byProv.get(pc).games.push(g);
-            this._gameById.set(String(g.game_id ?? g.id ?? g.code ?? ""), { ...g, providerCode: pc, providerName: pn });
+            const key = String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? "");
+            this._gameById.set(key, { ...g, providerCode: pc, providerName: pn });
           }
           grouped = [...byProv.values()];
+
         } else {
           console.warn("[GoldSlot] /v4/game/all unknown shape:", JSON.stringify(first).slice(0, 300));
         }
       }
     } catch (e) {
       console.error("[GoldSlot] /v4/game/all exception:", e.message);
-    }
-
-    if (grouped.length === 0) {
-      console.log("[GoldSlot] Falling back to providers+games fetch…");
-      try {
-        const provResp = await this.goldSlot.getProviders(1);
-        console.log("[GoldSlot] /v4/game/providers → code:", provResp.code,
-          "count:", Array.isArray(provResp.data) ? provResp.data.length : provResp.data);
-
-        if (provResp.code === 0 && Array.isArray(provResp.data)) {
-          for (const prov of provResp.data) {
-            const pc = String(prov.provider ?? prov.code ?? prov.id ?? "UNKNOWN");
-            const pn = String(prov.name ?? pc);
-            try {
-              const gr = await this.goldSlot.getGames(pc, 1);
-              const games = Array.isArray(gr.data) ? gr.data : [];
-              console.log(`[GoldSlot] provider=${pc} → ${games.length} games`);
-              for (const g of games)
-                this._gameById.set(String(g.game_id ?? g.id ?? g.code ?? ""), { ...g, providerCode: pc, providerName: pn });
-              if (games.length) grouped.push({ provider: pc, providerName: pn, games });
-            } catch (e) {
-              console.error(`[GoldSlot] getGames(${pc}) error:`, e.message);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("[GoldSlot] getProviders exception:", e.message);
-      }
     }
 
     if (grouped.length > 0) {
@@ -720,7 +720,6 @@ export class WebServer {
       res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
     }
 
-    // ── Debug endpoint ─────────────────────────────────────────────────────────
     // GET /api/goldslot/debug — returns raw API responses for diagnosis
     if (p === "/api/goldslot/debug" && req.method === "GET") {
       if (!this.goldSlot) {
@@ -782,7 +781,7 @@ export class WebServer {
 
       await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameId));
-      const gameName = gameMeta?.name ?? gameId;
+      const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameId;
       const cookies  = parseCookies(req);
       const user     = await this.db.getUser(uid);
       const bal      = Number(user?.bal ?? 0);
