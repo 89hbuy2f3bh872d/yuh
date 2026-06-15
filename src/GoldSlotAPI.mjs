@@ -1,6 +1,12 @@
 /**
  * GoldSlotAPI.mjs
  * Thin wrapper around the agent.goldslotpalase.com v4 REST API.
+ *
+ * KEY DESIGN NOTE:
+ *   userCreate({ name }) returns { user_code, is_new_user }
+ *   userInfo({ user_code }) returns { name, balance }
+ *   All wallet and game-launch calls identify the user via user_code (integer).
+ *   There is NO user_id field — the unique key is `name`, and the handle is `user_code`.
  */
 
 import https from "https";
@@ -10,6 +16,7 @@ import { URL } from "url";
 
 /**
  * Sanitise a display name so it always meets the API min-length-2 rule.
+ * Names must be unique per agent — we prefix with "gs_" + localUid.
  */
 function safeName(raw, fallback) {
   let n = String(raw ?? fallback ?? "").trim().replace(/[\x00-\x1f]/g, "").trim();
@@ -75,44 +82,39 @@ export class GoldSlotAPI {
   agentInfo() { return this._post("/v4/agent/info"); }
 
   // 2. User Account
-  userCreate(userId, name, lang = 1) {
-    const user_id     = String(userId);
-    const displayName = safeName(name ?? user_id, user_id);
-    return this._post("/v4/user/create", {
-      user_id,
-      name: displayName,
-      language: lang,
-    });
+  // userCreate: name must be unique per agent.
+  // Returns: { code, data: { user_code, is_new_user } }
+  userCreate(name) {
+    return this._post("/v4/user/create", { name: safeName(name) });
   }
 
-  userInfo(userId) {
-    return this._post("/v4/user/info", { user_id: String(userId) });
+  // userInfo: looks up by user_code (integer returned from userCreate).
+  // Returns: { code, data: { name, balance } }
+  userInfo(userCode) {
+    return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
 
-  // 3. Wallet (Transfer Mode)
-  walletDeposit(userId, amount, txId) {
-    const user_id = String(userId);
+  // 3. Wallet (Transfer Mode) — all identified by user_code
+  walletDeposit(userCode, amount, txId) {
     return this._post("/v4/wallet/deposit", {
-      user_id,
+      user_code: Number(userCode),
       amount: Math.floor(amount),
-      tx_id: txId ?? `dep_${user_id}_${Date.now()}`,
+      tx_id: txId ?? `dep_${userCode}_${Date.now()}`,
     });
   }
 
-  walletWithdraw(userId, amount, txId) {
-    const user_id = String(userId);
+  walletWithdraw(userCode, amount, txId) {
     return this._post("/v4/wallet/withdraw", {
-      user_id,
+      user_code: Number(userCode),
       amount: Math.floor(amount),
-      tx_id: txId ?? `wd_${user_id}_${Date.now()}`,
+      tx_id: txId ?? `wd_${userCode}_${Date.now()}`,
     });
   }
 
-  walletWithdrawAll(userId, txId) {
-    const user_id = String(userId);
+  walletWithdrawAll(userCode, txId) {
     return this._post("/v4/wallet/withdraw-all", {
-      user_id,
-      tx_id: txId ?? `wdall_${user_id}_${Date.now()}`,
+      user_code: Number(userCode),
+      tx_id: txId ?? `wdall_${userCode}_${Date.now()}`,
     });
   }
 
@@ -121,11 +123,10 @@ export class GoldSlotAPI {
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  // 5. Game Launch
-  // NOTE: the API field is `game_code`, not `game_id`
-  getGameUrl(userId, gameCode, returnUrl = "", lang = 1) {
+  // 5. Game Launch — user identified by user_code
+  getGameUrl(userCode, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
-      user_id:    String(userId),
+      user_code:  Number(userCode),
       game_code:  String(gameCode),
       return_url: returnUrl,
       language:   lang,
@@ -140,9 +141,9 @@ export class GoldSlotAPI {
   }
 
   // 7. Statistics
-  getUserStats(userId, startDate, endDate) {
+  getUserStats(userCode, startDate, endDate) {
     return this._post("/v4/statistics/user", {
-      user_id: String(userId),
+      user_code: Number(userCode),
       start_date: startDate,
       end_date: endDate,
     });
