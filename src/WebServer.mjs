@@ -8,7 +8,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoldSlotAPI } from "./GoldSlotAPI.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Fix: declare these after all imports so no TDZ issue
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 const FAVICON_PATH = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
@@ -263,10 +265,6 @@ function shell(head, body) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SirGreen Casino</title>\n<style>${SHARED_CSS}</style>\n${head ?? ""}\n</head>\n<body>\n${body}\n</body>\n</html>`;
 }
 
-/**
- * Build the lobby page with games fetched from GoldSlot API.
- * Groups them by provider for a cleaner layout.
- */
 function lobbyPage(bal, tag, gamesByProvider) {
   let gamesSections = "";
 
@@ -317,10 +315,6 @@ function errPage(title, msg, href, label) {
   );
 }
 
-/**
- * The game wrapper page — loads the GoldSlot game URL in a full-screen iframe
- * with a compact balance/back bar on top.
- */
 function gameWrapperPage(bal, tag, gameUrl, gameName) {
   const safeBal = Number(bal) || 0;
   return `<!DOCTYPE html>
@@ -368,7 +362,6 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
       }
     }catch(_){}
   }
-  // Sync balance periodically while in game
   const timer=setInterval(syncBalance,15000);
   window.exitGame=async function(){
     if(leaving)return;
@@ -377,7 +370,6 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
     await syncBalance();
     location.href='/lobby';
   };
-  // Also sync when iframe navigates away (game exit)
   document.getElementById('gameFrame').addEventListener('load',syncBalance);
 })();
 </script>
@@ -399,24 +391,21 @@ export class WebServer {
     this.redirectUri = `${this.baseUrl}/oauth/callback`;
     this._states = new Map();
 
-    // GoldSlot API
     const gsToken = config.goldSlotApiToken ?? "";
     const gsUrl = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
     this.goldSlot = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
     this.callbackToken = config.goldSlotCallbackToken ?? "";
 
-    // In-memory game catalogue cache (refreshed every 10 min)
     this._gamesCache = null;
     this._gamesCacheTs = 0;
     this._gameById = new Map();
 
-    // Processed transaction IDs — prevents duplicate credit/debit
-    // Stored as a bounded LRU-like Set (max 50k entries)
+    // Processed transaction IDs for idempotency (bounded at 50k)
     this._processedTrans = new Set();
   }
 
   // ---------------------------------------------------------------------------
-  // Game catalogue helpers
+  // Game catalogue
   // ---------------------------------------------------------------------------
 
   async _fetchGames() {
@@ -426,43 +415,73 @@ export class WebServer {
 
     try {
       const resp = await this.goldSlot.getAllGames(1);
-      if (resp.code !== 0 || !Array.isArray(resp.data)) {
-        console.warn("[GoldSlot] getAllGames returned:", resp.code, resp.message);
+      console.log("[GoldSlot] getAllGames raw response code:", resp.code, "| data type:", typeof resp.data, "| isArray:", Array.isArray(resp.data));
+
+      if (resp.code !== 0) {
+        console.warn("[GoldSlot] getAllGames error:", resp.code, resp.message);
         return this._gamesCache ?? [];
       }
 
-      // resp.data is an array of provider objects: { provider, name, games: [] }
-      // Normalise into a flat gameById map and a grouped list for the lobby
+      const rawData = resp.data;
       this._gameById.clear();
       const grouped = [];
-      for (const prov of resp.data) {
-        const games = Array.isArray(prov.games) ? prov.games : [];
-        for (const g of games) {
-          this._gameById.set(String(g.game_id), { ...g, providerCode: prov.provider, providerName: prov.name });
+
+      if (Array.isArray(rawData)) {
+        // Check first element to determine shape
+        const first = rawData[0];
+        if (first && Array.isArray(first.games)) {
+          // Shape A: [{ provider, name, games: [...] }]
+          console.log("[GoldSlot] Data shape A: grouped by provider");
+          for (const prov of rawData) {
+            const games = Array.isArray(prov.games) ? prov.games : [];
+            for (const g of games) this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: prov.provider, providerName: prov.name });
+            if (games.length) grouped.push({ provider: prov.provider ?? prov.code, providerName: prov.name, games });
+          }
+        } else {
+          // Shape B: flat array of game objects
+          console.log("[GoldSlot] Data shape B: flat game list");
+          const byProvider = new Map();
+          for (const g of rawData) {
+            const pCode = g.provider ?? g.provider_code ?? g.provider_id ?? "Unknown";
+            const pName = g.provider_name ?? String(pCode);
+            if (!byProvider.has(pCode)) byProvider.set(pCode, { provider: pCode, providerName: pName, games: [] });
+            byProvider.get(pCode).games.push(g);
+            this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: pCode, providerName: pName });
+          }
+          for (const grp of byProvider.values()) grouped.push(grp);
         }
-        if (games.length) grouped.push({ provider: prov.provider, providerName: prov.name, games });
+      } else if (rawData && typeof rawData === "object") {
+        // Shape C: object keyed by provider code
+        console.log("[GoldSlot] Data shape C: object keyed by provider");
+        for (const [pCode, pData] of Object.entries(rawData)) {
+          const games = Array.isArray(pData) ? pData : (Array.isArray(pData.games) ? pData.games : []);
+          const pName = pData.name ?? String(pCode);
+          for (const g of games) this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: pCode, providerName: pName });
+          if (games.length) grouped.push({ provider: pCode, providerName: pName, games });
+        }
       }
+
+      if (grouped.length === 0) {
+        console.warn("[GoldSlot] No games parsed. Full response:", JSON.stringify(resp).slice(0, 500));
+      } else {
+        console.log(`[GoldSlot] Loaded ${this._gameById.size} games across ${grouped.length} providers.`);
+      }
+
       this._gamesCache = grouped;
       this._gamesCacheTs = now;
-      console.log(`[GoldSlot] Loaded ${this._gameById.size} games across ${grouped.length} providers.`);
       return grouped;
     } catch (e) {
-      console.error("[GoldSlot] Failed to fetch games:", e);
+      console.error("[GoldSlot] _fetchGames exception:", e);
       return this._gamesCache ?? [];
     }
   }
 
-  /**
-   * Ensure GoldSlot user exists. Creates them if the API returns USER_NOT_FOUND.
-   * Returns null on failure.
-   */
   async _ensureGsUser(uid) {
     if (!this.goldSlot) return null;
     try {
       const info = await this.goldSlot.userInfo(uid);
       if (info.code === 0) return info.data;
       if (info.code === 2002) {
-        // USER_NOT_FOUND — create them
         const created = await this.goldSlot.userCreate(uid);
         if (created.code === 0) return created.data;
         console.error("[GoldSlot] userCreate failed:", created);
@@ -476,10 +495,6 @@ export class WebServer {
     }
   }
 
-  /**
-   * Transfer FC balance into the GoldSlot wallet before launching a game.
-   * Deposits the user's full FC balance. Returns the deposited amount or 0.
-   */
   async _depositToGS(uid) {
     if (!this.goldSlot) return 0;
     const user = await this.db.getUser(uid);
@@ -487,11 +502,9 @@ export class WebServer {
     if (fcBal <= 0) return 0;
     const gsPoints = Math.floor(fcBal / FC_TO_GS_RATIO);
     if (gsPoints <= 0) return 0;
-
     try {
       const resp = await this.goldSlot.walletDeposit(uid, gsPoints);
       if (resp.code === 0) {
-        // Deduct FC from local wallet
         await this.db.updateBalance(uid, -fcBal);
         return gsPoints;
       }
@@ -503,10 +516,6 @@ export class WebServer {
     }
   }
 
-  /**
-   * Withdraw all GoldSlot balance back to FC when the player exits.
-   * Credits the local DB wallet with the returned points.
-   */
   async _withdrawFromGS(uid) {
     if (!this.goldSlot) return 0;
     try {
@@ -516,7 +525,6 @@ export class WebServer {
         if (returned > 0) await this.db.updateBalance(uid, returned);
         return returned;
       }
-      // BALANCE_NOT_ENOUGH (2006) means wallet is already empty — that's fine
       if (resp.code === 2006) return 0;
       console.error("[GoldSlot] walletWithdrawAll error:", resp);
       return 0;
@@ -527,54 +535,60 @@ export class WebServer {
   }
 
   // ---------------------------------------------------------------------------
-  // Callback handler — called by GoldSlot server during gameplay
+  // Callback handler — GoldSlot calls this during gameplay
   // ---------------------------------------------------------------------------
 
-  /**
-   * Validate the inbound Callback-Token header.
-   */
   _isValidCallbackToken(req) {
-    if (!this.callbackToken) return true; // no token configured = skip check
-    const incoming = req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "";
+    if (!this.callbackToken) return true;
+    const incoming = (req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "").trim();
     return incoming === this.callbackToken;
   }
 
   /**
-   * Build a standard callback response.
-   * code 0 = OK, 1 = generic error, 1001 = internal error
+   * Respond in the exact format GoldSlot expects.
+   * balance must be an integer (no decimals) per the spec.
    */
-  _cbReply(res, code, message, balance) {
-    const body = { result: code, status: code === 0 ? "OK" : message };
-    if (balance !== undefined) body.data = { balance };
+  _cbReply(res, result, status, data) {
+    const body = { result, status };
+    if (data !== undefined) body.data = data;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));
+  }
+
+  _markTrans(transGuid) {
+    if (!transGuid) return;
+    this._processedTrans.add(transGuid);
+    if (this._processedTrans.size > 50000) {
+      const iter = this._processedTrans.values();
+      for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
+    }
   }
 
   /**
    * POST /callback
    *
-   * Handles three command types from GoldSlot:
+   * Handles all 6 commands from GoldSlot:
+   *   authenticate — verify user exists, return account + balance
+   *   balance      — return current FC balance (must respond < 2s)
+   *   bet          — deduct bet amount from FC wallet (must respond < 2s)
+   *   win          — credit win amount to FC wallet
+   *   cancel       — refund a cancelled bet
+   *   status       — check whether a trans_guid was processed
    *
-   *   win    (type 2)  — player won; credit their FC wallet
-   *   cancel (type 16) — bet was cancelled; return the bet amount
-   *   status          — check whether a trans_guid was already processed
-   *
-   * Check codes in the request body tell us which validations to run:
-   *   21 — verify user exists
-   *   22 — verify user is active (not banned)
+   * Check codes:
+   *   21 — user exists
+   *   22 — user is active (not banned)
    *   31 — return current balance
-   *   41 — verify trans_guid is NOT already processed (idempotency)
-   *   42 — verify trans_guid EXISTS (for status check)
-   *   43 — verify cancel_trans_guid is not already processed
+   *   41 — trans_guid NOT already processed (idempotency)
+   *   42 — trans_guid EXISTS
+   *   43 — cancel_trans_guid not already processed
    */
   async _handleCallback(req, res) {
-    // 1. Token check
     if (!this._isValidCallbackToken(req)) {
-      console.warn("[Callback] Rejected request — bad Callback-Token");
+      console.warn("[Callback] Bad token");
       return this._cbReply(res, 1, "INVALID_TOKEN");
     }
 
-    // 2. Parse body
     let payload;
     try {
       const raw = await readBody(req);
@@ -586,120 +600,151 @@ export class WebServer {
     const { command, data, check } = payload;
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
-    const account = data.account ?? "";
-    const transGuid = data.trans_guid ?? "";
-    const cancelTransGuid = data.cancel_trans_guid ?? data.cancle_trans_guid ?? ""; // API has a typo variant
-    const amount = Number(data.amount ?? 0);
-    const checks = String(check ?? "").split(",").map((s) => s.trim());
+    const account      = String(data.account ?? "");
+    const transGuid    = String(data.trans_guid ?? "");
+    const cancelGuid   = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
+    const amount       = Number(data.amount ?? 0);
+    const checks       = String(check ?? "").split(",").map((s) => s.trim());
 
-    // 3. Resolve user
+    // Resolve user from DB
     let user;
     try {
       user = await this.db.getUser(account);
     } catch (e) {
-      console.error("[Callback] DB error resolving user:", e);
+      console.error("[Callback] DB error:", e);
       return this._cbReply(res, 1001, "INTERNAL_ERROR");
     }
 
-    // Check 21/22: user existence and active state
-    if (checks.includes("21") || checks.includes("22")) {
-      if (!user) {
-        console.warn(`[Callback] USER_NOT_FOUND for account: ${account}`);
-        return this._cbReply(res, 1, "USER_NOT_FOUND");
-      }
-      if (checks.includes("22") && user.banned) {
-        return this._cbReply(res, 1, "USER_INACTIVE");
-      }
+    // Check 21: user must exist
+    if (checks.includes("21") && !user) {
+      console.warn(`[Callback] USER_NOT_FOUND: ${account}`);
+      return this._cbReply(res, 1, "USER_NOT_FOUND");
     }
 
-    const currentBal = Number(user?.bal ?? 0);
-
-    // ── STATUS command ─────────────────────────────────────────────────────
-    if (command === "status") {
-      // Check 42: does the trans_guid exist (was it processed)?
-      if (checks.includes("42")) {
-        const exists = this._processedTrans.has(transGuid || data.trans_guid);
-        if (!exists) return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
-      }
-      // Check 31: return balance
-      return this._cbReply(res, 0, "OK", currentBal);
+    // Check 22: user must not be banned
+    if (checks.includes("22") && user?.banned) {
+      return this._cbReply(res, 1, "USER_INACTIVE");
     }
 
-    // ── WIN command ────────────────────────────────────────────────────────
-    if (command === "win") {
-      // Check 41: prevent duplicate win credit
+    const currentBal = Math.floor(Number(user?.bal ?? 0));
+
+    // ── authenticate ────────────────────────────────────────────────────────
+    if (command === "authenticate") {
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+      console.log(`[Callback] authenticate account=${account} bal=${currentBal}`);
+      return this._cbReply(res, 0, "OK", { account, balance: currentBal });
+    }
+
+    // ── balance ─────────────────────────────────────────────────────────────
+    // Must respond within 2 seconds — keep this path fast (no heavy DB ops)
+    if (command === "balance") {
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+      return this._cbReply(res, 0, "OK", { balance: currentBal });
+    }
+
+    // ── bet ─────────────────────────────────────────────────────────────────
+    // Deduct bet amount. Must respond within 2 seconds.
+    // If this times out GoldSlot will auto-cancel — so we keep it lean.
+    if (command === "bet") {
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+
+      // Check 41: duplicate bet guard
       if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
-        console.warn(`[Callback] Duplicate win trans_guid: ${transGuid} — returning current balance`);
-        return this._cbReply(res, 0, "OK", currentBal);
+        console.warn(`[Callback] Duplicate bet trans: ${transGuid}`);
+        return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
 
-      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+      // Check 31: verify sufficient balance
+      if (amount > 0 && currentBal < Math.ceil(amount)) {
+        console.warn(`[Callback] BALANCE_NOT_ENOUGH account=${account} bal=${currentBal} bet=${amount}`);
+        return this._cbReply(res, 1, "BALANCE_NOT_ENOUGH");
+      }
 
-      // Credit the win amount to the FC wallet
       let newBal = currentBal;
       if (amount > 0) {
         try {
-          await this.db.updateBalance(account, amount);
+          const deduct = Math.ceil(amount); // round up so we never go negative
+          await this.db.updateBalance(account, -deduct);
           const updated = await this.db.getUser(account);
-          newBal = Number(updated?.bal ?? currentBal + amount);
-          // Record win in game history
-          await this.db.recordGame(account, true, amount).catch(() => {});
+          newBal = Math.floor(Number(updated?.bal ?? currentBal - deduct));
         } catch (e) {
-          console.error("[Callback] DB error crediting win:", e);
+          console.error("[Callback] DB error on bet deduct:", e);
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       }
 
-      // Mark transaction as processed
-      if (transGuid) {
-        this._processedTrans.add(transGuid);
-        if (this._processedTrans.size > 50000) {
-          // Trim oldest entries to prevent unbounded growth
-          const iter = this._processedTrans.values();
-          for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
-        }
-      }
-
-      console.log(`[Callback] win  account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
-      return this._cbReply(res, 0, "OK", newBal);
+      this._markTrans(transGuid);
+      console.log(`[Callback] bet account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
+      return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ── CANCEL command ─────────────────────────────────────────────────────
-    if (command === "cancel") {
-      // Check 43: prevent duplicate cancel
-      if (checks.includes("43") && cancelTransGuid && this._processedTrans.has(cancelTransGuid)) {
-        console.warn(`[Callback] Duplicate cancel trans: ${cancelTransGuid} — returning current balance`);
-        return this._cbReply(res, 0, "OK", currentBal);
+    // ── win ─────────────────────────────────────────────────────────────────
+    if (command === "win") {
+      if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
+        console.warn(`[Callback] Duplicate win trans: ${transGuid}`);
+        return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
-      // Check 41: original trans must exist to cancel it
-      if (checks.includes("41") && transGuid && !this._processedTrans.has(transGuid)) {
-        // Original transaction was never processed — safe no-op
-        return this._cbReply(res, 0, "OK", currentBal);
-      }
-
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
-      // Return the cancelled bet amount
       let newBal = currentBal;
       if (amount > 0) {
         try {
-          await this.db.updateBalance(account, amount);
+          await this.db.updateBalance(account, Math.floor(amount));
           const updated = await this.db.getUser(account);
-          newBal = Number(updated?.bal ?? currentBal + amount);
+          newBal = Math.floor(Number(updated?.bal ?? currentBal + amount));
+          await this.db.recordGame(account, true, Math.floor(amount)).catch(() => {});
         } catch (e) {
-          console.error("[Callback] DB error processing cancel:", e);
+          console.error("[Callback] DB error on win credit:", e);
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       }
 
-      if (cancelTransGuid) this._processedTrans.add(cancelTransGuid);
-      if (transGuid) this._processedTrans.delete(transGuid); // original is now void
+      this._markTrans(transGuid);
+      console.log(`[Callback] win  account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
+      return this._cbReply(res, 0, "OK", { balance: newBal });
+    }
+
+    // ── cancel ──────────────────────────────────────────────────────────────
+    if (command === "cancel") {
+      // Duplicate cancel guard
+      if (checks.includes("43") && cancelGuid && this._processedTrans.has(cancelGuid)) {
+        console.warn(`[Callback] Duplicate cancel: ${cancelGuid}`);
+        return this._cbReply(res, 0, "OK", { balance: currentBal });
+      }
+
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+
+      let newBal = currentBal;
+      if (amount > 0) {
+        try {
+          await this.db.updateBalance(account, Math.floor(amount));
+          const updated = await this.db.getUser(account);
+          newBal = Math.floor(Number(updated?.bal ?? currentBal + amount));
+        } catch (e) {
+          console.error("[Callback] DB error on cancel refund:", e);
+          return this._cbReply(res, 1001, "INTERNAL_ERROR");
+        }
+      }
+
+      if (cancelGuid) this._markTrans(cancelGuid);
+      if (transGuid) this._processedTrans.delete(transGuid);
 
       console.log(`[Callback] cancel account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
-      return this._cbReply(res, 0, "OK", newBal);
+      return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // Unknown command
+    // ── status ───────────────────────────────────────────────────────────────
+    if (command === "status") {
+      if (checks.includes("42") && transGuid && !this._processedTrans.has(transGuid)) {
+        return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
+      }
+      return this._cbReply(res, 0, "OK", {
+        account,
+        trans_guid: transGuid,
+        trans_status: "OK",
+      });
+    }
+
     console.warn(`[Callback] Unknown command: ${command}`);
     return this._cbReply(res, 1, "UNKNOWN_COMMAND");
   }
@@ -710,7 +755,6 @@ export class WebServer {
 
   async start() {
     _preloadAssets();
-    // Pre-warm the game catalogue
     this._fetchGames().catch(() => {});
 
     this._server = http.createServer((req, res) =>
@@ -749,12 +793,12 @@ export class WebServer {
       return res.end();
     }
 
-    // ── GoldSlot Callback (inbound from game server) ──────────────────────
+    // GoldSlot inbound callback
     if (p === "/callback" && req.method === "POST") {
       return this._handleCallback(req, res);
     }
 
-    // ── Static game assets: /assets/* ────────────────────────────────────────
+    // Static assets
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
@@ -767,44 +811,31 @@ export class WebServer {
       return res.end("Not found");
     }
 
-    // ── Lobby ─────────────────────────────────────────────────────────────────
+    // Lobby
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-
       const user = await this.db.getUser(uid);
       const cookies = parseCookies(req);
       const bal = Number(user?.bal ?? 0);
       const tag = decodeURIComponent(cookies.dtag ?? "Player");
-
-      // Fetch game catalogue (cached)
       const gamesByProvider = await this._fetchGames();
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
 
-    // ── Launch game ──────────────────────────────────────────────────────────
-    // GET /game/:gameId  — deposit FC → get game URL → serve wrapper iframe
+    // Launch game
     if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-
       const gameId = p.slice("/game/".length).split("/")[0];
       if (!gameId) return this._redirect(res, "/lobby");
+      if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "GoldSlot API token is not set.", "/lobby", "Back"));
 
-      if (!this.goldSlot) {
-        return this._html(res, 503, errPage("⚠️ Not Configured", "GoldSlot API token is not set.", "/lobby", "Back"));
-      }
-
-      // Ensure user exists in GoldSlot system
       const gsUser = await this._ensureGsUser(uid);
-      if (!gsUser) {
-        return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account. Please try again.", "/lobby", "Back"));
-      }
+      if (!gsUser) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
 
-      // Deposit the user's FC balance into the GoldSlot wallet
       await this._depositToGS(uid);
 
-      // Get the game launch URL
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(uid, gameId, `${this.baseUrl}/lobby`, 1);
@@ -815,37 +846,31 @@ export class WebServer {
         gameUrl = urlResp.data.url;
       } catch (e) {
         console.error("[GoldSlot] getGameUrl exception:", e);
-        return this._html(res, 500, errPage("⚠️ Error", "Game launch failed. Please try again.", "/lobby", "Back"));
+        return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
 
-      // Resolve game name from cache
       await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameId));
       const gameName = gameMeta?.name ?? gameId;
-
       const cookies = parseCookies(req);
       const user = await this.db.getUser(uid);
       const bal = Number(user?.bal ?? 0);
       const tag = decodeURIComponent(cookies.dtag ?? "Player");
-
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // ── Sync balance (GoldSlot → FC wallet) ──────────────────────────────────
-    // Called by the game wrapper page every 15 s and on exit
+    // Sync balance
     if (p === "/api/goldslot/sync-balance" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
-
       const returned = await this._withdrawFromGS(uid);
       const updated = await this.db.getUser(uid);
       const newBal = Number(updated?.bal ?? 0);
       if (returned > 0) await this.db.recordGame(uid, true, returned);
-
       return this._json(res, 200, { ok: true, newBal });
     }
 
-    // ── Balance API ───────────────────────────────────────────────────────────
+    // Balance API
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -853,11 +878,9 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Auth ──────────────────────────────────────────────────────────────────
+    // Login
     if (p === "/login" && req.method === "GET") {
-      if (!this.clientId) {
-        return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.", "#", "—"));
-      }
+      if (!this.clientId) return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.", "#", "—"));
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
       const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
@@ -867,9 +890,7 @@ export class WebServer {
     if (p === "/oauth/callback" && req.method === "GET") {
       const code = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-      if (!code || !state || !this._states.has(state)) {
-        return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
-      }
+      if (!code || !state || !this._states.has(state)) return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
       this._states.delete(state);
 
       let tokenData;
@@ -885,9 +906,7 @@ export class WebServer {
         return this._html(res, 500, errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
 
-      if (!tokenData.access_token) {
-        return this._html(res, 400, errPage("❌ Login Failed", tokenData.error_description ?? tokenData.message ?? "Unknown error", "/login", "Try again"));
-      }
+      if (!tokenData.access_token) return this._html(res, 400, errPage("❌ Login Failed", tokenData.error_description ?? tokenData.message ?? "Unknown error", "/login", "Try again"));
 
       let me;
       try {
@@ -899,10 +918,8 @@ export class WebServer {
       const userId = me.id;
       const tag = me.username ?? me.tag ?? userId;
       const avatar = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
-
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
-
       const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
       res.setHeader("Set-Cookie", [
         `sid=${session}; ${base}`,
@@ -916,7 +933,6 @@ export class WebServer {
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
-        // Withdraw any remaining GoldSlot balance before logging out
         await this._withdrawFromGS(uid).catch(() => {});
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
