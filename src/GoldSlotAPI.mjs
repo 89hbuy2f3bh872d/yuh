@@ -94,10 +94,15 @@ export class GoldSlotAPI {
   /**
    * Create a user in the GoldSlot system.
    * @param {string} userId   - unique identifier (e.g. Discord/Fluxer user ID)
-   * @param {string} [lang]   - language code 1-33 (default 1 = English)
+   * @param {string} [name]   - display name shown in the casino (defaults to userId)
+   * @param {number} [lang]   - language code 1-33 (default 1 = English)
    */
-  userCreate(userId, lang = 1) {
-    return this._post("/v4/user/create", { user_id: String(userId), language: lang });
+  userCreate(userId, name, lang = 1) {
+    return this._post("/v4/user/create", {
+      user_id: String(userId),
+      name: String(name ?? userId),   // 'name' is required by the API
+      language: lang,
+    });
   }
 
   /**
@@ -191,7 +196,7 @@ export class GoldSlotAPI {
   /**
    * Get the launch URL for a game.
    * @param {string} userId
-   * @param {string} gameId    - game_id from the games list
+   * @param {string} gameId    - game_code from the games list
    * @param {string} [returnUrl] - URL to return to after the game
    * @param {number} [lang]
    */
