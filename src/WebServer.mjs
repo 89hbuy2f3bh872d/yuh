@@ -949,7 +949,7 @@ export class WebServer {
       if (uid) {
         await this._withdrawFromGS(uid).catch(() => {});
         const c = parseCookies(req);
-        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {};
+        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }
       res.setHeader("Set-Cookie", [
         "sid=; Path=/; Max-Age=0",
