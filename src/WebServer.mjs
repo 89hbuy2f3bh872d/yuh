@@ -20,6 +20,10 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 const FC_TO_GS_RATIO = 1;
 
+// user_code sanity threshold: the real user_code is a small sequential integer.
+// Anything >= this value is the panel account/row ID, not the real user_code.
+const USER_CODE_MAX = 100_000;
+
 const PROVIDER_NAMES = {
   1:"Pragmatic Play",2:"CQ9",3:"PG Soft",4:"Booongo",5:"Playson",
   6:"Habanero",7:"Jili",8:"PlayStar",9:"XGaming",10:"Hacksaw",11:"Live",
@@ -272,11 +276,13 @@ export class WebServer {
     const gsUrl       = config.goldSlotApiUrl??"https://agent.goldslotpalase.com";
     this.goldSlot     = gsToken?new GoldSlotAPI(gsToken,gsUrl):null;
     this.callbackToken= config.goldSlotCallbackToken??"";
+    // Parent agent name — required by userCreate on sub-agent setups
+    this.gsParent     = config.goldSlotParent??"";  // set to "Kravle_USD" in config.json
     this._gamesCache  = null;
     this._gamesCacheTs= 0;
     this._gameById    = new Map();
     this._processedTrans = new Map();
-    // localUid → GoldSlot user_code (small integer, the ONLY valid handle for wallet/game calls)
+    // localUid → GoldSlot real user_code (small integer from userInfoByName)
     this._gsUserCodeMap = new Map();
   }
 
@@ -327,54 +333,51 @@ export class WebServer {
   }
 
   /**
-   * Resolve the GoldSlot user_code for a local FC uid.
+   * Resolve the REAL GoldSlot user_code for a local FC uid.
    *
-   * IMPORTANT: The API panel shows a row number / account_id column that looks
-   * like user_code but is NOT. The actual user_code is the small integer returned
-   * in { data: { user_code } } from /v4/user/create and /v4/user/info.
+   * The panel's left column (407830262 etc.) is NOT user_code — it is an
+   * internal account/row ID that this API version incorrectly echoes back in
+   * the user_code field of userCreate. The real user_code is a small sequential
+   * integer (1, 2, 3...) that only comes back from userInfoByName.
    *
-   * Strategy (called fresh on every game launch per the API docs):
-   *   1. POST /v4/user/create { name: "gs_<uid>" }  — idempotent, returns existing user
-   *   2. Log the FULL raw response so we can see exactly what the API sends back
-   *   3. Extract user_code from data.user_code
-   *   4. If create returns code 0 but user_code looks wrong (>1e9), fall back to
-   *      POST /v4/user/info { name: "gs_<uid>" } to get the authoritative value
-   *
-   * Returns user_code (number) or null on failure.
+   * Strategy:
+   *   1. POST /v4/user/create { name, parent }  — creates or confirms user exists
+   *   2. POST /v4/user/info  { name }           — ALWAYS: get the real user_code
+   *   3. Sanity-check: real user_code must be < USER_CODE_MAX (100,000)
    */
   async _ensureGsUser(localUid){
     if(!this.goldSlot)return null;
-
     const name=`gs_${localUid}`;
     try{
-      const resp=await this.goldSlot.userCreate(name);
-      // Log the full raw response — critical for diagnosing user_code field issues
-      console.log(`[GoldSlot] userCreate raw response for name=${name}:`, JSON.stringify(resp));
-
-      if(resp.code===0&&resp.data!=null){
-        let userCode=Number(resp.data.user_code);
-
-        // Sanity-check: user_code should be a small-ish integer (< 1 billion).
-        // If it looks like a snowflake ID (>= 1e12) the API returned the wrong field.
-        if(!Number.isFinite(userCode)||userCode<=0||userCode>=1e12){
-          console.warn(`[GoldSlot] user_code ${userCode} looks wrong — falling back to /v4/user/info by name`);
-          const infoResp=await this.goldSlot.userInfoByName(name);
-          console.log(`[GoldSlot] userInfoByName raw:`, JSON.stringify(infoResp));
-          if(infoResp.code===0&&infoResp.data?.user_code!=null){
-            userCode=Number(infoResp.data.user_code);
-          } else {
-            console.error("[GoldSlot] userInfoByName also failed:",infoResp);
-            return null;
-          }
-        }
-
-        const status=resp.data.is_new_user?"created":"existing";
-        console.log(`[GoldSlot] User ${status}: name=${name} user_code=${userCode}`);
-        this._gsUserCodeMap.set(localUid,userCode);
-        return userCode;
+      // Step 1: create/confirm user (pass parent if configured)
+      const createResp=await this.goldSlot.userCreate(name, this.gsParent||undefined);
+      console.log(`[GoldSlot] userCreate raw for name=${name}:`, JSON.stringify(createResp));
+      if(createResp.code!==0){
+        console.error("[GoldSlot] userCreate failed:",createResp);
+        return null;
       }
-      console.error("[GoldSlot] userCreate failed:",resp);
-      return null;
+
+      // Step 2: ALWAYS fetch by name — userCreate returns panel account ID, not real user_code
+      const infoResp=await this.goldSlot.userInfoByName(name);
+      console.log(`[GoldSlot] userInfoByName raw for name=${name}:`, JSON.stringify(infoResp));
+
+      if(infoResp.code!==0||infoResp.data==null){
+        console.error("[GoldSlot] userInfoByName failed:",infoResp);
+        return null;
+      }
+
+      const userCode=Number(infoResp.data.user_code??infoResp.data.id??infoResp.data.code);
+
+      // Step 3: sanity check — real user_code is a small integer
+      if(!Number.isFinite(userCode)||userCode<=0||userCode>=USER_CODE_MAX){
+        console.error(`[GoldSlot] userInfoByName returned suspicious user_code=${userCode} (expected < ${USER_CODE_MAX}). Full response:`, JSON.stringify(infoResp));
+        return null;
+      }
+
+      const isNew=createResp.data?.is_new_user===true;
+      console.log(`[GoldSlot] User ${isNew?"created":"existing"}: name=${name} real_user_code=${userCode}`);
+      this._gsUserCodeMap.set(localUid,userCode);
+      return userCode;
     }catch(e){console.error("[GoldSlot] _ensureGsUser:",e);return null;}
   }
 
@@ -520,12 +523,9 @@ export class WebServer {
       const out={};
       try{out.agentInfo=await this.goldSlot.agentInfo();}catch(e){out.agentInfo={error:e.message};}
       try{
-        // Test user_code resolution for a known test name
-        const testName="gs_debug_test";
-        out.userCreate=await this.goldSlot.userCreate(testName);
-        if(out.userCreate.code===0){
-          out.userInfoByCode=await this.goldSlot.userInfo(out.userCreate.data.user_code);
-        }
+        const testName=`gs_debug_${Date.now()}`;
+        out.userCreate=await this.goldSlot.userCreate(testName,this.gsParent||undefined);
+        out.userInfoByName=await this.goldSlot.userInfoByName(testName);
       }catch(e){out.userDebug={error:e.message};}
       return this._json(res,200,out);
     }
@@ -555,9 +555,8 @@ export class WebServer {
       if(!gameCode)return this._redirect(res,"/lobby");
       if(!this.goldSlot)return this._html(res,503,errPage("⚠️ Not Configured","goldSlotApiToken is not set.","/lobby","Back"));
 
-      // Always resolve fresh per API recommendation (call every login)
       const userCode=await this._ensureGsUser(uid);
-      if(userCode==null)return this._html(res,500,errPage("⚠️ Error","Could not create your casino account. Try again.","/lobby","Back"));
+      if(userCode==null)return this._html(res,500,errPage("⚠️ Error","Could not resolve your casino account. Try again.","/lobby","Back"));
 
       await this._depositToGS(uid,userCode);
 
@@ -566,7 +565,7 @@ export class WebServer {
         const urlResp=await this.goldSlot.getGameUrl(userCode,gameCode,`${this.baseUrl}/lobby`,1);
         console.log(`[GoldSlot] getGameUrl user_code=${userCode} game_code=${gameCode} → code:${urlResp.code}`,urlResp.data?.url??urlResp.message??"");
         if(urlResp.code!==0||!urlResp.data?.url)
-          return this._html(res,500,errPage("⚠️ Error",`Could not launch game (code ${urlResp.code}: ${urlResp.message??""}). Check that the agent is Approved in the GoldSlot admin.`,"/lobby","Back to Lobby"));
+          return this._html(res,500,errPage("⚠️ Error",`Could not launch game (code ${urlResp.code}: ${urlResp.message??""}). Check agent approval in GoldSlot admin.`,"/lobby","Back to Lobby"));
         gameUrl=urlResp.data.url;
       }catch(e){console.error("[GoldSlot] getGameUrl:",e);return this._html(res,500,errPage("⚠️ Error","Game launch failed.","/lobby","Back"));}
 

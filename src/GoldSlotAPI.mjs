@@ -4,13 +4,10 @@
  *
  * KEY DESIGN NOTE:
  *   userCreate({ name }) returns { user_code, is_new_user }
- *   userInfo({ user_code }) returns { name, balance }
- *   All wallet and game-launch calls identify the user via user_code (integer).
- *   There is NO user_id field — the unique key is `name`, and the handle is `user_code`.
- *
- * The panel's leftmost number column (407830262 etc.) is NOT the user_code —
- * it is an internal account/row ID. The real user_code is the small integer
- * returned in the API response body.
+ *   HOWEVER on this API version, userCreate returns the panel account/row ID
+ *   in user_code, NOT the small integer user_code needed for wallet/game calls.
+ *   Solution: always call userInfo({ name }) after userCreate to get the real
+ *   user_code (a small integer like 1, 2, 3...).
  */
 
 import https from "https";
@@ -18,9 +15,6 @@ import http from "http";
 import zlib from "zlib";
 import { URL } from "url";
 
-/**
- * Sanitise a display name so it always meets the API min-length-2 rule.
- */
 function safeName(raw, fallback) {
   let n = String(raw ?? fallback ?? "").trim().replace(/[\x00-\x1f]/g, "").trim();
   if (n.length < 2) n = (n + "__").slice(0, Math.max(2, n.length + 2));
@@ -85,25 +79,27 @@ export class GoldSlotAPI {
   agentInfo() { return this._post("/v4/agent/info"); }
 
   // 2. User Account
-  // userCreate: name must be unique per agent.
+  // userCreate: name must be unique per agent. parent is the parent agent name.
   // Returns: { code, data: { user_code, is_new_user } }
-  userCreate(name) {
-    return this._post("/v4/user/create", { name: safeName(name) });
+  // NOTE: user_code returned here may be the panel account ID, not the real user_code.
+  // Always follow up with userInfoByName to get the authoritative small integer user_code.
+  userCreate(name, parent) {
+    const body = { name: safeName(name) };
+    if (parent) body.parent = parent;
+    return this._post("/v4/user/create", body);
   }
 
-  // userInfo: looks up by user_code (integer returned from userCreate).
-  // Returns: { code, data: { name, balance } }
+  // userInfo: looks up by user_code (integer).
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
 
-  // userInfoByName: non-standard fallback — some API builds accept { name } on /v4/user/info.
-  // Used only when user_code from userCreate looks wrong (sanity-check in _ensureGsUser).
+  // userInfoByName: look up user by name — returns the real user_code small integer.
   userInfoByName(name) {
     return this._post("/v4/user/info", { name: safeName(name) });
   }
 
-  // 3. Wallet (Transfer Mode) — all identified by user_code
+  // 3. Wallet (Transfer Mode)
   walletDeposit(userCode, amount, txId) {
     return this._post("/v4/wallet/deposit", {
       user_code: Number(userCode),
@@ -132,7 +128,7 @@ export class GoldSlotAPI {
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  // 5. Game Launch — user identified by user_code
+  // 5. Game Launch
   getGameUrl(userCode, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
       user_code:  Number(userCode),
