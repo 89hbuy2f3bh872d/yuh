@@ -8,78 +8,70 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoldSlotAPI } from "./GoldSlotAPI.mjs";
 
-// Fix: declare these after all imports so no TDZ issue
+// ── ESM __dirname shim ──────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
+
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
-const FAVICON_PATH = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
+const FAVICON_PATH     = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
-const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
+const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
-const FLUXER_ME_URL = "https://api.fluxer.app/v1/users/@me";
+const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
-// How many FC coins = 1 GoldSlot point (integer, configurable)
-const FC_TO_GS_RATIO = 1; // 1 FC = 1 GoldSlot point
+// 1 FC coin = 1 GoldSlot point
+const FC_TO_GS_RATIO = 1;
 
-// ---------------------------------------------------------------------------
-// MIME types
-// ---------------------------------------------------------------------------
+// ── MIME map ────────────────────────────────────────────────────────────────
 const MIME = {
   ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".mjs":  "application/javascript; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
+  ".gif":  "image/gif",
   ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-  ".mp4": "video/mp4",
+  ".svg":  "image/svg+xml",
+  ".ico":  "image/x-icon",
+  ".mp3":  "audio/mpeg",
+  ".ogg":  "audio/ogg",
+  ".wav":  "audio/wav",
+  ".mp4":  "video/mp4",
   ".webm": "video/webm",
   ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8",
+  ".woff2":"font/woff2",
+  ".ttf":  "font/ttf",
+  ".txt":  "text/plain; charset=utf-8",
 };
-function getMime(filePath) {
-  return MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
-}
+function getMime(fp) { return MIME[path.extname(fp).toLowerCase()] ?? "application/octet-stream"; }
 
-// ---------------------------------------------------------------------------
-// Asset preload cache
-// ---------------------------------------------------------------------------
+// ── Asset cache ─────────────────────────────────────────────────────────────
 const _assetCache = new Map();
 
 function normalizeAssetUrlPath(p) {
-  const clean = String(p || "")
-    .split("?")[0]
-    .split("#")[0]
-    .replace(/\\/g, "/");
-  const norm = path.posix.normalize(clean);
+  const clean = String(p || "").split("?")[0].split("#")[0].replace(/\\/g, "/");
+  const norm  = path.posix.normalize(clean);
   return norm.startsWith("/") ? norm : `/${norm}`;
 }
 
 function assetUrlToDiskPath(urlPath) {
-  const normalized = normalizeAssetUrlPath(urlPath);
-  if (!normalized.startsWith("/assets/")) return null;
-  const rel = normalized.slice("/assets/".length);
+  const n = normalizeAssetUrlPath(urlPath);
+  if (!n.startsWith("/assets/")) return null;
+  const rel = n.slice("/assets/".length);
   if (rel.includes("\0") || rel.startsWith("/") || rel.includes("../") || rel === "..") return null;
-  const diskPath = path.resolve(GAMES_ASSETS_DIR, rel);
-  const relCheck = path.relative(GAMES_ASSETS_DIR, diskPath).replace(/\\/g, "/");
-  if (relCheck.startsWith("..") || path.isAbsolute(relCheck)) return null;
-  return diskPath;
+  const disk = path.resolve(GAMES_ASSETS_DIR, rel);
+  const chk  = path.relative(GAMES_ASSETS_DIR, disk).replace(/\\/g, "/");
+  if (chk.startsWith("..") || path.isAbsolute(chk)) return null;
+  return disk;
 }
 
 function _preloadAssets() {
   _assetCache.clear();
   if (!fs.existsSync(GAMES_ASSETS_DIR)) {
-    console.warn(`[Web] Assets directory missing: ${GAMES_ASSETS_DIR}`);
+    console.warn(`[Web] Assets dir missing: ${GAMES_ASSETS_DIR}`);
     return;
   }
   const walk = (dir) => {
@@ -90,24 +82,19 @@ function _preloadAssets() {
       try {
         const buf = fs.readFileSync(full);
         const rel = path.relative(GAMES_ASSETS_DIR, full).replace(/\\/g, "/");
-        const urlKey = normalizeAssetUrlPath(`/assets/${rel}`);
-        _assetCache.set(urlKey, { buf, mime: getMime(full) });
-      } catch (err) {
-        console.error(`[Web] Failed to preload asset: ${full}`, err);
-      }
+        _assetCache.set(normalizeAssetUrlPath(`/assets/${rel}`), { buf, mime: getMime(full) });
+      } catch (e) { console.error("[Web] Asset preload:", e); }
     }
   };
   walk(GAMES_ASSETS_DIR);
-  console.log(`[Web] Preloaded ${_assetCache.size} game asset(s) into memory.`);
+  console.log(`[Web] Preloaded ${_assetCache.size} asset(s).`);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── HTTP helpers ─────────────────────────────────────────────────────────────
 function rawFetch(url, opts = {}, maxRedirects = 4) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
-    const mod = parsed.protocol === "https:" ? https : http;
+    const mod    = parsed.protocol === "https:" ? https : http;
     const bodyBuf = opts.body ? Buffer.from(opts.body) : Buffer.alloc(0);
     const headers = {
       "User-Agent": "Mozilla/5.0 (compatible; SirGreenCasino/3.0)",
@@ -117,39 +104,29 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
       "Content-Length": bodyBuf.length,
     };
     const r = mod.request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-        path: parsed.pathname + parsed.search,
-        method: opts.method ?? "GET",
-        headers,
-      },
+      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search, method: opts.method ?? "GET", headers },
       (res) => {
-        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && maxRedirects > 0)
           return resolve(rawFetch(new URL(res.headers.location, url).toString(), opts, maxRedirects - 1));
-        }
         const chunks = [];
-        res.on("data", (c) => chunks.push(c));
+        res.on("data", c => chunks.push(c));
         res.on("end", () => {
           const raw = Buffer.concat(chunks);
           const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
-          const decomp =
-            enc === "br" ? zlib.brotliDecompressSync(raw) :
-            enc === "gzip" ? zlib.gunzipSync(raw) :
-            enc === "deflate" ? zlib.inflateSync(raw) : raw;
+          const decomp = enc === "br" ? zlib.brotliDecompressSync(raw)
+                       : enc === "gzip" ? zlib.gunzipSync(raw)
+                       : enc === "deflate" ? zlib.inflateSync(raw) : raw;
           resolve({ statusCode: res.statusCode, headers: res.headers, body: decomp });
         });
-      },
-    );
+      });
     r.on("error", reject);
     if (bodyBuf.length) r.write(bodyBuf);
     r.end();
   });
 }
-
 async function nodeFetch(url, opts = {}) {
-  const r = await rawFetch(url, opts);
-  return r.body.toString("utf8");
+  return (await rawFetch(url, opts)).body.toString("utf8");
 }
 
 function parseCookies(req) {
@@ -164,60 +141,55 @@ function parseCookies(req) {
 
 function esc(s) {
   return String(s ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("data", c => chunks.push(c));
+    req.on("end",  () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
 }
 
-function serveBufferWithRanges(req, res, buf, mime, cacheControl = "public, max-age=86400") {
+function serveBufferWithRanges(req, res, buf, mime, cc = "public, max-age=86400") {
   const total = buf.length;
-  const rangeHeader = req.headers.range;
-  if (rangeHeader) {
-    const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-    const start = match && match[1] ? parseInt(match[1], 10) : 0;
-    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
-    const safeEnd = Math.min(end, total - 1);
-    if (start >= total || start > safeEnd) {
-      res.writeHead(416, { "Content-Range": `bytes */${total}` });
-      return res.end();
-    }
-    res.writeHead(206, { "Content-Range": `bytes ${start}-${safeEnd}/${total}`, "Accept-Ranges": "bytes", "Content-Length": safeEnd - start + 1, "Content-Type": mime, "Cache-Control": cacheControl });
-    return res.end(buf.slice(start, safeEnd + 1));
+  const rh = req.headers.range;
+  if (rh) {
+    const m = /bytes=(\d*)-(\d*)/.exec(rh);
+    const start = m && m[1] ? parseInt(m[1],10) : 0;
+    const end   = m && m[2] ? parseInt(m[2],10) : total - 1;
+    const safe  = Math.min(end, total - 1);
+    if (start >= total || start > safe) { res.writeHead(416,{"Content-Range":`bytes */${total}`}); return res.end(); }
+    res.writeHead(206,{"Content-Range":`bytes ${start}-${safe}/${total}`,"Accept-Ranges":"bytes","Content-Length":safe-start+1,"Content-Type":mime,"Cache-Control":cc});
+    return res.end(buf.slice(start, safe+1));
   }
-  res.writeHead(200, { "Content-Type": mime, "Content-Length": total, "Accept-Ranges": "bytes", "Cache-Control": cacheControl });
+  res.writeHead(200,{"Content-Type":mime,"Content-Length":total,"Accept-Ranges":"bytes","Cache-Control":cc});
   res.end(buf);
 }
 
-function serveFileWithRanges(req, res, filePath, mime = getMime(filePath), cacheControl = "public, max-age=86400") {
-  fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) { res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found"); }
+function serveFileWithRanges(req, res, fp, mime = getMime(fp), cc = "public, max-age=86400") {
+  fs.stat(fp, (err, stat) => {
+    if (err || !stat.isFile()) { res.writeHead(404,{"Cache-Control":"no-store"}); return res.end("Not found"); }
     const total = stat.size;
-    const rangeHeader = req.headers.range;
-    if (!rangeHeader) {
-      res.writeHead(200, { "Content-Type": mime, "Content-Length": total, "Accept-Ranges": "bytes", "Cache-Control": cacheControl });
-      return fs.createReadStream(filePath).pipe(res);
+    const rh = req.headers.range;
+    if (!rh) {
+      res.writeHead(200,{"Content-Type":mime,"Content-Length":total,"Accept-Ranges":"bytes","Cache-Control":cc});
+      return fs.createReadStream(fp).pipe(res);
     }
-    const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-    const start = match && match[1] ? parseInt(match[1], 10) : 0;
-    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
-    const safeEnd = Math.min(end, total - 1);
-    if (start >= total || start > safeEnd) { res.writeHead(416, { "Content-Range": `bytes */${total}` }); return res.end(); }
-    res.writeHead(206, { "Content-Range": `bytes ${start}-${safeEnd}/${total}`, "Accept-Ranges": "bytes", "Content-Length": safeEnd - start + 1, "Content-Type": mime, "Cache-Control": cacheControl });
-    fs.createReadStream(filePath, { start, end: safeEnd }).pipe(res);
+    const m = /bytes=(\d*)-(\d*)/.exec(rh);
+    const start = m && m[1] ? parseInt(m[1],10) : 0;
+    const end   = m && m[2] ? parseInt(m[2],10) : total - 1;
+    const safe  = Math.min(end, total - 1);
+    if (start >= total || start > safe) { res.writeHead(416,{"Content-Range":`bytes */${total}`}); return res.end(); }
+    res.writeHead(206,{"Content-Range":`bytes ${start}-${safe}/${total}`,"Accept-Ranges":"bytes","Content-Length":safe-start+1,"Content-Type":mime,"Cache-Control":cc});
+    fs.createReadStream(fp, {start, end: safe}).pipe(res);
   });
 }
 
-// ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
+// ── Shared CSS ───────────────────────────────────────────────────────────────
 const SHARED_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
@@ -266,27 +238,24 @@ function shell(head, body) {
 }
 
 function lobbyPage(bal, tag, gamesByProvider) {
-  let gamesSections = "";
-
+  let sections = "";
   if (!gamesByProvider || gamesByProvider.length === 0) {
-    gamesSections = `<p style="color:#4a9a4a;font-size:.82rem">No games available right now. Please check back later.</p>`;
+    sections = `<p style="color:#4a9a4a;font-size:.82rem">No games available right now. Please check back later.</p>`;
   } else {
     for (const { provider, providerName, games } of gamesByProvider) {
-      const cards = games.map((g) => {
+      const cards = games.map(g => {
         const thumb = g.image_url
           ? `<img src="${esc(g.image_url)}" alt="${esc(g.name)}" loading="lazy">`
           : `<span style="font-size:2.5rem">🎰</span>`;
-        return `<div class="game-card" onclick="location.href='/game/${esc(g.game_id)}'">
+        return `<div class="game-card" onclick="location.href='/game/${esc(g.game_id || g.id || g.code)}'">
   <div class="game-thumb">${thumb}</div>
   <div class="game-info"><div class="game-name">${esc(g.name)}</div><div class="game-meta">${esc(g.type ?? provider)}</div></div>
 </div>`;
       }).join("\n");
-      gamesSections += `<div class="provider-title">🎮 ${esc(providerName ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
+      sections += `<div class="provider-title">🎮 ${esc(providerName ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
   }
-
-  return shell(
-    "",
+  return shell("",
     `<nav class="nav">
   <div class="nav-logo">🎰 SirGreen Casino</div>
   <div class="nav-spacer"></div>
@@ -294,25 +263,17 @@ function lobbyPage(bal, tag, gamesByProvider) {
   <span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span>
   <a href="/logout" class="nav-logout">logout</a>
 </nav>
-<div class="wrap">
-  <div class="section-title">🎮 Game Lobby</div>
-  ${gamesSections}
-</div>`,
-  );
+<div class="wrap"><div class="section-title">🎮 Game Lobby</div>${sections}</div>`);
 }
 
 function loginPage(authUrl) {
-  return shell(
-    "",
-    `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`,
-  );
+  return shell("",
+    `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
 }
 
 function errPage(title, msg, href, label) {
-  return shell(
-    "",
-    `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`,
-  );
+  return shell("",
+    `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`);
 }
 
 function gameWrapperPage(bal, tag, gameUrl, gameName) {
@@ -352,14 +313,12 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
 <iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
 (function(){
-  let leaving = false;
+  let leaving=false;
   async function syncBalance(){
     try{
       const r=await fetch('/api/goldslot/sync-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       const d=await r.json();
-      if(r.ok&&d.newBal!==undefined){
-        document.getElementById('fcBalNum').textContent=d.newBal.toLocaleString();
-      }
+      if(r.ok&&d.newBal!==undefined) document.getElementById('fcBalNum').textContent=d.newBal.toLocaleString();
     }catch(_){}
   }
   const timer=setInterval(syncBalance,15000);
@@ -377,103 +336,116 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
 </html>`;
 }
 
-// ===========================================================================
-// WEB SERVER
-// ===========================================================================
+// ============================================================================
+// WebServer
+// ============================================================================
 export class WebServer {
   constructor(db, config) {
-    this.db = db;
-    this.config = config;
-    this.port = config.webPort ?? 3420;
-    this.clientId = config.fluxerClientId ?? config.discordClientId ?? "";
-    this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
-    this.baseUrl = config.webBaseUrl ?? "https://www.sirgreen.online";
-    this.redirectUri = `${this.baseUrl}/oauth/callback`;
-    this._states = new Map();
+    this.db            = db;
+    this.config        = config;
+    this.port          = config.webPort ?? 3420;
+    this.clientId      = config.fluxerClientId ?? config.discordClientId ?? "";
+    this.clientSecret  = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
+    this.baseUrl       = config.webBaseUrl ?? "https://www.sirgreen.online";
+    this.redirectUri   = `${this.baseUrl}/oauth/callback`;
+    this._states       = new Map();
 
     const gsToken = config.goldSlotApiToken ?? "";
-    const gsUrl = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
-    this.goldSlot = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
-    this.callbackToken = config.goldSlotCallbackToken ?? "";
+    const gsUrl   = config.goldSlotApiUrl   ?? "https://agent.goldslotpalase.com";
+    this.goldSlot       = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
+    this.callbackToken  = config.goldSlotCallbackToken ?? "";
 
-    this._gamesCache = null;
+    this._gamesCache   = null;
     this._gamesCacheTs = 0;
-    this._gameById = new Map();
+    this._gameById     = new Map();
 
-    // Processed transaction IDs for idempotency (bounded at 50k)
-    this._processedTrans = new Set();
+    // Processed trans_guids — idempotency store (max 50 000 entries)
+    this._processedTrans = new Map(); // trans_guid → { type, account, amount }
   }
 
-  // ---------------------------------------------------------------------------
-  // Game catalogue
-  // ---------------------------------------------------------------------------
+  // ── Game catalogue ──────────────────────────────────────────────────────────
 
+  /**
+   * Fetch full game list from GoldSlot.
+   * Tries /v4/game/all first; if it returns an empty or malformed response,
+   * falls back to /v4/game/providers → /v4/game/games per provider.
+   * Always returns an array of { provider, providerName, games[] }.
+   */
   async _fetchGames() {
     if (!this.goldSlot) return [];
     const now = Date.now();
     if (this._gamesCache && now - this._gamesCacheTs < 10 * 60 * 1000) return this._gamesCache;
 
+    // ── Strategy 1: /v4/game/all ─────────────────────────────────────────────
+    let grouped = [];
     try {
       const resp = await this.goldSlot.getAllGames(1);
-      console.log("[GoldSlot] getAllGames raw response code:", resp.code, "| data type:", typeof resp.data, "| isArray:", Array.isArray(resp.data));
+      console.log("[GoldSlot] /v4/game/all response code:", resp.code, "data type:", typeof resp.data, Array.isArray(resp.data) ? `array(${resp.data.length})` : "");
 
-      if (resp.code !== 0) {
-        console.warn("[GoldSlot] getAllGames error:", resp.code, resp.message);
-        return this._gamesCache ?? [];
-      }
+      if (resp.code === 0 && Array.isArray(resp.data) && resp.data.length > 0) {
+        const first = resp.data[0];
 
-      const rawData = resp.data;
-      this._gameById.clear();
-      const grouped = [];
-
-      if (Array.isArray(rawData)) {
-        // Check first element to determine shape
-        const first = rawData[0];
-        if (first && Array.isArray(first.games)) {
-          // Shape A: [{ provider, name, games: [...] }]
-          console.log("[GoldSlot] Data shape A: grouped by provider");
-          for (const prov of rawData) {
+        if (Array.isArray(first?.games)) {
+          // Shape A: [{ provider, name, games:[] }, ...]
+          for (const prov of resp.data) {
             const games = Array.isArray(prov.games) ? prov.games : [];
-            for (const g of games) this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: prov.provider, providerName: prov.name });
-            if (games.length) grouped.push({ provider: prov.provider ?? prov.code, providerName: prov.name, games });
+            for (const g of games) this._gameById.set(String(g.game_id ?? g.id ?? g.code), { ...g, providerCode: prov.provider, providerName: prov.name });
+            if (games.length) grouped.push({ provider: prov.provider, providerName: prov.name, games });
           }
+        } else if (first?.game_id || first?.id || first?.code) {
+          // Shape B: flat array of games — group by provider_code / provider
+          const byProv = new Map();
+          for (const g of resp.data) {
+            const pk = g.provider_code ?? g.provider ?? "UNKNOWN";
+            const pn = g.provider_name ?? pk;
+            if (!byProv.has(pk)) byProv.set(pk, { provider: pk, providerName: pn, games: [] });
+            byProv.get(pk).games.push(g);
+            this._gameById.set(String(g.game_id ?? g.id ?? g.code), { ...g, providerCode: pk, providerName: pn });
+          }
+          grouped = [...byProv.values()];
         } else {
-          // Shape B: flat array of game objects
-          console.log("[GoldSlot] Data shape B: flat game list");
-          const byProvider = new Map();
-          for (const g of rawData) {
-            const pCode = g.provider ?? g.provider_code ?? g.provider_id ?? "Unknown";
-            const pName = g.provider_name ?? String(pCode);
-            if (!byProvider.has(pCode)) byProvider.set(pCode, { provider: pCode, providerName: pName, games: [] });
-            byProvider.get(pCode).games.push(g);
-            this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: pCode, providerName: pName });
-          }
-          for (const grp of byProvider.values()) grouped.push(grp);
-        }
-      } else if (rawData && typeof rawData === "object") {
-        // Shape C: object keyed by provider code
-        console.log("[GoldSlot] Data shape C: object keyed by provider");
-        for (const [pCode, pData] of Object.entries(rawData)) {
-          const games = Array.isArray(pData) ? pData : (Array.isArray(pData.games) ? pData.games : []);
-          const pName = pData.name ?? String(pCode);
-          for (const g of games) this._gameById.set(String(g.game_id ?? g.id), { ...g, providerCode: pCode, providerName: pName });
-          if (games.length) grouped.push({ provider: pCode, providerName: pName, games });
+          console.warn("[GoldSlot] /v4/game/all unknown shape:", JSON.stringify(first).slice(0, 200));
         }
       }
-
-      if (grouped.length === 0) {
-        console.warn("[GoldSlot] No games parsed. Full response:", JSON.stringify(resp).slice(0, 500));
-      } else {
-        console.log(`[GoldSlot] Loaded ${this._gameById.size} games across ${grouped.length} providers.`);
-      }
-
-      this._gamesCache = grouped;
-      this._gamesCacheTs = now;
-      return grouped;
     } catch (e) {
-      console.error("[GoldSlot] _fetchGames exception:", e);
-      return this._gamesCache ?? [];
+      console.error("[GoldSlot] /v4/game/all exception:", e.message);
     }
+
+    // ── Strategy 2: providers → games (fallback) ─────────────────────────────
+    if (grouped.length === 0) {
+      console.log("[GoldSlot] Falling back to providers+games fetch…");
+      try {
+        const provResp = await this.goldSlot.getProviders(1);
+        console.log("[GoldSlot] /v4/game/providers code:", provResp.code, "providers:", Array.isArray(provResp.data) ? provResp.data.length : provResp.data);
+        if (provResp.code === 0 && Array.isArray(provResp.data)) {
+          for (const prov of provResp.data) {
+            const code = prov.provider ?? prov.code ?? prov.id;
+            const name = prov.name ?? code;
+            try {
+              const gr = await this.goldSlot.getGames(code, 1);
+              const games = Array.isArray(gr.data) ? gr.data : [];
+              console.log(`[GoldSlot] provider=${code} games=${games.length}`);
+              for (const g of games) this._gameById.set(String(g.game_id ?? g.id ?? g.code), { ...g, providerCode: code, providerName: name });
+              if (games.length) grouped.push({ provider: code, providerName: name, games });
+            } catch (e) {
+              console.error(`[GoldSlot] getGames(${code}) error:`, e.message);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[GoldSlot] getProviders exception:", e.message);
+      }
+    }
+
+    if (grouped.length > 0) {
+      this._gamesCache   = grouped;
+      this._gamesCacheTs = now;
+      const total = grouped.reduce((s, p) => s + p.games.length, 0);
+      console.log(`[GoldSlot] Cached ${total} games across ${grouped.length} provider(s).`);
+    } else {
+      console.warn("[GoldSlot] No games loaded from either strategy.");
+    }
+    return grouped;
   }
 
   async _ensureGsUser(uid) {
@@ -490,30 +462,24 @@ export class WebServer {
       console.error("[GoldSlot] userInfo error:", info);
       return null;
     } catch (e) {
-      console.error("[GoldSlot] _ensureGsUser exception:", e);
+      console.error("[GoldSlot] _ensureGsUser:", e);
       return null;
     }
   }
 
   async _depositToGS(uid) {
     if (!this.goldSlot) return 0;
-    const user = await this.db.getUser(uid);
-    const fcBal = Math.floor(Number(user?.bal ?? 0));
+    const user    = await this.db.getUser(uid);
+    const fcBal   = Math.floor(Number(user?.bal ?? 0));
     if (fcBal <= 0) return 0;
     const gsPoints = Math.floor(fcBal / FC_TO_GS_RATIO);
     if (gsPoints <= 0) return 0;
     try {
       const resp = await this.goldSlot.walletDeposit(uid, gsPoints);
-      if (resp.code === 0) {
-        await this.db.updateBalance(uid, -fcBal);
-        return gsPoints;
-      }
+      if (resp.code === 0) { await this.db.updateBalance(uid, -fcBal); return gsPoints; }
       console.error("[GoldSlot] walletDeposit error:", resp);
       return 0;
-    } catch (e) {
-      console.error("[GoldSlot] _depositToGS exception:", e);
-      return 0;
-    }
+    } catch (e) { console.error("[GoldSlot] _depositToGS:", e); return 0; }
   }
 
   async _withdrawFromGS(uid) {
@@ -525,18 +491,13 @@ export class WebServer {
         if (returned > 0) await this.db.updateBalance(uid, returned);
         return returned;
       }
-      if (resp.code === 2006) return 0;
+      if (resp.code === 2006) return 0; // wallet already empty
       console.error("[GoldSlot] walletWithdrawAll error:", resp);
       return 0;
-    } catch (e) {
-      console.error("[GoldSlot] _withdrawFromGS exception:", e);
-      return 0;
-    }
+    } catch (e) { console.error("[GoldSlot] _withdrawFromGS:", e); return 0; }
   }
 
-  // ---------------------------------------------------------------------------
-  // Callback handler — GoldSlot calls this during gameplay
-  // ---------------------------------------------------------------------------
+  // ── Callback handler ────────────────────────────────────────────────────────
 
   _isValidCallbackToken(req) {
     if (!this.callbackToken) return true;
@@ -546,7 +507,7 @@ export class WebServer {
 
   /**
    * Respond in the exact format GoldSlot expects.
-   * balance must be an integer (no decimals) per the spec.
+   * balance MUST be integer (Math.round), never a float.
    */
   _cbReply(res, result, status, data) {
     const body = { result, status };
@@ -555,44 +516,15 @@ export class WebServer {
     res.end(JSON.stringify(body));
   }
 
-  _markTrans(transGuid) {
-    if (!transGuid) return;
-    this._processedTrans.add(transGuid);
-    if (this._processedTrans.size > 50000) {
-      const iter = this._processedTrans.values();
-      for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
-    }
-  }
-
-  /**
-   * POST /callback
-   *
-   * Handles all 6 commands from GoldSlot:
-   *   authenticate — verify user exists, return account + balance
-   *   balance      — return current FC balance (must respond < 2s)
-   *   bet          — deduct bet amount from FC wallet (must respond < 2s)
-   *   win          — credit win amount to FC wallet
-   *   cancel       — refund a cancelled bet
-   *   status       — check whether a trans_guid was processed
-   *
-   * Check codes:
-   *   21 — user exists
-   *   22 — user is active (not banned)
-   *   31 — return current balance
-   *   41 — trans_guid NOT already processed (idempotency)
-   *   42 — trans_guid EXISTS
-   *   43 — cancel_trans_guid not already processed
-   */
   async _handleCallback(req, res) {
     if (!this._isValidCallbackToken(req)) {
-      console.warn("[Callback] Bad token");
+      console.warn("[Callback] Bad Callback-Token");
       return this._cbReply(res, 1, "INVALID_TOKEN");
     }
 
     let payload;
     try {
-      const raw = await readBody(req);
-      payload = JSON.parse(raw);
+      payload = JSON.parse(await readBody(req));
     } catch {
       return this._cbReply(res, 1, "INVALID_JSON");
     }
@@ -600,62 +532,58 @@ export class WebServer {
     const { command, data, check } = payload;
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
-    const account      = String(data.account ?? "");
-    const transGuid    = String(data.trans_guid ?? "");
-    const cancelGuid   = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
-    const amount       = Number(data.amount ?? 0);
-    const checks       = String(check ?? "").split(",").map((s) => s.trim());
+    const account         = String(data.account ?? "");
+    const transGuid       = String(data.trans_guid ?? "");
+    const cancelTransGuid = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
+    const amount          = Number(data.amount ?? 0);
+    const checks          = String(check ?? "").split(",").map(s => s.trim());
 
-    // Resolve user from DB
+    // ── Resolve user ──────────────────────────────────────────────────────────
     let user;
-    try {
-      user = await this.db.getUser(account);
-    } catch (e) {
-      console.error("[Callback] DB error:", e);
-      return this._cbReply(res, 1001, "INTERNAL_ERROR");
-    }
+    try { user = await this.db.getUser(account); }
+    catch (e) { console.error("[Callback] DB error:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
 
-    // Check 21: user must exist
+    // Check 21 — user must exist
     if (checks.includes("21") && !user) {
-      console.warn(`[Callback] USER_NOT_FOUND: ${account}`);
+      console.warn(`[Callback] USER_NOT_FOUND account=${account}`);
       return this._cbReply(res, 1, "USER_NOT_FOUND");
     }
-
-    // Check 22: user must not be banned
+    // Check 22 — user must not be banned
     if (checks.includes("22") && user?.banned) {
       return this._cbReply(res, 1, "USER_INACTIVE");
     }
 
-    const currentBal = Math.floor(Number(user?.bal ?? 0));
+    const currentBal = Math.round(Number(user?.bal ?? 0)); // always integer
 
-    // ── authenticate ────────────────────────────────────────────────────────
+    // ══ authenticate ══════════════════════════════════════════════════════════
+    // Called first when a user opens a game. Verify account exists, return balance.
     if (command === "authenticate") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
       console.log(`[Callback] authenticate account=${account} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { account, balance: currentBal });
     }
 
-    // ── balance ─────────────────────────────────────────────────────────────
-    // Must respond within 2 seconds — keep this path fast (no heavy DB ops)
+    // ══ balance ═══════════════════════════════════════════════════════════════
+    // Balance confirmation — must respond within 2 seconds.
     if (command === "balance") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+      console.log(`[Callback] balance account=${account} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { balance: currentBal });
     }
 
-    // ── bet ─────────────────────────────────────────────────────────────────
-    // Deduct bet amount. Must respond within 2 seconds.
-    // If this times out GoldSlot will auto-cancel — so we keep it lean.
+    // ══ bet ═══════════════════════════════════════════════════════════════════
+    // Deduct bet amount from the user's FC wallet.
+    // Must respond within 2 seconds. On timeout/error, GoldSlot sends a cancel.
     if (command === "bet") {
-      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-
-      // Check 41: duplicate bet guard
+      // Check 41 — duplicate bet guard
       if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
-        console.warn(`[Callback] Duplicate bet trans: ${transGuid}`);
+        console.warn(`[Callback] Duplicate bet trans=${transGuid}`);
         return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
-      // Check 31: verify sufficient balance
-      if (amount > 0 && currentBal < Math.ceil(amount)) {
+      // Check 31 — verify user has enough balance
+      if (amount > 0 && currentBal < Math.round(amount)) {
         console.warn(`[Callback] BALANCE_NOT_ENOUGH account=${account} bal=${currentBal} bet=${amount}`);
         return this._cbReply(res, 1, "BALANCE_NOT_ENOUGH");
       }
@@ -663,85 +591,108 @@ export class WebServer {
       let newBal = currentBal;
       if (amount > 0) {
         try {
-          const deduct = Math.ceil(amount); // round up so we never go negative
-          await this.db.updateBalance(account, -deduct);
+          await this.db.updateBalance(account, -Math.round(amount));
           const updated = await this.db.getUser(account);
-          newBal = Math.floor(Number(updated?.bal ?? currentBal - deduct));
+          newBal = Math.round(Number(updated?.bal ?? currentBal - amount));
         } catch (e) {
-          console.error("[Callback] DB error on bet deduct:", e);
+          console.error("[Callback] DB error on bet:", e);
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       }
 
-      this._markTrans(transGuid);
+      if (transGuid) {
+        this._processedTrans.set(transGuid, { type: "bet", account, amount: Math.round(amount) });
+        if (this._processedTrans.size > 50000) {
+          const iter = this._processedTrans.keys();
+          for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
+        }
+      }
+
       console.log(`[Callback] bet account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ── win ─────────────────────────────────────────────────────────────────
+    // ══ win ═══════════════════════════════════════════════════════════════════
+    // Credit win amount (may be 0 for a loss — still must respond OK).
     if (command === "win") {
       if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
-        console.warn(`[Callback] Duplicate win trans: ${transGuid}`);
-        return this._cbReply(res, 0, "OK", { balance: currentBal });
+        const existing = this._processedTrans.get(transGuid);
+        if (existing?.type === "win") {
+          console.warn(`[Callback] Duplicate win trans=${transGuid}`);
+          return this._cbReply(res, 0, "OK", { balance: currentBal });
+        }
       }
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
       let newBal = currentBal;
       if (amount > 0) {
         try {
-          await this.db.updateBalance(account, Math.floor(amount));
+          await this.db.updateBalance(account, Math.round(amount));
           const updated = await this.db.getUser(account);
-          newBal = Math.floor(Number(updated?.bal ?? currentBal + amount));
-          await this.db.recordGame(account, true, Math.floor(amount)).catch(() => {});
+          newBal = Math.round(Number(updated?.bal ?? currentBal + amount));
+          await this.db.recordGame(account, true, Math.round(amount)).catch(() => {});
         } catch (e) {
-          console.error("[Callback] DB error on win credit:", e);
+          console.error("[Callback] DB error on win:", e);
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       }
 
-      this._markTrans(transGuid);
+      if (transGuid) {
+        this._processedTrans.set(transGuid, { type: "win", account, amount: Math.round(amount) });
+        if (this._processedTrans.size > 50000) {
+          const iter = this._processedTrans.keys();
+          for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
+        }
+      }
+
       console.log(`[Callback] win  account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ── cancel ──────────────────────────────────────────────────────────────
+    // ══ cancel ════════════════════════════════════════════════════════════════
+    // Refund a bet (BetCancel, type 16). Return the original bet amount.
     if (command === "cancel") {
-      // Duplicate cancel guard
-      if (checks.includes("43") && cancelGuid && this._processedTrans.has(cancelGuid)) {
-        console.warn(`[Callback] Duplicate cancel: ${cancelGuid}`);
+      // Check 43 — duplicate cancel guard
+      if (checks.includes("43") && cancelTransGuid && this._processedTrans.has(cancelTransGuid)) {
+        console.warn(`[Callback] Duplicate cancel cancelTrans=${cancelTransGuid}`);
         return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
-
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
+      // Refund: re-credit the original bet amount
       let newBal = currentBal;
-      if (amount > 0) {
+      // Use the stored original bet amount if available, otherwise use payload amount
+      const originalBet = this._processedTrans.get(transGuid)?.amount ?? Math.round(amount);
+      if (originalBet > 0) {
         try {
-          await this.db.updateBalance(account, Math.floor(amount));
+          await this.db.updateBalance(account, originalBet);
           const updated = await this.db.getUser(account);
-          newBal = Math.floor(Number(updated?.bal ?? currentBal + amount));
+          newBal = Math.round(Number(updated?.bal ?? currentBal + originalBet));
         } catch (e) {
-          console.error("[Callback] DB error on cancel refund:", e);
+          console.error("[Callback] DB error on cancel:", e);
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       }
 
-      if (cancelGuid) this._markTrans(cancelGuid);
-      if (transGuid) this._processedTrans.delete(transGuid);
+      if (cancelTransGuid) this._processedTrans.set(cancelTransGuid, { type: "cancel", account, amount: originalBet });
+      if (transGuid) this._processedTrans.delete(transGuid); // void the original bet
 
-      console.log(`[Callback] cancel account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
+      console.log(`[Callback] cancel account=${account} refund=${originalBet} newBal=${newBal} trans=${transGuid}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ── status ───────────────────────────────────────────────────────────────
+    // ══ status ════════════════════════════════════════════════════════════════
+    // Return whether a given trans_guid was processed.
     if (command === "status") {
-      if (checks.includes("42") && transGuid && !this._processedTrans.has(transGuid)) {
+      const entry = this._processedTrans.get(transGuid);
+      if (checks.includes("42") && !entry) {
         return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
       }
+      console.log(`[Callback] status trans=${transGuid} found=${!!entry}`);
       return this._cbReply(res, 0, "OK", {
         account,
-        trans_guid: transGuid,
-        trans_status: "OK",
+        trans_guid:   transGuid,
+        trans_status: entry ? "OK" : "NOT_FOUND",
       });
     }
 
@@ -749,37 +700,29 @@ export class WebServer {
     return this._cbReply(res, 1, "UNKNOWN_COMMAND");
   }
 
-  // ---------------------------------------------------------------------------
-  // Server lifecycle
-  // ---------------------------------------------------------------------------
+  // ── Server lifecycle ────────────────────────────────────────────────────────
 
   async start() {
     _preloadAssets();
-    this._fetchGames().catch(() => {});
+    this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm failed:", e));
 
     this._server = http.createServer((req, res) =>
-      this._handle(req, res).catch((e) => {
+      this._handle(req, res).catch(e => {
         console.error("[Web]", e);
         res.writeHead(500);
         res.end("Internal error");
-      }),
-    );
+      }));
 
     this._server.listen(this.port, "0.0.0.0", () =>
-      console.log(`[Web] SirGreen Casino on port ${this.port}`),
-    );
+      console.log(`[Web] SirGreen Casino on port ${this.port}`));
 
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
-      for (const [s, ts] of this._states) {
-        if (ts < cut) this._states.delete(s);
-      }
+      for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
     }, 10 * 60 * 1000);
   }
 
-  // ---------------------------------------------------------------------------
-  // Request handler
-  // ---------------------------------------------------------------------------
+  // ── Request router ──────────────────────────────────────────────────────────
 
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
@@ -789,26 +732,20 @@ export class WebServer {
 
     if (p === "/favicon.ico") {
       if (fs.existsSync(FAVICON_PATH)) return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
-      res.writeHead(204);
-      return res.end();
+      res.writeHead(204); return res.end();
     }
 
     // GoldSlot inbound callback
-    if (p === "/callback" && req.method === "POST") {
+    if (p === "/callback" && req.method === "POST")
       return this._handleCallback(req, res);
-    }
 
     // Static assets
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
-      const diskPath = assetUrlToDiskPath(p);
-      if (diskPath && fs.existsSync(diskPath)) {
-        console.warn(`[Web] Asset cache miss, serving from disk: ${p}`);
-        return serveFileWithRanges(req, res, diskPath, getMime(diskPath));
-      }
-      res.writeHead(404, { "Cache-Control": "no-store" });
-      return res.end("Not found");
+      const disk = assetUrlToDiskPath(p);
+      if (disk && fs.existsSync(disk)) return serveFileWithRanges(req, res, disk, getMime(disk));
+      res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
     // Lobby
@@ -829,44 +766,44 @@ export class WebServer {
       if (!uid) return this._redirect(res, "/login");
       const gameId = p.slice("/game/".length).split("/")[0];
       if (!gameId) return this._redirect(res, "/lobby");
-      if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "GoldSlot API token is not set.", "/lobby", "Back"));
+      if (!this.goldSlot)
+        return this._html(res, 503, errPage("⚠️ Not Configured", "GoldSlot API token is not set.", "/lobby", "Back"));
 
       const gsUser = await this._ensureGsUser(uid);
-      if (!gsUser) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
+      if (!gsUser)
+        return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
 
       await this._depositToGS(uid);
 
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(uid, gameId, `${this.baseUrl}/lobby`, 1);
-        if (urlResp.code !== 0 || !urlResp.data?.url) {
-          console.error("[GoldSlot] getGameUrl failed:", urlResp);
+        if (urlResp.code !== 0 || !urlResp.data?.url)
           return this._html(res, 500, errPage("⚠️ Error", `Could not launch game: ${urlResp.message ?? urlResp.code}`, "/lobby", "Back to Lobby"));
-        }
         gameUrl = urlResp.data.url;
       } catch (e) {
-        console.error("[GoldSlot] getGameUrl exception:", e);
+        console.error("[GoldSlot] getGameUrl:", e);
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
 
       await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameId));
       const gameName = gameMeta?.name ?? gameId;
-      const cookies = parseCookies(req);
-      const user = await this.db.getUser(uid);
-      const bal = Number(user?.bal ?? 0);
-      const tag = decodeURIComponent(cookies.dtag ?? "Player");
+      const cookies  = parseCookies(req);
+      const user     = await this.db.getUser(uid);
+      const bal      = Number(user?.bal ?? 0);
+      const tag      = decodeURIComponent(cookies.dtag ?? "Player");
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // Sync balance
+    // Sync balance (Transfer Mode: periodic pull-back)
     if (p === "/api/goldslot/sync-balance" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const returned = await this._withdrawFromGS(uid);
-      const updated = await this.db.getUser(uid);
-      const newBal = Number(updated?.bal ?? 0);
-      if (returned > 0) await this.db.recordGame(uid, true, returned);
+      const updated  = await this.db.getUser(uid);
+      const newBal   = Number(updated?.bal ?? 0);
+      if (returned > 0) await this.db.recordGame(uid, true, returned).catch(() => {});
       return this._json(res, 200, { ok: true, newBal });
     }
 
@@ -880,17 +817,20 @@ export class WebServer {
 
     // Login
     if (p === "/login" && req.method === "GET") {
-      if (!this.clientId) return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.", "#", "—"));
+      if (!this.clientId)
+        return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.", "#", "—"));
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
       const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
       return this._html(res, 200, loginPage(authUrl));
     }
 
+    // OAuth callback
     if (p === "/oauth/callback" && req.method === "GET") {
-      const code = u.searchParams.get("code");
+      const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-      if (!code || !state || !this._states.has(state)) return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+      if (!code || !state || !this._states.has(state))
+        return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
       this._states.delete(state);
 
       let tokenData;
@@ -906,18 +846,16 @@ export class WebServer {
         return this._html(res, 500, errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
 
-      if (!tokenData.access_token) return this._html(res, 400, errPage("❌ Login Failed", tokenData.error_description ?? tokenData.message ?? "Unknown error", "/login", "Try again"));
+      if (!tokenData.access_token)
+        return this._html(res, 400, errPage("❌ Login Failed", tokenData.error_description ?? tokenData.message ?? "Unknown error", "/login", "Try again"));
 
       let me;
-      try {
-        me = JSON.parse(await nodeFetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } }));
-      } catch {
-        return this._html(res, 500, errPage("⚠️ Error", "Could not fetch Fluxer profile.", "/login", "Retry"));
-      }
+      try { me = JSON.parse(await nodeFetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } })); }
+      catch { return this._html(res, 500, errPage("⚠️ Error", "Could not fetch Fluxer profile.", "/login", "Retry")); }
 
-      const userId = me.id;
-      const tag = me.username ?? me.tag ?? userId;
-      const avatar = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      const userId  = me.id;
+      const tag     = me.username ?? me.tag ?? userId;
+      const avatar  = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
       const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
@@ -930,6 +868,7 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
+    // Logout
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
@@ -937,32 +876,15 @@ export class WebServer {
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }
-      res.setHeader("Set-Cookie", ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"]);
+      res.setHeader("Set-Cookie", ["sid=; Path=/; Max-Age=0","uid=; Path=/; Max-Age=0","dtag=; Path=/; Max-Age=0","dav=; Path=/; Max-Age=0"]);
       return this._redirect(res, "/login");
     }
 
-    res.writeHead(404);
-    res.end("Not found");
+    res.writeHead(404); res.end("Not found");
   }
 
-  _uid(req) {
-    const c = parseCookies(req);
-    return c.sid && c.uid ? c.uid : null;
-  }
-
-  _html(res, s, b) {
-    res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" });
-    res.end(b);
-  }
-
-  _json(res, s, o) {
-    res.writeHead(s, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(o));
-  }
-
-  _redirect(res, l) {
-    res.setHeader("Location", l);
-    res.writeHead(302);
-    res.end();
-  }
+  _uid(req) { const c = parseCookies(req); return c.sid && c.uid ? c.uid : null; }
+  _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
+  _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
+  _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }
 }
