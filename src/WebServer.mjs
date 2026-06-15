@@ -6,16 +6,18 @@ import zlib from "zlib";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { preloadFishslotAssets, getFishslotAsset } from "./FishslotAssets.mjs";
+import { GoldSlotAPI } from "./GoldSlotAPI.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
-const SIR_BANDIT_HTML = path.resolve(__dirname, "../games/sir-bandit.html");
 const FAVICON_PATH = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
 const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL = "https://api.fluxer.app/v1/users/@me";
+
+// How many FC coins = 1 GoldSlot point (integer, configurable)
+const FC_TO_GS_RATIO = 1; // 1 FC = 1 GoldSlot point
 
 // ---------------------------------------------------------------------------
 // MIME types
@@ -44,16 +46,13 @@ const MIME = {
   ".txt": "text/plain; charset=utf-8",
 };
 function getMime(filePath) {
-  return (
-    MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream"
-  );
+  return MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
 // ---------------------------------------------------------------------------
-// Asset preload cache — all files under games/assets/ read into memory once
-// at startup so there are zero cold-read races on first request.
+// Asset preload cache
 // ---------------------------------------------------------------------------
-const _assetCache = new Map(); // normalised URL path → { buf, mime }
+const _assetCache = new Map();
 
 function normalizeAssetUrlPath(p) {
   const clean = String(p || "")
@@ -67,45 +66,25 @@ function normalizeAssetUrlPath(p) {
 function assetUrlToDiskPath(urlPath) {
   const normalized = normalizeAssetUrlPath(urlPath);
   if (!normalized.startsWith("/assets/")) return null;
-
   const rel = normalized.slice("/assets/".length);
-  if (
-    rel.includes("\0") ||
-    rel.startsWith("/") ||
-    rel.includes("../") ||
-    rel === ".."
-  ) {
-    return null;
-  }
-
+  if (rel.includes("\0") || rel.startsWith("/") || rel.includes("../") || rel === "..") return null;
   const diskPath = path.resolve(GAMES_ASSETS_DIR, rel);
-  const relCheck = path
-    .relative(GAMES_ASSETS_DIR, diskPath)
-    .replace(/\\/g, "/");
+  const relCheck = path.relative(GAMES_ASSETS_DIR, diskPath).replace(/\\/g, "/");
   if (relCheck.startsWith("..") || path.isAbsolute(relCheck)) return null;
-
   return diskPath;
 }
 
 function _preloadAssets() {
   _assetCache.clear();
-
   if (!fs.existsSync(GAMES_ASSETS_DIR)) {
     console.warn(`[Web] Assets directory missing: ${GAMES_ASSETS_DIR}`);
     return;
   }
-
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
-
+      if (entry.isDirectory()) { walk(full); continue; }
       if (!entry.isFile()) continue;
-
       try {
         const buf = fs.readFileSync(full);
         const rel = path.relative(GAMES_ASSETS_DIR, full).replace(/\\/g, "/");
@@ -116,7 +95,6 @@ function _preloadAssets() {
       }
     }
   };
-
   walk(GAMES_ASSETS_DIR);
   console.log(`[Web] Preloaded ${_assetCache.size} game asset(s) into memory.`);
 }
@@ -130,7 +108,7 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
     const mod = parsed.protocol === "https:" ? https : http;
     const bodyBuf = opts.body ? Buffer.from(opts.body) : Buffer.alloc(0);
     const headers = {
-      "User-Agent": "Mozilla/5.0 (compatible; SirGreenCasino/2.0)",
+      "User-Agent": "Mozilla/5.0 (compatible; SirGreenCasino/3.0)",
       Accept: "*/*",
       "Accept-Encoding": "gzip, deflate, br",
       ...(opts.headers ?? {}),
@@ -145,38 +123,19 @@ function rawFetch(url, opts = {}, maxRedirects = 4) {
         headers,
       },
       (res) => {
-        if (
-          [301, 302, 303, 307, 308].includes(res.statusCode) &&
-          res.headers.location &&
-          maxRedirects > 0
-        ) {
-          return resolve(
-            rawFetch(
-              new URL(res.headers.location, url).toString(),
-              opts,
-              maxRedirects - 1,
-            ),
-          );
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+          return resolve(rawFetch(new URL(res.headers.location, url).toString(), opts, maxRedirects - 1));
         }
-
         const chunks = [];
         res.on("data", (c) => chunks.push(c));
         res.on("end", () => {
           const raw = Buffer.concat(chunks);
           const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
           const decomp =
-            enc === "br"
-              ? zlib.brotliDecompressSync(raw)
-              : enc === "gzip"
-                ? zlib.gunzipSync(raw)
-                : enc === "deflate"
-                  ? zlib.inflateSync(raw)
-                  : raw;
-          resolve({
-            statusCode: res.statusCode,
-            headers: res.headers,
-            body: decomp,
-          });
+            enc === "br" ? zlib.brotliDecompressSync(raw) :
+            enc === "gzip" ? zlib.gunzipSync(raw) :
+            enc === "deflate" ? zlib.inflateSync(raw) : raw;
+          resolve({ statusCode: res.statusCode, headers: res.headers, body: decomp });
         });
       },
     );
@@ -196,20 +155,15 @@ function parseCookies(req) {
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const idx = part.indexOf("=");
     if (idx < 0) continue;
-    out[decodeURIComponent(part.slice(0, idx).trim())] = decodeURIComponent(
-      part.slice(idx + 1).trim(),
-    );
+    out[decodeURIComponent(part.slice(0, idx).trim())] = decodeURIComponent(part.slice(idx + 1).trim());
   }
   return out;
 }
 
 function esc(s) {
   return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function readBody(req) {
@@ -221,94 +175,40 @@ function readBody(req) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Serve a Buffer with range request support (required for <video>/<audio>)
-// ---------------------------------------------------------------------------
-function serveBufferWithRanges(
-  req,
-  res,
-  buf,
-  mime,
-  cacheControl = "public, max-age=86400",
-) {
+function serveBufferWithRanges(req, res, buf, mime, cacheControl = "public, max-age=86400") {
   const total = buf.length;
   const rangeHeader = req.headers.range;
-
   if (rangeHeader) {
     const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
     const start = match && match[1] ? parseInt(match[1], 10) : 0;
     const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
     const safeEnd = Math.min(end, total - 1);
-    const chunk = safeEnd - start + 1;
-
     if (start >= total || start > safeEnd) {
       res.writeHead(416, { "Content-Range": `bytes */${total}` });
       return res.end();
     }
-
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${safeEnd}/${total}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunk,
-      "Content-Type": mime,
-      "Cache-Control": cacheControl,
-    });
+    res.writeHead(206, { "Content-Range": `bytes ${start}-${safeEnd}/${total}`, "Accept-Ranges": "bytes", "Content-Length": safeEnd - start + 1, "Content-Type": mime, "Cache-Control": cacheControl });
     return res.end(buf.slice(start, safeEnd + 1));
   }
-
-  res.writeHead(200, {
-    "Content-Type": mime,
-    "Content-Length": total,
-    "Accept-Ranges": "bytes",
-    "Cache-Control": cacheControl,
-  });
+  res.writeHead(200, { "Content-Type": mime, "Content-Length": total, "Accept-Ranges": "bytes", "Cache-Control": cacheControl });
   res.end(buf);
 }
 
-function serveFileWithRanges(
-  req,
-  res,
-  filePath,
-  mime = getMime(filePath),
-  cacheControl = "public, max-age=86400",
-) {
+function serveFileWithRanges(req, res, filePath, mime = getMime(filePath), cacheControl = "public, max-age=86400") {
   fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) {
-      res.writeHead(404, { "Cache-Control": "no-store" });
-      return res.end("Not found");
-    }
-
+    if (err || !stat.isFile()) { res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found"); }
     const total = stat.size;
     const rangeHeader = req.headers.range;
-
     if (!rangeHeader) {
-      res.writeHead(200, {
-        "Content-Type": mime,
-        "Content-Length": total,
-        "Accept-Ranges": "bytes",
-        "Cache-Control": cacheControl,
-      });
+      res.writeHead(200, { "Content-Type": mime, "Content-Length": total, "Accept-Ranges": "bytes", "Cache-Control": cacheControl });
       return fs.createReadStream(filePath).pipe(res);
     }
-
     const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
     const start = match && match[1] ? parseInt(match[1], 10) : 0;
     const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
     const safeEnd = Math.min(end, total - 1);
-
-    if (start >= total || start > safeEnd) {
-      res.writeHead(416, { "Content-Range": `bytes */${total}` });
-      return res.end();
-    }
-
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${safeEnd}/${total}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": safeEnd - start + 1,
-      "Content-Type": mime,
-      "Cache-Control": cacheControl,
-    });
-
+    if (start >= total || start > safeEnd) { res.writeHead(416, { "Content-Range": `bytes */${total}` }); return res.end(); }
+    res.writeHead(206, { "Content-Range": `bytes ${start}-${safeEnd}/${total}`, "Accept-Ranges": "bytes", "Content-Length": safeEnd - start + 1, "Content-Type": mime, "Cache-Control": cacheControl });
     fs.createReadStream(filePath, { start, end: safeEnd }).pipe(res);
   });
 }
@@ -330,15 +230,17 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 .nav-bal strong{color:#2ecc71}
 .nav-logout{font-size:.65rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122}
 .nav-logout:hover{color:#2ecc71}
-.wrap{padding:1.2rem;max-width:960px;margin:0 auto}
+.wrap{padding:1.2rem;max-width:1100px;margin:0 auto}
 .section-title{font-size:.85rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#2ecc71;text-shadow:0 0 10px #2ecc7155;margin-bottom:1.1rem}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.9rem}
+.provider-title{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4a9a4a;margin:1.4rem 0 .55rem}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
 .game-card{background:#0a1f0a;border:1px solid #2ecc7122;border-radius:11px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s}
 .game-card:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 8px 28px #2ecc7133;border-color:#2ecc7166}
-.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:3rem}
-.game-info{padding:.45rem .55rem .55rem}
-.game-name{font-size:.72rem;font-weight:700;color:#c8f5c8}
-.game-meta{font-size:.6rem;color:#4a9a4a;margin-top:.12rem}
+.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem;overflow:hidden}
+.game-thumb img{width:100%;height:100%;object-fit:cover}
+.game-info{padding:.4rem .5rem .5rem}
+.game-name{font-size:.68rem;font-weight:700;color:#c8f5c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.game-meta{font-size:.58rem;color:#4a9a4a;margin-top:.1rem}
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
 .login-card{background:linear-gradient(160deg,#0e230e,#071507);border:2px solid #2ecc7133;border-radius:18px;padding:2.2rem 1.8rem;max-width:360px;width:100%;text-align:center;box-shadow:0 0 50px #2ecc7111}
 .login-logo{font-size:2.8rem;margin-bottom:.3rem}
@@ -354,17 +256,40 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 .err-card p{color:#a8d5a8;margin-bottom:.7rem;line-height:1.6}
 .err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;padding:.65rem 1.3rem;border-radius:8px;margin-top:.5rem;cursor:pointer;font-size:.84rem;transition:all .18s}
 .err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px #2ecc7155}
+.loading{text-align:center;padding:3rem;color:#4a9a4a;font-size:.85rem}
 `;
 
 function shell(head, body) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SirGreen Casino</title>\n<style>${SHARED_CSS}</style>\n${head ?? ""}\n</head>\n<body>\n${body}\n</body>\n</html>`;
 }
 
-function lobbyPage(bal, tag) {
+/**
+ * Build the lobby page with games fetched from GoldSlot API.
+ * Groups them by provider for a cleaner layout.
+ */
+function lobbyPage(bal, tag, gamesByProvider) {
+  let gamesSections = "";
+
+  if (!gamesByProvider || gamesByProvider.length === 0) {
+    gamesSections = `<p style="color:#4a9a4a;font-size:.82rem">No games available right now. Please check back later.</p>`;
+  } else {
+    for (const { provider, providerName, games } of gamesByProvider) {
+      const cards = games.map((g) => {
+        const thumb = g.image_url
+          ? `<img src="${esc(g.image_url)}" alt="${esc(g.name)}" loading="lazy">`
+          : `<span style="font-size:2.5rem">🎰</span>`;
+        return `<div class="game-card" onclick="location.href='/game/${esc(g.game_id)}'">
+  <div class="game-thumb">${thumb}</div>
+  <div class="game-info"><div class="game-name">${esc(g.name)}</div><div class="game-meta">${esc(g.type ?? provider)}</div></div>
+</div>`;
+      }).join("\n");
+      gamesSections += `<div class="provider-title">🎮 ${esc(providerName ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
+    }
+  }
+
   return shell(
     "",
-    `
-<nav class="nav">
+    `<nav class="nav">
   <div class="nav-logo">🎰 SirGreen Casino</div>
   <div class="nav-spacer"></div>
   <div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div>
@@ -373,16 +298,7 @@ function lobbyPage(bal, tag) {
 </nav>
 <div class="wrap">
   <div class="section-title">🎮 Game Lobby</div>
-  <div class="games-grid">
-    <div class="game-card" onclick="location.href='/sirbandit'">
-      <div class="game-thumb">⭐</div>
-      <div class="game-info"><div class="game-name">⭐ Sir Bandit</div><div class="game-meta">6×5 slot — up to 30 lines</div></div>
-    </div>
-    <div class="game-card" onclick="location.href='/fishslot/'">
-      <div class="game-thumb">🐟</div>
-      <div class="game-info"><div class="game-name">🐟 Fish Slot</div><div class="game-meta">coming soon</div></div>
-    </div>
-  </div>
+  ${gamesSections}
 </div>`,
   );
 }
@@ -401,60 +317,68 @@ function errPage(title, msg, href, label) {
   );
 }
 
-function fishslotWrapperPage(bal, tag) {
+/**
+ * The game wrapper page — loads the GoldSlot game URL in a full-screen iframe
+ * with a compact balance/back bar on top.
+ */
+function gameWrapperPage(bal, tag, gameUrl, gameName) {
   const safeBal = Number(bal) || 0;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Fish Slot — SirGreen Casino</title>
+<title>${esc(gameName)} — SirGreen Casino</title>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; background: #040d04; font-family: 'Segoe UI', system-ui, sans-serif; color: #e2ffe2; -webkit-font-smoothing: antialiased; }
-a, button { color: inherit; cursor: pointer; background: none; border: none; font: inherit; text-decoration: none; }
-#fcBar { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; display: flex; align-items: center; gap: .6rem; padding: .38rem .75rem; background: rgba(4,13,4,.97); backdrop-filter: blur(12px); border-bottom: 2px solid #2ecc7133; font-size: .76rem; min-height: 42px; user-select: none; }
-.fc-back { background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.22rem .6rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:border-color .18s,color .18s; }
-.fc-back:hover { border-color:#2ecc71;color:#2ecc71; }
-.fc-spacer { flex: 1; }
-.fc-bal { display:flex;align-items:center;gap:.28rem;background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap; }
-.fc-bal strong { color:#2ecc71;font-size:.88rem; }
-.fc-user { font-size:.67rem;color:#4a8a4a;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis; }
-.fc-logout { font-size:.64rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap; }
-.fc-logout:hover { color:#2ecc71; }
-#gameFrame { position:fixed;top:42px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 42px);border:none;display:block;background:#040d04; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#040d04;font-family:'Segoe UI',system-ui,sans-serif;color:#e2ffe2;-webkit-font-smoothing:antialiased}
+a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;text-decoration:none}
+#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.38rem .75rem;background:rgba(4,13,4,.97);backdrop-filter:blur(12px);border-bottom:2px solid #2ecc7133;font-size:.76rem;min-height:42px;user-select:none}
+.fc-back{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.22rem .6rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:border-color .18s,color .18s}
+.fc-back:hover{border-color:#2ecc71;color:#2ecc71}
+.fc-spacer{flex:1}
+.fc-title{font-size:.72rem;color:#c8f5c8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fc-bal{display:flex;align-items:center;gap:.28rem;background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
+.fc-bal strong{color:#2ecc71;font-size:.88rem}
+.fc-user{font-size:.67rem;color:#4a8a4a;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.fc-logout{font-size:.64rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap}
+.fc-logout:hover{color:#2ecc71}
+#gameFrame{position:fixed;top:42px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 42px);border:none;display:block;background:#040d04}
 </style>
 </head>
 <body>
 <div id="fcBar">
-  <button class="fc-back" onclick="location.href='/lobby'">&#8592; Lobby</button>
+  <button class="fc-back" onclick="exitGame()">&#8592; Lobby</button>
+  <span class="fc-title">${esc(gameName)}</span>
   <span class="fc-spacer"></span>
   <div class="fc-bal">💰&nbsp;<strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
   <span class="fc-user">${esc(tag)}</span>
   <a href="/logout" class="fc-logout">logout</a>
 </div>
-<iframe id="gameFrame" src="/fishslot/game/" allow="autoplay; fullscreen" allowfullscreen></iframe>
+<iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
-(function () {
-  let bal = ${safeBal}; let busy = false;
-  const frame = document.getElementById('gameFrame');
-  const balNum = document.getElementById('fcBalNum');
-  function post(msg) { try { frame.contentWindow.postMessage(msg, '*'); } catch (_) {} }
-  function setDisplay(n) { bal = Math.max(0, Math.floor(Number(n)||0)); balNum.textContent = bal.toLocaleString(); }
-  frame.addEventListener('load', function () { setTimeout(function () { post({ type: 'fluxer:init', balance: bal, bet: 10 }); }, 800); });
-  window.addEventListener('message', async function (ev) {
-    if (!ev.data || ev.data.type !== 'fluxer:result') return;
-    if (busy) return; busy = true;
-    const won = Number(ev.data.won) || 0;
-    try {
-      const r = await fetch('/api/fishslot/settle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ won }) });
-      const d = await r.json();
-      if (r.ok && d.newBal !== undefined) { setDisplay(d.newBal); post({ type: 'fluxer:sync', balance: d.newBal }); }
-      else { const rb = await fetch('/api/balance'); const db = await rb.json(); if (db.bal !== undefined) { setDisplay(db.bal); post({ type: 'fluxer:sync', balance: db.bal }); } }
-    } catch (_) { fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{}); }
-    finally { busy = false; }
-  });
-  setInterval(function () { if (busy) return; fetch('/api/balance').then(r=>r.json()).then(d=>{ if(d.bal!==undefined&&d.bal!==bal){ setDisplay(d.bal); post({type:'fluxer:sync',balance:d.bal}); } }).catch(()=>{}); }, 8000);
+(function(){
+  let leaving = false;
+  async function syncBalance(){
+    try{
+      const r=await fetch('/api/goldslot/sync-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const d=await r.json();
+      if(r.ok&&d.newBal!==undefined){
+        document.getElementById('fcBalNum').textContent=d.newBal.toLocaleString();
+      }
+    }catch(_){}
+  }
+  // Sync balance periodically while in game
+  const timer=setInterval(syncBalance,15000);
+  window.exitGame=async function(){
+    if(leaving)return;
+    leaving=true;
+    clearInterval(timer);
+    await syncBalance();
+    location.href='/lobby';
+  };
+  // Also sync when iframe navigates away (game exit)
+  document.getElementById('gameFrame').addEventListener('load',syncBalance);
 })();
 </script>
 </body>
@@ -470,16 +394,141 @@ export class WebServer {
     this.config = config;
     this.port = config.webPort ?? 3420;
     this.clientId = config.fluxerClientId ?? config.discordClientId ?? "";
-    this.clientSecret =
-      config.fluxerClientSecret ?? config.discordClientSecret ?? "";
+    this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
     this.baseUrl = config.webBaseUrl ?? "https://www.sirgreen.online";
     this.redirectUri = `${this.baseUrl}/oauth/callback`;
     this._states = new Map();
+
+    // GoldSlot API
+    const gsToken = config.goldSlotApiToken ?? "";
+    const gsUrl = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
+    this.goldSlot = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
+
+    // In-memory game catalogue cache (refreshed every 10 min)
+    this._gamesCache = null;
+    this._gamesCacheTs = 0;
+    this._gameById = new Map();
   }
+
+  // ---------------------------------------------------------------------------
+  // Game catalogue helpers
+  // ---------------------------------------------------------------------------
+
+  async _fetchGames() {
+    if (!this.goldSlot) return [];
+    const now = Date.now();
+    if (this._gamesCache && now - this._gamesCacheTs < 10 * 60 * 1000) return this._gamesCache;
+
+    try {
+      const resp = await this.goldSlot.getAllGames(1);
+      if (resp.code !== 0 || !Array.isArray(resp.data)) {
+        console.warn("[GoldSlot] getAllGames returned:", resp.code, resp.message);
+        return this._gamesCache ?? [];
+      }
+
+      // resp.data is an array of provider objects: { provider, name, games: [] }
+      // Normalise into a flat gameById map and a grouped list for the lobby
+      this._gameById.clear();
+      const grouped = [];
+      for (const prov of resp.data) {
+        const games = Array.isArray(prov.games) ? prov.games : [];
+        for (const g of games) {
+          this._gameById.set(String(g.game_id), { ...g, providerCode: prov.provider, providerName: prov.name });
+        }
+        if (games.length) grouped.push({ provider: prov.provider, providerName: prov.name, games });
+      }
+      this._gamesCache = grouped;
+      this._gamesCacheTs = now;
+      console.log(`[GoldSlot] Loaded ${this._gameById.size} games across ${grouped.length} providers.`);
+      return grouped;
+    } catch (e) {
+      console.error("[GoldSlot] Failed to fetch games:", e);
+      return this._gamesCache ?? [];
+    }
+  }
+
+  /**
+   * Ensure GoldSlot user exists. Creates them if the API returns USER_NOT_FOUND.
+   * Returns null on failure.
+   */
+  async _ensureGsUser(uid) {
+    if (!this.goldSlot) return null;
+    try {
+      const info = await this.goldSlot.userInfo(uid);
+      if (info.code === 0) return info.data;
+      if (info.code === 2002) {
+        // USER_NOT_FOUND — create them
+        const created = await this.goldSlot.userCreate(uid);
+        if (created.code === 0) return created.data;
+        console.error("[GoldSlot] userCreate failed:", created);
+        return null;
+      }
+      console.error("[GoldSlot] userInfo error:", info);
+      return null;
+    } catch (e) {
+      console.error("[GoldSlot] _ensureGsUser exception:", e);
+      return null;
+    }
+  }
+
+  /**
+   * Transfer FC balance into the GoldSlot wallet before launching a game.
+   * Deposits the user's full FC balance. Returns the deposited amount or 0.
+   */
+  async _depositToGS(uid) {
+    if (!this.goldSlot) return 0;
+    const user = await this.db.getUser(uid);
+    const fcBal = Math.floor(Number(user?.bal ?? 0));
+    if (fcBal <= 0) return 0;
+    const gsPoints = Math.floor(fcBal / FC_TO_GS_RATIO);
+    if (gsPoints <= 0) return 0;
+
+    try {
+      const resp = await this.goldSlot.walletDeposit(uid, gsPoints);
+      if (resp.code === 0) {
+        // Deduct FC from local wallet
+        await this.db.updateBalance(uid, -fcBal);
+        return gsPoints;
+      }
+      console.error("[GoldSlot] walletDeposit error:", resp);
+      return 0;
+    } catch (e) {
+      console.error("[GoldSlot] _depositToGS exception:", e);
+      return 0;
+    }
+  }
+
+  /**
+   * Withdraw all GoldSlot balance back to FC when the player exits.
+   * Credits the local DB wallet with the returned points.
+   */
+  async _withdrawFromGS(uid) {
+    if (!this.goldSlot) return 0;
+    try {
+      const resp = await this.goldSlot.walletWithdrawAll(uid);
+      if (resp.code === 0) {
+        const returned = Math.floor(Number(resp.data?.amount ?? 0) * FC_TO_GS_RATIO);
+        if (returned > 0) await this.db.updateBalance(uid, returned);
+        return returned;
+      }
+      // BALANCE_NOT_ENOUGH (2006) means wallet is already empty — that's fine
+      if (resp.code === 2006) return 0;
+      console.error("[GoldSlot] walletWithdrawAll error:", resp);
+      return 0;
+    } catch (e) {
+      console.error("[GoldSlot] _withdrawFromGS exception:", e);
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Server lifecycle
+  // ---------------------------------------------------------------------------
 
   async start() {
     _preloadAssets();
-    await preloadFishslotAssets();
+    // Pre-warm the game catalogue
+    this._fetchGames().catch(() => {});
 
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch((e) => {
@@ -493,16 +542,17 @@ export class WebServer {
       console.log(`[Web] SirGreen Casino on port ${this.port}`),
     );
 
-    setInterval(
-      () => {
-        const cut = Date.now() - 15 * 60 * 1000;
-        for (const [s, ts] of this._states) {
-          if (ts < cut) this._states.delete(s);
-        }
-      },
-      10 * 60 * 1000,
-    );
+    setInterval(() => {
+      const cut = Date.now() - 15 * 60 * 1000;
+      for (const [s, ts] of this._states) {
+        if (ts < cut) this._states.delete(s);
+      }
+    }, 10 * 60 * 1000);
   }
+
+  // ---------------------------------------------------------------------------
+  // Request handler
+  // ---------------------------------------------------------------------------
 
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
@@ -511,91 +561,26 @@ export class WebServer {
     if (p === "/") return this._redirect(res, "/lobby");
 
     if (p === "/favicon.ico") {
-      if (fs.existsSync(FAVICON_PATH)) {
-        return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
-      }
+      if (fs.existsSync(FAVICON_PATH)) return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
       res.writeHead(204);
       return res.end();
     }
 
-    // ── Static game assets: /assets/* → served from memory cache, fallback disk
+    // ── Static game assets: /assets/* ────────────────────────────────────────
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
-      if (cached) {
-        return serveBufferWithRanges(req, res, cached.buf, cached.mime);
-      }
-
+      if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
       const diskPath = assetUrlToDiskPath(p);
       if (diskPath && fs.existsSync(diskPath)) {
         console.warn(`[Web] Asset cache miss, serving from disk: ${p}`);
         return serveFileWithRanges(req, res, diskPath, getMime(diskPath));
       }
-
       res.writeHead(404, { "Cache-Control": "no-store" });
       return res.end("Not found");
     }
 
-    // ── Sir Bandit ───────────────────────────────────────────────────────────
-    if (p === "/sirbandit" || p === "/sirbandit/") {
-      const uid = this._uid(req);
-      if (!uid) return this._redirect(res, "/login");
-
-      let html;
-      try {
-        html = fs.readFileSync(SIR_BANDIT_HTML, "utf8");
-      } catch {
-        return this._html(
-          res,
-          500,
-          errPage(
-            "Game not found",
-            "sir-bandit.html missing.",
-            "/lobby",
-            "Back to lobby",
-          ),
-        );
-      }
-
-      res.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      });
-      return res.end(html);
-    }
-
-    // ── Sir Bandit settle ────────────────────────────────────────────────────
-    if (p === "/api/sirbandit/settle" && req.method === "POST") {
-      const uid = this._uid(req);
-      if (!uid) return this._json(res, 401, { error: "Not logged in" });
-
-      let body;
-      try {
-        body = JSON.parse(await readBody(req));
-      } catch {
-        return this._json(res, 400, { error: "Bad JSON" });
-      }
-
-      const won = Math.floor(Number(body.won) || 0);
-      if (won > 50_000 || won < -100_000) {
-        return this._json(res, 400, { error: "Delta out of range" });
-      }
-
-      const user = await this.db.getUser(uid);
-      const curBal = Number(user?.bal ?? 0);
-      const clamped = Math.max(-curBal, won);
-
-      if (clamped !== 0) await this.db.updateBalance(uid, clamped);
-      await this.db.recordGame(uid, won >= 0, Math.abs(won));
-
-      const updated = await this.db.getUser(uid);
-      return this._json(res, 200, {
-        ok: true,
-        newBal: Number(updated?.bal ?? 0),
-      });
-    }
-
-    // ── Fish Slot wrapper ────────────────────────────────────────────────────
-    if (p === "/fishslot" || p === "/fishslot/") {
+    // ── Lobby ─────────────────────────────────────────────────────────────────
+    if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
 
@@ -603,141 +588,101 @@ export class WebServer {
       const cookies = parseCookies(req);
       const bal = Number(user?.bal ?? 0);
       const tag = decodeURIComponent(cookies.dtag ?? "Player");
-      return this._html(res, 200, fishslotWrapperPage(bal, tag));
+
+      // Fetch game catalogue (cached)
+      const gamesByProvider = await this._fetchGames();
+      return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
 
-    // ── Fish Slot game static files ─────────────────────────────────────────
-    if (p === "/fishslot/game" || p === "/fishslot/game/") {
-      const asset = getFishslotAsset("/index.html");
-      if (!asset) {
-        res.writeHead(404);
-        return res.end("Game files not found — restart the bot.");
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-cache",
-      });
-      return res.end(asset.body);
-    }
-
-    if (p.startsWith("/fishslot/")) {
-      let assetPath = p.slice("/fishslot".length);
-      if (assetPath.startsWith("/game/"))
-        assetPath = assetPath.slice("/game".length);
-
-      const asset = getFishslotAsset(assetPath);
-      if (!asset) {
-        res.writeHead(404);
-        return res.end("Not found");
-      }
-
-      res.writeHead(200, {
-        "Content-Type": asset.mime,
-        "Cache-Control": asset.cacheControl,
-        "Content-Length": asset.body.length,
-      });
-      return res.end(asset.body);
-    }
-
-    // ── Lobby ────────────────────────────────────────────────────────────────
-    if (p === "/lobby" && req.method === "GET") {
+    // ── Launch game ──────────────────────────────────────────────────────────
+    // GET /game/:gameId  — deposit FC → get game URL → serve wrapper iframe
+    if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
 
-      const user = await this.db.getUser(uid);
+      const gameId = p.slice("/game/".length).split("/")[0];
+      if (!gameId) return this._redirect(res, "/lobby");
+
+      if (!this.goldSlot) {
+        return this._html(res, 503, errPage("⚠️ Not Configured", "GoldSlot API token is not set.", "/lobby", "Back"));
+      }
+
+      // Ensure user exists in GoldSlot system
+      const gsUser = await this._ensureGsUser(uid);
+      if (!gsUser) {
+        return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account. Please try again.", "/lobby", "Back"));
+      }
+
+      // Deposit the user's FC balance into the GoldSlot wallet
+      await this._depositToGS(uid);
+
+      // Get the game launch URL
+      const returnUrl = `${this.baseUrl}/api/goldslot/sync-balance`;
+      let gameUrl;
+      try {
+        const urlResp = await this.goldSlot.getGameUrl(uid, gameId, `${this.baseUrl}/lobby`, 1);
+        if (urlResp.code !== 0 || !urlResp.data?.url) {
+          console.error("[GoldSlot] getGameUrl failed:", urlResp);
+          return this._html(res, 500, errPage("⚠️ Error", `Could not launch game: ${urlResp.message ?? urlResp.code}`, "/lobby", "Back to Lobby"));
+        }
+        gameUrl = urlResp.data.url;
+      } catch (e) {
+        console.error("[GoldSlot] getGameUrl exception:", e);
+        return this._html(res, 500, errPage("⚠️ Error", "Game launch failed. Please try again.", "/lobby", "Back"));
+      }
+
+      // Resolve game name from cache
+      await this._fetchGames();
+      const gameMeta = this._gameById.get(String(gameId));
+      const gameName = gameMeta?.name ?? gameId;
+
       const cookies = parseCookies(req);
-      return this._html(
-        res,
-        200,
-        lobbyPage(
-          Number(user?.bal ?? 0),
-          decodeURIComponent(cookies.dtag ?? "Player"),
-        ),
-      );
+      const user = await this.db.getUser(uid);
+      const bal = Number(user?.bal ?? 0);
+      const tag = decodeURIComponent(cookies.dtag ?? "Player");
+
+      return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // ── Fish Slot settle ────────────────────────────────────────────────────
-    if (p === "/api/fishslot/settle" && req.method === "POST") {
+    // ── Sync balance (GoldSlot → FC wallet) ──────────────────────────────────
+    // Called by the game wrapper page every 15 s and on exit
+    if (p === "/api/goldslot/sync-balance" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
 
-      let body;
-      try {
-        body = JSON.parse(await readBody(req));
-      } catch {
-        return this._json(res, 400, { error: "Bad JSON" });
-      }
-
-      const won = Math.floor(Number(body.won) || 0);
-      if (won > 10_000) {
-        return this._json(res, 400, { error: "Payout out of range" });
-      }
-
-      if (won !== 0) await this.db.updateBalance(uid, won);
-      await this.db.recordGame(uid, won >= 0, Math.abs(won));
-
+      const returned = await this._withdrawFromGS(uid);
       const updated = await this.db.getUser(uid);
-      return this._json(res, 200, {
-        ok: true,
-        newBal: Number(updated?.bal ?? 0),
-      });
+      const newBal = Number(updated?.bal ?? 0);
+      if (returned > 0) await this.db.recordGame(uid, true, returned);
+
+      return this._json(res, 200, { ok: true, newBal });
     }
 
-    // ── Balance ─────────────────────────────────────────────────────────────
+    // ── Balance API ───────────────────────────────────────────────────────────
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
-
       const user = await this.db.getUser(uid);
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Auth ────────────────────────────────────────────────────────────────
+    // ── Auth ──────────────────────────────────────────────────────────────────
     if (p === "/login" && req.method === "GET") {
       if (!this.clientId) {
-        return this._html(
-          res,
-          500,
-          errPage(
-            "⚠️ Not Configured",
-            "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.",
-            "#",
-            "—",
-          ),
-        );
+        return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId/fluxerClientSecret/webBaseUrl to config.json.", "#", "—"));
       }
-
       const state = crypto.randomBytes(16).toString("hex");
       this._states.set(state, Date.now());
-
-      const authUrl =
-        `${FLUXER_AUTH_URL}` +
-        `?client_id=${encodeURIComponent(this.clientId)}` +
-        `&scope=identify+guilds` +
-        `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
-        `&response_type=code` +
-        `&state=${encodeURIComponent(state)}`;
-
+      const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
       return this._html(res, 200, loginPage(authUrl));
     }
 
     if (p === "/oauth/callback" && req.method === "GET") {
       const code = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-
       if (!code || !state || !this._states.has(state)) {
-        return this._html(
-          res,
-          400,
-          errPage(
-            "❌ Login Failed",
-            "Invalid or expired login state.",
-            "/login",
-            "Try again",
-          ),
-        );
+        return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
       }
-
       this._states.delete(state);
 
       let tokenData;
@@ -745,62 +690,28 @@ export class WebServer {
         const raw = await nodeFetch(FLUXER_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: this.clientId,
-            client_secret: this.clientSecret,
-            grant_type: "authorization_code",
-            code,
-            redirect_uri: this.redirectUri,
-          }).toString(),
+          body: new URLSearchParams({ client_id: this.clientId, client_secret: this.clientSecret, grant_type: "authorization_code", code, redirect_uri: this.redirectUri }).toString(),
         });
         tokenData = JSON.parse(raw);
       } catch (e) {
         console.error("[OAuth]", e);
-        return this._html(
-          res,
-          500,
-          errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"),
-        );
+        return this._html(res, 500, errPage("⚠️ Error", "Could not reach Fluxer.", "/login", "Retry"));
       }
 
       if (!tokenData.access_token) {
-        return this._html(
-          res,
-          400,
-          errPage(
-            "❌ Login Failed",
-            tokenData.error_description ?? tokenData.message ?? "Unknown error",
-            "/login",
-            "Try again",
-          ),
-        );
+        return this._html(res, 400, errPage("❌ Login Failed", tokenData.error_description ?? tokenData.message ?? "Unknown error", "/login", "Try again"));
       }
 
       let me;
       try {
-        me = JSON.parse(
-          await nodeFetch(FLUXER_ME_URL, {
-            headers: { Authorization: `Bearer ${tokenData.access_token}` },
-          }),
-        );
+        me = JSON.parse(await nodeFetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } }));
       } catch {
-        return this._html(
-          res,
-          500,
-          errPage(
-            "⚠️ Error",
-            "Could not fetch Fluxer profile.",
-            "/login",
-            "Retry",
-          ),
-        );
+        return this._html(res, 500, errPage("⚠️ Error", "Could not fetch Fluxer profile.", "/login", "Retry"));
       }
 
       const userId = me.id;
       const tag = me.username ?? me.tag ?? userId;
-      const avatar = me.avatar
-        ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64`
-        : "";
+      const avatar = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
 
       const session = crypto.randomBytes(32).toString("hex");
       await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
@@ -812,23 +723,18 @@ export class WebServer {
         `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
         `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
       ]);
-
       return this._redirect(res, "/lobby");
     }
 
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
+        // Withdraw any remaining GoldSlot balance before logging out
+        await this._withdrawFromGS(uid).catch(() => {});
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }
-
-      res.setHeader("Set-Cookie", [
-        "sid=; Path=/; Max-Age=0",
-        "uid=; Path=/; Max-Age=0",
-        "dtag=; Path=/; Max-Age=0",
-        "dav=; Path=/; Max-Age=0",
-      ]);
+      res.setHeader("Set-Cookie", ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"]);
       return this._redirect(res, "/login");
     }
 

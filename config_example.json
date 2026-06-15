@@ -9,12 +9,17 @@
   "webPort": 80,
   "fluxerClientId":     "YOUR_CLIENT_ID",
   "fluxerClientSecret": "YOUR_CLIENT_SECRET",
+
+  "goldSlotApiUrl":         "https://agent.goldslotpalase.com",
+  "goldSlotApiToken":       "YOUR_GOLDSLOT_API_TOKEN",
+  "goldSlotCallbackToken":  "YOUR_GOLDSLOT_CALLBACK_TOKEN",
+
   "mongodb": {
     "uri": "mongodb+srv://user:pass@cluster.mongodb.net/casino?retryWrites=true&w=majority",
     "database": "fluxer_casino"
   },
   "presenceContents": [
-    { "text": "!help | \uD83C\uDFB0 Casino", "emoji_name": "\uD83C\uDFB0" }
+    { "text": "!help | 🎰 Casino", "emoji_name": "🎰" }
   ],
   "fluxer.js": {
     "rest": { "timeout": 30000, "retries": 3 }
