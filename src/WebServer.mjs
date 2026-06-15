@@ -9,11 +9,9 @@ import { fileURLToPath } from "url";
 import { GoldSlotAPI } from "./GoldSlotAPI.mjs";
 
 // ── ESM __dirname shim ──────────────────────────────────────────────────────
-// IMPORTANT: define BOTH before any path.resolve() calls at module scope.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// These must come AFTER both __filename and __dirname are fully defined.
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 const FAVICON_PATH     = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
@@ -21,7 +19,6 @@ const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
-// 1 FC coin = 1 GoldSlot point  (adjust ratio here if needed)
 const FC_TO_GS_RATIO = 1;
 
 // ── MIME map ────────────────────────────────────────────────────────────────
@@ -362,24 +359,11 @@ export class WebServer {
     this._gamesCacheTs = 0;
     this._gameById     = new Map();
 
-    // Idempotency store: trans_guid → { type, account, amount }
-    // Max 50 000 entries; oldest 5 000 pruned when full.
     this._processedTrans = new Map();
   }
 
   // ── Game catalogue ──────────────────────────────────────────────────────────
 
-  /**
-   * Fetch full game list from GoldSlot API.
-   *
-   * Strategy 1 — POST /v4/game/all: handles two response shapes:
-   *   Shape A: [{ provider, name, games:[...] }]
-   *   Shape B: flat array of game objects (grouped by provider_code)
-   *
-   * Strategy 2 (fallback) — POST /v4/game/providers → POST /v4/game/games per provider.
-   *
-   * Results are cached for 10 minutes.
-   */
   async _fetchGames() {
     if (!this.goldSlot) return [];
     const now = Date.now();
@@ -387,7 +371,6 @@ export class WebServer {
 
     let grouped = [];
 
-    // ── Strategy 1: /v4/game/all ─────────────────────────────────────────────
     try {
       const resp = await this.goldSlot.getAllGames(1);
       console.log("[GoldSlot] /v4/game/all → code:", resp.code,
@@ -397,7 +380,6 @@ export class WebServer {
         const first = resp.data[0];
 
         if (Array.isArray(first?.games)) {
-          // Shape A: provider-grouped
           for (const prov of resp.data) {
             const games = Array.isArray(prov.games) ? prov.games : [];
             const pc = String(prov.provider ?? prov.code ?? prov.id ?? "UNKNOWN");
@@ -407,7 +389,6 @@ export class WebServer {
             if (games.length) grouped.push({ provider: pc, providerName: pn, games });
           }
         } else if (first?.game_id !== undefined || first?.id !== undefined || first?.code !== undefined) {
-          // Shape B: flat list
           const byProv = new Map();
           for (const g of resp.data) {
             const pc = String(g.provider_code ?? g.provider ?? "UNKNOWN");
@@ -425,7 +406,6 @@ export class WebServer {
       console.error("[GoldSlot] /v4/game/all exception:", e.message);
     }
 
-    // ── Strategy 2: providers → games per provider ───────────────────────────
     if (grouped.length === 0) {
       console.log("[GoldSlot] Falling back to providers+games fetch…");
       try {
@@ -460,7 +440,6 @@ export class WebServer {
       const total = grouped.reduce((s, p) => s + p.games.length, 0);
       console.log(`[GoldSlot] Cached ${total} game(s) across ${grouped.length} provider(s).`);
     } else {
-      // Don't cache empty results — retry next request
       console.warn("[GoldSlot] No games loaded. Check goldSlotApiToken and agent approval status.");
     }
     return grouped;
@@ -509,13 +488,12 @@ export class WebServer {
         if (returned > 0) await this.db.updateBalance(uid, returned);
         return returned;
       }
-      if (resp.code === 2006) return 0; // wallet already empty — fine
+      if (resp.code === 2006) return 0;
       console.error("[GoldSlot] walletWithdrawAll error:", resp);
       return 0;
     } catch (e) { console.error("[GoldSlot] _withdrawFromGS:", e); return 0; }
   }
 
-  // ── Idempotency helper ──────────────────────────────────────────────────────
   _markTrans(guid, entry) {
     if (!guid) return;
     this._processedTrans.set(guid, entry);
@@ -525,9 +503,8 @@ export class WebServer {
     }
   }
 
-  // ── Callback token validation ───────────────────────────────────────────────
   _isValidCallbackToken(req) {
-    if (!this.callbackToken) return true; // not configured → allow (dev mode)
+    if (!this.callbackToken) return true;
     const incoming = (
       req.headers["callback-token"] ??
       req.headers["Callback-Token"] ??
@@ -536,10 +513,6 @@ export class WebServer {
     return incoming === this.callbackToken;
   }
 
-  /**
-   * Send the GoldSlot callback response.
-   * balance MUST be a plain integer — never a float.
-   */
   _cbReply(res, result, status, data) {
     const body = { result, status };
     if (data !== undefined) body.data = data;
@@ -547,18 +520,6 @@ export class WebServer {
     res.end(JSON.stringify(body));
   }
 
-  // ============================================================================
-  // GoldSlot Seamless Callback API
-  // POST /callback
-  //
-  // Commands (all per the official spec):
-  //   authenticate — verify user exists, return balance
-  //   balance      — return current balance  (must reply <2 s)
-  //   bet          — deduct bet amount       (must reply <2 s)
-  //   win          — credit win amount (0 on loss)
-  //   cancel       — refund a bet (BetCancel type 16)
-  //   status       — report whether a trans_guid was processed
-  // ============================================================================
   async _handleCallback(req, res) {
     if (!this._isValidCallbackToken(req)) {
       console.warn("[Callback] Rejected — bad Callback-Token");
@@ -575,14 +536,12 @@ export class WebServer {
     const { command, data, check } = payload;
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
-    // Parse fields — types matter (balance must be int)
     const account         = String(data.account         ?? "");
     const transGuid       = String(data.trans_guid      ?? "");
     const cancelTransGuid = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
-    const amount          = Number(data.amount ?? 0);   // may be 0 (loss win)
+    const amount          = Number(data.amount ?? 0);
     const checks          = String(check ?? "").split(",").map(s => s.trim());
 
-    // ── Resolve DB user ───────────────────────────────────────────────────────
     let user;
     try { user = await this.db.getUser(account); }
     catch (e) {
@@ -590,48 +549,37 @@ export class WebServer {
       return this._cbReply(res, 1001, "INTERNAL_ERROR");
     }
 
-    // Check 21 — user must exist
     if (checks.includes("21") && !user) {
       console.warn(`[Callback] USER_NOT_FOUND account=${account} cmd=${command}`);
       return this._cbReply(res, 1, "USER_NOT_FOUND");
     }
-    // Check 22 — user must not be banned/inactive
     if (checks.includes("22") && user?.banned) {
       return this._cbReply(res, 1, "USER_INACTIVE");
     }
 
-    // Always work with integer balances
     const currentBal = Math.round(Number(user?.bal ?? 0));
 
-    // ══ authenticate ══════════════════════════════════════════════════════════
     if (command === "authenticate") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
       console.log(`[Callback] authenticate account=${account} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { account, balance: currentBal });
     }
 
-    // ══ balance ═══════════════════════════════════════════════════════════════
-    // ⚠ Must respond within 2 seconds.
     if (command === "balance") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
       console.log(`[Callback] balance account=${account} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { balance: currentBal });
     }
 
-    // ══ bet ═══════════════════════════════════════════════════════════════════
-    // ⚠ Must respond within 2 seconds.
-    // On timeout/500 GoldSlot automatically sends a cancel to refund the bet.
     if (command === "bet") {
-      // Check 41 — idempotency: duplicate bet → return current balance silently
       if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
         console.warn(`[Callback] Duplicate bet ignored trans=${transGuid}`);
         return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
-      const betAmt = Math.round(amount); // integer
+      const betAmt = Math.round(amount);
 
-      // Check 31 — insufficient balance
       if (betAmt > 0 && currentBal < betAmt) {
         console.warn(`[Callback] BALANCE_NOT_ENOUGH account=${account} bal=${currentBal} bet=${betAmt}`);
         return this._cbReply(res, 1, "BALANCE_NOT_ENOUGH");
@@ -654,10 +602,7 @@ export class WebServer {
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ══ win ═══════════════════════════════════════════════════════════════════
-    // Called for both wins AND losses (amount=0 on loss). Always return OK.
     if (command === "win") {
-      // Check 41 — idempotency
       if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
         const existing = this._processedTrans.get(transGuid);
         if (existing?.type === "win") {
@@ -681,7 +626,6 @@ export class WebServer {
           return this._cbReply(res, 1001, "INTERNAL_ERROR");
         }
       } else {
-        // Loss — record it if recordGame supports that
         await this.db.recordGame(account, false, 0).catch(() => {});
       }
 
@@ -690,19 +634,13 @@ export class WebServer {
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ══ cancel ════════════════════════════════════════════════════════════════
-    // Refunds a previous bet (BetCancel, type 16).
-    // Sent on: timeout, 500 error, or explicit cancel.
-    // Retried up to 50× every 2–4 s until OK.
     if (command === "cancel") {
-      // Check 43 — idempotency: duplicate cancel
       if (checks.includes("43") && cancelTransGuid && this._processedTrans.has(cancelTransGuid)) {
         console.warn(`[Callback] Duplicate cancel ignored cancelTrans=${cancelTransGuid}`);
         return this._cbReply(res, 0, "OK", { balance: currentBal });
       }
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
 
-      // Use stored bet amount for exact refund; fall back to payload amount
       const originalBet = Math.round(
         this._processedTrans.get(transGuid)?.amount ?? amount
       );
@@ -719,7 +657,6 @@ export class WebServer {
         }
       }
 
-      // Mark cancel guid; void the original bet entry
       this._markTrans(cancelTransGuid, { type: "cancel", account, amount: originalBet });
       if (transGuid) this._processedTrans.delete(transGuid);
 
@@ -727,11 +664,8 @@ export class WebServer {
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
 
-    // ══ status ════════════════════════════════════════════════════════════════
-    // GoldSlot checks whether a specific trans_guid was processed.
     if (command === "status") {
       const entry = this._processedTrans.get(transGuid);
-      // Check 42 — if missing and check 42 is required, report not found
       if (checks.includes("42") && !entry) {
         return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
       }
@@ -747,12 +681,8 @@ export class WebServer {
     return this._cbReply(res, 1, "UNKNOWN_COMMAND");
   }
 
-  // ── Server lifecycle ────────────────────────────────────────────────────────
-
   async start() {
     _preloadAssets();
-
-    // Warm up the game catalogue in the background — errors are non-fatal
     this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm failed:", e));
 
     this._server = http.createServer((req, res) =>
@@ -764,14 +694,11 @@ export class WebServer {
     this._server.listen(this.port, "0.0.0.0", () =>
       console.log(`[Web] SirGreen Casino on port ${this.port}`));
 
-    // Clean up expired OAuth states every 10 minutes
     setInterval(() => {
       const cut = Date.now() - 15 * 60 * 1000;
       for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
     }, 10 * 60 * 1000);
   }
-
-  // ── Request router ──────────────────────────────────────────────────────────
 
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
@@ -779,15 +706,11 @@ export class WebServer {
 
     if (p === "/") return this._redirect(res, "/lobby");
 
-    // Favicon
     if (p === "/favicon.ico") {
       if (fs.existsSync(FAVICON_PATH)) return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
       res.writeHead(204); return res.end();
     }
 
-    // ── GoldSlot Seamless Callback ──────────────────────────────────────────
-    // GET /callback → 200 OK health-check (lets GoldSlot admin verify the URL)
-    // POST /callback → actual seamless wallet handler
     if (p === "/callback") {
       if (req.method === "GET") {
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -797,7 +720,19 @@ export class WebServer {
       res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
     }
 
-    // ── Static game assets ──────────────────────────────────────────────────
+    // ── Debug endpoint ─────────────────────────────────────────────────────────
+    // GET /api/goldslot/debug — returns raw API responses for diagnosis
+    if (p === "/api/goldslot/debug" && req.method === "GET") {
+      if (!this.goldSlot) {
+        return this._json(res, 503, { error: "goldSlotApiToken not configured" });
+      }
+      const out = {};
+      try { out.agentInfo    = await this.goldSlot.agentInfo(); }    catch (e) { out.agentInfo    = { error: e.message }; }
+      try { out.getAllGames  = await this.goldSlot.getAllGames(1); }  catch (e) { out.getAllGames  = { error: e.message }; }
+      try { out.getProviders = await this.goldSlot.getProviders(1); } catch (e) { out.getProviders = { error: e.message }; }
+      return this._json(res, 200, out);
+    }
+
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
@@ -807,7 +742,6 @@ export class WebServer {
       res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
-    // ── Lobby ───────────────────────────────────────────────────────────────
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -819,7 +753,6 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
 
-    // ── Launch game ─────────────────────────────────────────────────────────
     if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -847,7 +780,6 @@ export class WebServer {
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
 
-      // Refresh game meta (usually cached)
       await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameId));
       const gameName = gameMeta?.name ?? gameId;
@@ -858,7 +790,6 @@ export class WebServer {
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // ── Sync balance (Transfer Mode pull-back) ──────────────────────────────
     if (p === "/api/goldslot/sync-balance" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -869,7 +800,6 @@ export class WebServer {
       return this._json(res, 200, { ok: true, newBal });
     }
 
-    // ── Balance API ─────────────────────────────────────────────────────────
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -877,7 +807,6 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Login ───────────────────────────────────────────────────────────────
     if (p === "/login" && req.method === "GET") {
       if (!this.clientId)
         return this._html(res, 500, errPage("⚠️ Not Configured",
@@ -888,7 +817,6 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl));
     }
 
-    // ── OAuth callback ──────────────────────────────────────────────────────
     if (p === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
@@ -943,7 +871,6 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
-    // ── Logout ──────────────────────────────────────────────────────────────
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
