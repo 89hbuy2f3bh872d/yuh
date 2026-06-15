@@ -7,6 +7,10 @@
  *   userInfo({ user_code }) returns { name, balance }
  *   All wallet and game-launch calls identify the user via user_code (integer).
  *   There is NO user_id field — the unique key is `name`, and the handle is `user_code`.
+ *
+ * The panel's leftmost number column (407830262 etc.) is NOT the user_code —
+ * it is an internal account/row ID. The real user_code is the small integer
+ * returned in the API response body.
  */
 
 import https from "https";
@@ -16,7 +20,6 @@ import { URL } from "url";
 
 /**
  * Sanitise a display name so it always meets the API min-length-2 rule.
- * Names must be unique per agent — we prefix with "gs_" + localUid.
  */
 function safeName(raw, fallback) {
   let n = String(raw ?? fallback ?? "").trim().replace(/[\x00-\x1f]/g, "").trim();
@@ -92,6 +95,12 @@ export class GoldSlotAPI {
   // Returns: { code, data: { name, balance } }
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
+  }
+
+  // userInfoByName: non-standard fallback — some API builds accept { name } on /v4/user/info.
+  // Used only when user_code from userCreate looks wrong (sanity-check in _ensureGsUser).
+  userInfoByName(name) {
+    return this._post("/v4/user/info", { name: safeName(name) });
   }
 
   // 3. Wallet (Transfer Mode) — all identified by user_code

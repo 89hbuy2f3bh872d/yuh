@@ -114,7 +114,7 @@ function readBody(req){return new Promise((resolve,reject)=>{const chunks=[];req
 
 function serveBufferWithRanges(req,res,buf,mime,cc="public, max-age=86400"){
   const total=buf.length,rh=req.headers.range;
-  if(rh){const m=/bytes=(\d*)-(\d*)/.exec(rh);const start=m&&m[1]?parseInt(m[1],10):0;const end=m&&m[2]?parseInt(m[2],10):total-1;const safe=Math.min(end,total-1);if(start>=total||start>safe){res.writeHead(416,{"Content-Range":`bytes */${total}`});return res.end();}res.writeHead(206,{"Content-Range":`bytes ${start}-${safe}/${total}`,"Accept-Ranges":"bytes","Content-Length":safe-start+1,"Content-Type":mime,"Cache-Control":cc});return res.end(buf.slice(start,safe+1));}
+  if(rh){const m=/bytes=(\d*)-(\d*)/.exec(rh);const start=m&&m[1]?parseInt(m[1],10):0;const end=m&&m[2]?parseInt(m[2],10):total-1;const safe=Math.min(end,total-1);if(start>=total||start>safe){res.writeHead(416,{"Content-Range":`bytes */${total}`});return res.end();}res.writeHead(206,{"Content-Range":`bytes ${start}-${safe}/${total}`,"Accept-Length":safe-start+1,"Content-Type":mime,"Cache-Control":cc});return res.end(buf.slice(start,safe+1));}
   res.writeHead(200,{"Content-Type":mime,"Content-Length":total,"Accept-Ranges":"bytes","Cache-Control":cc});res.end(buf);
 }
 function serveFileWithRanges(req,res,fp,mime=getMime(fp),cc="public, max-age=86400"){
@@ -276,9 +276,7 @@ export class WebServer {
     this._gamesCacheTs= 0;
     this._gameById    = new Map();
     this._processedTrans = new Map();
-    // Maps local FC uid → GoldSlot user_code (integer)
-    // The API uses `name` as the unique key and returns `user_code` as the handle.
-    // All wallet/game calls must use user_code, NOT name or any local uid.
+    // localUid → GoldSlot user_code (small integer, the ONLY valid handle for wallet/game calls)
     this._gsUserCodeMap = new Map();
   }
 
@@ -329,34 +327,50 @@ export class WebServer {
   }
 
   /**
-   * Ensure a GoldSlot account exists for the given local FC uid.
+   * Resolve the GoldSlot user_code for a local FC uid.
    *
-   * The API flow:
-   *   POST /v4/user/create { name: "gs_<uid>" }
-   *   → { code: 0, data: { user_code: 3, is_new_user: true/false } }
+   * IMPORTANT: The API panel shows a row number / account_id column that looks
+   * like user_code but is NOT. The actual user_code is the small integer returned
+   * in { data: { user_code } } from /v4/user/create and /v4/user/info.
    *
-   * `user_code` is the integer handle for ALL subsequent wallet/game calls.
-   * The `name` is unique — re-calling create with the same name returns the existing user_code.
+   * Strategy (called fresh on every game launch per the API docs):
+   *   1. POST /v4/user/create { name: "gs_<uid>" }  — idempotent, returns existing user
+   *   2. Log the FULL raw response so we can see exactly what the API sends back
+   *   3. Extract user_code from data.user_code
+   *   4. If create returns code 0 but user_code looks wrong (>1e9), fall back to
+   *      POST /v4/user/info { name: "gs_<uid>" } to get the authoritative value
    *
    * Returns user_code (number) or null on failure.
    */
   async _ensureGsUser(localUid){
     if(!this.goldSlot)return null;
 
-    // Return cached user_code from this session
-    if(this._gsUserCodeMap.has(localUid)){
-      return this._gsUserCodeMap.get(localUid);
-    }
-
-    // Stable unique name for this FC user — prefix prevents collisions with other agents
     const name=`gs_${localUid}`;
     try{
       const resp=await this.goldSlot.userCreate(name);
-      if(resp.code===0&&resp.data?.user_code!=null){
-        const userCode=Number(resp.data.user_code);
-        this._gsUserCodeMap.set(localUid,userCode);
+      // Log the full raw response — critical for diagnosing user_code field issues
+      console.log(`[GoldSlot] userCreate raw response for name=${name}:`, JSON.stringify(resp));
+
+      if(resp.code===0&&resp.data!=null){
+        let userCode=Number(resp.data.user_code);
+
+        // Sanity-check: user_code should be a small-ish integer (< 1 billion).
+        // If it looks like a snowflake ID (>= 1e12) the API returned the wrong field.
+        if(!Number.isFinite(userCode)||userCode<=0||userCode>=1e12){
+          console.warn(`[GoldSlot] user_code ${userCode} looks wrong — falling back to /v4/user/info by name`);
+          const infoResp=await this.goldSlot.userInfoByName(name);
+          console.log(`[GoldSlot] userInfoByName raw:`, JSON.stringify(infoResp));
+          if(infoResp.code===0&&infoResp.data?.user_code!=null){
+            userCode=Number(infoResp.data.user_code);
+          } else {
+            console.error("[GoldSlot] userInfoByName also failed:",infoResp);
+            return null;
+          }
+        }
+
         const status=resp.data.is_new_user?"created":"existing";
         console.log(`[GoldSlot] User ${status}: name=${name} user_code=${userCode}`);
+        this._gsUserCodeMap.set(localUid,userCode);
         return userCode;
       }
       console.error("[GoldSlot] userCreate failed:",resp);
@@ -364,10 +378,6 @@ export class WebServer {
     }catch(e){console.error("[GoldSlot] _ensureGsUser:",e);return null;}
   }
 
-  /**
-   * Deposit the user's full FC balance into GoldSlot.
-   * Uses GoldSlot user_code (integer), NOT the local FC uid.
-   */
   async _depositToGS(localUid, userCode){
     if(!this.goldSlot)return 0;
     const user=await this.db.getUser(localUid);
@@ -378,20 +388,16 @@ export class WebServer {
     try{
       console.log(`[GoldSlot] walletDeposit user_code=${userCode} amount=${gsPoints}`);
       const resp=await this.goldSlot.walletDeposit(userCode,gsPoints);
+      console.log(`[GoldSlot] walletDeposit response:`, JSON.stringify(resp));
       if(resp.code===0){await this.db.updateBalance(localUid,-fcBal);return gsPoints;}
       console.error("[GoldSlot] walletDeposit error:",resp);
       return 0;
     }catch(e){console.error("[GoldSlot] _depositToGS:",e);return 0;}
   }
 
-  /**
-   * Withdraw all remaining GoldSlot balance back into FC wallet.
-   * Uses GoldSlot user_code.
-   */
   async _withdrawFromGS(localUid){
     if(!this.goldSlot)return 0;
     let userCode=this._gsUserCodeMap.get(localUid);
-    // If not cached (e.g. after a restart), re-resolve via userCreate (idempotent)
     if(userCode==null){
       userCode=await this._ensureGsUser(localUid);
       if(userCode==null)return 0;
@@ -403,7 +409,7 @@ export class WebServer {
         if(returned>0)await this.db.updateBalance(localUid,returned);
         return returned;
       }
-      if(resp.code===2006)return 0; // already empty — not an error
+      if(resp.code===2006)return 0;
       console.error("[GoldSlot] walletWithdrawAll error:",resp);
       return 0;
     }catch(e){console.error("[GoldSlot] _withdrawFromGS:",e);return 0;}
@@ -513,7 +519,14 @@ export class WebServer {
       if(!this.goldSlot)return this._json(res,503,{error:"goldSlotApiToken not configured"});
       const out={};
       try{out.agentInfo=await this.goldSlot.agentInfo();}catch(e){out.agentInfo={error:e.message};}
-      try{out.getAllGames=await this.goldSlot.getAllGames(1);}catch(e){out.getAllGames={error:e.message};}
+      try{
+        // Test user_code resolution for a known test name
+        const testName="gs_debug_test";
+        out.userCreate=await this.goldSlot.userCreate(testName);
+        if(out.userCreate.code===0){
+          out.userInfoByCode=await this.goldSlot.userInfo(out.userCreate.data.user_code);
+        }
+      }catch(e){out.userDebug={error:e.message};}
       return this._json(res,200,out);
     }
     if(p.startsWith("/assets/")){
@@ -542,11 +555,10 @@ export class WebServer {
       if(!gameCode)return this._redirect(res,"/lobby");
       if(!this.goldSlot)return this._html(res,503,errPage("⚠️ Not Configured","goldSlotApiToken is not set.","/lobby","Back"));
 
-      // Resolve GoldSlot user_code (idempotent — same name returns existing code)
+      // Always resolve fresh per API recommendation (call every login)
       const userCode=await this._ensureGsUser(uid);
       if(userCode==null)return this._html(res,500,errPage("⚠️ Error","Could not create your casino account. Try again.","/lobby","Back"));
 
-      // Deposit FC balance into GoldSlot using user_code
       await this._depositToGS(uid,userCode);
 
       let gameUrl;
