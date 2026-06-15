@@ -786,8 +786,16 @@ export class WebServer {
     }
 
     // ── GoldSlot Seamless Callback ──────────────────────────────────────────
-    if (p === "/callback" && req.method === "POST")
-      return this._handleCallback(req, res);
+    // GET /callback → 200 OK health-check (lets GoldSlot admin verify the URL)
+    // POST /callback → actual seamless wallet handler
+    if (p === "/callback") {
+      if (req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, service: "SirGreen Casino callback" }));
+      }
+      if (req.method === "POST") return this._handleCallback(req, res);
+      res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
+    }
 
     // ── Static game assets ──────────────────────────────────────────────────
     if (p.startsWith("/assets/")) {
@@ -941,7 +949,7 @@ export class WebServer {
       if (uid) {
         await this._withdrawFromGS(uid).catch(() => {});
         const c = parseCookies(req);
-        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
+        if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {};
       }
       res.setHeader("Set-Cookie", [
         "sid=; Path=/; Max-Age=0",
