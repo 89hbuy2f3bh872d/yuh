@@ -275,7 +275,6 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
 <iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
 (function(){
-  // Poll balance from DB via callback — seamless mode, no wallet transfer needed
   async function refreshBal() {
     try {
       const r = await fetch('/api/balance');
@@ -304,7 +303,9 @@ export class WebServer {
     this._states      = new Map();
     const gsToken     = config.goldSlotApiToken ?? "";
     const gsUrl       = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
-    this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
+    // Pass the callback URL so getGameUrl includes it (required for seamless mode)
+    const gsCbUrl     = `${this.baseUrl}/callback`;
+    this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl, gsCbUrl) : null;
     this.callbackToken = config.goldSlotCallbackToken ?? "";
     this.gsParent     = config.goldSlotParent ?? "";
     this._gamesCache  = null;
@@ -325,6 +326,7 @@ export class WebServer {
       console.log(`[GoldSlot] userCreate raw response for name=${name}:`, JSON.stringify(resp));
       if (resp.code !== 0) { console.error("[GoldSlot] userCreate failed:", resp); return null; }
       const userCode = resp.data?.user_code ?? null;
+      if (!userCode) { console.error("[GoldSlot] userCreate returned no user_code:", resp); return null; }
       const isNew    = resp.data?.is_new_user === true;
       console.log(`[GoldSlot] User ${isNew ? "created" : "existing"}: name=${name} userCode=${userCode}`);
       const entry = { name, userCode };
@@ -421,12 +423,12 @@ export class WebServer {
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
     // data.account = "gs_<localUid>" — strip prefix to get local uid
-    const gsAccount     = String(data.account ?? "");
-    const localUid      = gsAccount.startsWith("gs_") ? gsAccount.slice(3) : gsAccount;
-    const transGuid     = String(data.trans_guid ?? "");
+    const gsAccount       = String(data.account ?? "");
+    const localUid        = gsAccount.startsWith("gs_") ? gsAccount.slice(3) : gsAccount;
+    const transGuid       = String(data.trans_guid ?? "");
     const cancelTransGuid = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
-    const amount        = Number(data.amount ?? 0);
-    const checks        = String(check ?? "").split(",").map(s => s.trim());
+    const amount          = Number(data.amount ?? 0);
+    const checks          = String(check ?? "").split(",").map(s => s.trim());
 
     let user;
     try { user = await this.db.getUser(localUid); } catch(e) { console.error("[Callback] DB:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
@@ -438,7 +440,7 @@ export class WebServer {
 
     if (command === "authenticate") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      console.log(`[Callback] authenticate account=${gsAccount} localUid=${localUid} bal=${currentBal}`);
+      console.log(`[Callback] authenticate account=${gsAccount} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { account: gsAccount, balance: currentBal });
     }
     if (command === "balance") {
@@ -605,7 +607,10 @@ export class WebServer {
       const gs = await this._ensureGsUser(uid);
       if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
 
-      // 2. Get game launch URL — MUST pass userCode (integer), not name string
+      // 2. Get game launch URL
+      //    user_code = integer from userCreate
+      //    lobby_url = back-button destination
+      //    callback_url = this server's /callback (required for seamless mode)
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, `${this.baseUrl}/lobby`, 1);
@@ -618,7 +623,7 @@ export class WebServer {
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
 
-      await this._fetchGames(); // ensure _gameById is warm
+      await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameCode));
       const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameCode;
       const user     = await this.db.getUser(uid);

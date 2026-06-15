@@ -6,12 +6,20 @@
  *         /v4/wallet/* endpoints are NOT used.
  *
  *   /v4/user/create  → body: { name }          → returns user_code (integer)
- *   /v4/game/game-url→ body: { user_code: int } → MUST be integer, not name string
- *   /v4/game/all     → returns grouped or flat game list
+ *   /v4/game/game-url→ body: { user_code: int,  → MUST be integer, not name string
+ *                              game_code: string,
+ *                              language: int,
+ *                              lobby_url: string,   ← back button URL
+ *                              callback_url: string }← seamless wallet URL
  *
  *   Callback from GoldSlot server → POST /callback
- *     data.account = the name string you passed to userCreate ("gs_<localUid>")
+ *     data.account = the name string passed to userCreate ("gs_<localUid>")
  *     commands: authenticate, balance, bet, win, cancel, status
+ *
+ *   VALIDATION_ERROR 1002 causes:
+ *     - Sending unknown field names (return_url instead of lobby_url)
+ *     - Missing required fields (callback_url in seamless mode)
+ *     - user_code passed as string instead of integer
  */
 
 import https from "https";
@@ -26,9 +34,10 @@ function safeName(raw, fallback) {
 }
 
 export class GoldSlotAPI {
-  constructor(apiToken, baseUrl = "https://agent.goldslotpalase.com") {
-    this.apiToken = apiToken;
-    this.baseUrl  = baseUrl.replace(/\/$/, "");
+  constructor(apiToken, baseUrl = "https://agent.goldslotpalase.com", callbackUrl = "") {
+    this.apiToken    = apiToken;
+    this.baseUrl     = baseUrl.replace(/\/$/, "");
+    this.callbackUrl = callbackUrl; // e.g. "https://www.sirgreen.online/callback"
   }
 
   _post(path, body = {}) {
@@ -84,7 +93,7 @@ export class GoldSlotAPI {
     return this._post("/v4/user/create", body);
   }
 
-  // Lookup by integer user_code (informational only).
+  // Lookup by integer user_code.
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
@@ -92,17 +101,26 @@ export class GoldSlotAPI {
   // ── 4. Game Details ───────────────────────────────────────────────────────
   getProviders(lang = 1) { return this._post("/v4/game/providers", { language: lang }); }
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
-  getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
+  getAllGames(lang = 1)  { return this._post("/v4/game/all",      { language: lang }); }
 
   // ── 5. Game Launch ────────────────────────────────────────────────────────
-  // MUST pass user_code (integer) — NOT the name string.
-  getGameUrl(userCode, gameCode, returnUrl = "", lang = 1) {
-    return this._post("/v4/game/game-url", {
-      user_code:  Number(userCode),
-      game_code:  String(gameCode),
-      return_url: returnUrl,
-      language:   lang,
-    });
+  //
+  // user_code  — integer returned by userCreate (NEVER the name string)
+  // gameCode   — game_code string from getAllGames
+  // lobbyUrl   — where the in-game back/exit button returns the player
+  // lang       — language id (1 = English)
+  //
+  // Seamless mode requires callback_url so GoldSlot knows where to POST
+  // bet/win/cancel events. Without it the API returns VALIDATION_ERROR 1002.
+  getGameUrl(userCode, gameCode, lobbyUrl = "", lang = 1) {
+    const body = {
+      user_code: Number(userCode),   // integer — MUST NOT be string
+      game_code: String(gameCode),
+      language:  lang,
+    };
+    if (lobbyUrl)        body.lobby_url    = lobbyUrl;
+    if (this.callbackUrl) body.callback_url = this.callbackUrl;
+    return this._post("/v4/game/game-url", body);
   }
 
   getOnlineGames() { return this._post("/v4/game/online-games"); }
