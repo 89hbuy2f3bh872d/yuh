@@ -1,27 +1,21 @@
 {
-  "_comment": "Fluxer Casino Bot — copy this to config.json and fill in your values.",
-  "token": "YOUR_BOT_TOKEN",
-  "prefix": "&",
-  "embedColor": "0xf5c518",
-  "owners": ["YOUR_FLUXER_USER_ID"],
-  "webBaseUrl": "https://sirgreen.online",
-  "webHost": "0.0.0.0",
-  "webPort": 80,
-  "fluxerClientId":     "YOUR_CLIENT_ID",
-  "fluxerClientSecret": "YOUR_CLIENT_SECRET",
+  "_comment": "Copy this file to config.json and fill in your values.",
 
-  "goldSlotApiUrl":         "https://agent.goldslotpalase.com",
-  "goldSlotApiToken":       "YOUR_GOLDSLOT_API_TOKEN",
-  "goldSlotCallbackToken":  "YOUR_GOLDSLOT_CALLBACK_TOKEN",
+  "token":              "YOUR_FLUXER_BOT_TOKEN",
+  "mongoUri":           "mongodb://localhost:27017",
+  "dbName":             "fluxer_casino",
 
-  "mongodb": {
-    "uri": "mongodb+srv://user:pass@cluster.mongodb.net/casino?retryWrites=true&w=majority",
-    "database": "fluxer_casino"
-  },
-  "presenceContents": [
-    { "text": "!help | 🎰 Casino", "emoji_name": "🎰" }
-  ],
-  "fluxer.js": {
-    "rest": { "timeout": 30000, "retries": 3 }
-  }
+  "fluxerClientId":     "YOUR_FLUXER_OAUTH_CLIENT_ID",
+  "fluxerClientSecret": "YOUR_FLUXER_OAUTH_CLIENT_SECRET",
+  "webBaseUrl":         "https://www.sirgreen.online",
+  "webPort":            80,
+
+  "goldSlotApiUrl":        "https://agent.goldslotpalase.com",
+  "goldSlotApiToken":      "445cac41-de57-4e3c-9aed-7a5aa949236b",
+  "goldSlotCallbackToken": "9a7bc98e-098c-4c54-b941-d67fa8e4309d",
+
+  "_callbackUrl_note": "Set your Callback URL to https://www.sirgreen.online/callback in https://admin.goldslotpalase.com/#/settings",
+
+  "dailyAmount":        100,
+  "currencySymbol":     "FC"
 }
