@@ -617,10 +617,12 @@ export class WebServer {
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, resolvedPid, `${this.baseUrl}/lobby`, 1);
-        console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} provider_id=${resolvedPid} game_code=${gameCode} → code:${urlResp.code}`, urlResp.data?.url ?? urlResp.message ?? "");
-        if (urlResp.code !== 0 || !urlResp.data?.url)
+        // API returns data.game_url (not data.url)
+        const launchUrl = urlResp.data?.game_url ?? urlResp.data?.url ?? null;
+        console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} provider_id=${resolvedPid} game_code=${gameCode} → code:${urlResp.code} url:${launchUrl ?? "(none)"}`);
+        if (urlResp.code !== 0 || !launchUrl)
           return this._html(res, 500, errPage("⚠️ Error", `Could not launch game (code ${urlResp.code}: ${urlResp.message ?? ""}). Ensure the provider is enabled in GoldSlot admin.`, "/lobby", "Back to Lobby"));
-        gameUrl = urlResp.data.url;
+        gameUrl = launchUrl;
       } catch(e) {
         console.error("[GoldSlot] getGameUrl:", e);
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
