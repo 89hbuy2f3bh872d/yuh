@@ -1,8 +1,6 @@
 /**
  * GoldSlotAPI.mjs
  * Thin wrapper around the agent.goldslotpalase.com v4 REST API.
- * All methods return the parsed JSON body from the API.
- * Throws on network errors; callers should handle API-level { code } values.
  */
 
 import https from "https";
@@ -10,19 +8,26 @@ import http from "http";
 import zlib from "zlib";
 import { URL } from "url";
 
+/**
+ * Sanitise a display name so it always meets the API's min-length-2 rule.
+ * Strips to alphanumeric + spaces, then pads with "_" if still too short.
+ */
+function safeName(raw, fallback) {
+  let n = String(raw ?? fallback ?? "").trim();
+  // Remove characters the API is likely to reject (control chars, etc.)
+  n = n.replace(/[\x00-\x1f]/g, "").trim();
+  // Must be at least 2 chars
+  if (n.length < 2) n = (n + "__").slice(0, Math.max(2, n.length + 2));
+  // Truncate to a safe max (most APIs cap display names at 64)
+  return n.slice(0, 64);
+}
+
 export class GoldSlotAPI {
-  /**
-   * @param {string} apiToken   - Bearer token from agent settings
-   * @param {string} [baseUrl]  - defaults to https://agent.goldslotpalase.com
-   */
   constructor(apiToken, baseUrl = "https://agent.goldslotpalase.com") {
     this.apiToken = apiToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  // ---------------------------------------------------------------------------
-  // Internal HTTP helper
-  // ---------------------------------------------------------------------------
   _post(path, body = {}) {
     return new Promise((resolve, reject) => {
       const parsed = new URL(`${this.baseUrl}${path}`);
@@ -54,16 +59,10 @@ export class GoldSlotAPI {
             let decomp;
             try {
               decomp =
-                enc === "br"
-                  ? zlib.brotliDecompressSync(raw)
-                  : enc === "gzip"
-                    ? zlib.gunzipSync(raw)
-                    : enc === "deflate"
-                      ? zlib.inflateSync(raw)
-                      : raw;
-            } catch {
-              decomp = raw;
-            }
+                enc === "br"  ? zlib.brotliDecompressSync(raw) :
+                enc === "gzip"    ? zlib.gunzipSync(raw) :
+                enc === "deflate" ? zlib.inflateSync(raw) : raw;
+            } catch { decomp = raw; }
             try {
               resolve(JSON.parse(decomp.toString("utf8")));
             } catch (e) {
@@ -78,128 +77,58 @@ export class GoldSlotAPI {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // 1. Agent Account
-  // ---------------------------------------------------------------------------
+  // 1. Agent
+  agentInfo() { return this._post("/v4/agent/info"); }
 
-  /** Get agent information */
-  agentInfo() {
-    return this._post("/v4/agent/info");
-  }
-
-  // ---------------------------------------------------------------------------
   // 2. User Account
-  // ---------------------------------------------------------------------------
-
   /**
-   * Create a user in the GoldSlot system.
-   * @param {string} userId   - unique identifier (e.g. Discord/Fluxer user ID)
-   * @param {string} [name]   - display name shown in the casino (defaults to userId)
-   * @param {number} [lang]   - language code 1-33 (default 1 = English)
+   * @param {string} userId
+   * @param {string} [name]  - display name; must be ≥2 chars (enforced here)
+   * @param {number} [lang]
    */
   userCreate(userId, name, lang = 1) {
+    const displayName = safeName(name ?? userId, userId);
     return this._post("/v4/user/create", {
       user_id: String(userId),
-      name: String(name ?? userId),   // 'name' is required by the API
+      name: displayName,
       language: lang,
     });
   }
 
-  /**
-   * Get GoldSlot user info (balance, status …)
-   * @param {string} userId
-   */
   userInfo(userId) {
     return this._post("/v4/user/info", { user_id: String(userId) });
   }
 
-  // ---------------------------------------------------------------------------
-  // 3. User Wallet  (Transfer Mode)
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Deposit points into the user's GoldSlot wallet.
-   * @param {string} userId
-   * @param {number} amount    - positive integer
-   * @param {string} [txId]    - unique transaction ID you supply
-   */
+  // 3. Wallet (Transfer Mode)
   walletDeposit(userId, amount, txId) {
-    const tx_id = txId ?? `dep_${userId}_${Date.now()}`;
     return this._post("/v4/wallet/deposit", {
       user_id: String(userId),
       amount: Math.floor(amount),
-      tx_id,
+      tx_id: txId ?? `dep_${userId}_${Date.now()}`,
     });
   }
 
-  /**
-   * Withdraw a specific amount from the user's GoldSlot wallet.
-   * @param {string} userId
-   * @param {number} amount
-   * @param {string} [txId]
-   */
   walletWithdraw(userId, amount, txId) {
-    const tx_id = txId ?? `wd_${userId}_${Date.now()}`;
     return this._post("/v4/wallet/withdraw", {
       user_id: String(userId),
       amount: Math.floor(amount),
-      tx_id,
+      tx_id: txId ?? `wd_${userId}_${Date.now()}`,
     });
   }
 
-  /**
-   * Withdraw ALL funds from the user's GoldSlot wallet back to the agent.
-   * @param {string} userId
-   * @param {string} [txId]
-   */
   walletWithdrawAll(userId, txId) {
-    const tx_id = txId ?? `wdall_${userId}_${Date.now()}`;
     return this._post("/v4/wallet/withdraw-all", {
       user_id: String(userId),
-      tx_id,
+      tx_id: txId ?? `wdall_${userId}_${Date.now()}`,
     });
   }
 
-  // ---------------------------------------------------------------------------
   // 4. Game Details
-  // ---------------------------------------------------------------------------
+  getProviders(lang = 1) { return this._post("/v4/game/providers", { language: lang }); }
+  getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
+  getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  /**
-   * Get list of available game providers.
-   * @param {number} [lang]  - language code (default 1 = English)
-   */
-  getProviders(lang = 1) {
-    return this._post("/v4/game/providers", { language: lang });
-  }
-
-  /**
-   * Get games for a specific provider.
-   * @param {string} provider  - provider code e.g. "PP", "CQ9", "PG"
-   * @param {number} [lang]
-   */
-  getGames(provider, lang = 1) {
-    return this._post("/v4/game/games", { provider, language: lang });
-  }
-
-  /**
-   * Get ALL games across all providers.
-   * @param {number} [lang]
-   */
-  getAllGames(lang = 1) {
-    return this._post("/v4/game/all", { language: lang });
-  }
-
-  // ---------------------------------------------------------------------------
   // 5. Game Launch
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Get the launch URL for a game.
-   * @param {string} userId
-   * @param {string} gameId    - game_code from the games list
-   * @param {string} [returnUrl] - URL to return to after the game
-   * @param {number} [lang]
-   */
   getGameUrl(userId, gameId, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
       user_id: String(userId),
@@ -209,41 +138,14 @@ export class GoldSlotAPI {
     });
   }
 
-  /**
-   * Get list of currently running (online) games.
-   */
-  getOnlineGames() {
-    return this._post("/v4/game/online-games");
-  }
+  getOnlineGames() { return this._post("/v4/game/online-games"); }
 
-  // ---------------------------------------------------------------------------
-  // 6. Game Transactions
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Search transactions by time range.
-   * @param {string} startDate  - "YYYY-MM-DD HH:mm:ss"
-   * @param {string} endDate
-   * @param {object} [opts]     - optional filters: user_id, provider, page, page_size
-   */
+  // 6. Transactions
   getTransactions(startDate, endDate, opts = {}) {
-    return this._post("/v4/game/transaction", {
-      start_date: startDate,
-      end_date: endDate,
-      ...opts,
-    });
+    return this._post("/v4/game/transaction", { start_date: startDate, end_date: endDate, ...opts });
   }
 
-  // ---------------------------------------------------------------------------
   // 7. Statistics
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Get per-user statistics.
-   * @param {string} userId
-   * @param {string} startDate
-   * @param {string} endDate
-   */
   getUserStats(userId, startDate, endDate) {
     return this._post("/v4/statistics/user", {
       user_id: String(userId),
