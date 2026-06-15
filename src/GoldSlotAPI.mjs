@@ -1,23 +1,32 @@
 /**
  * GoldSlotAPI.mjs — agent.goldslotpalase.com v4
  *
- * CONFIRMED from Postman docs + live API behaviour:
+ * CONFIRMED from live API + verbose logging:
  *   MODE: Seamless — the callback URL IS the wallet.
  *         /v4/wallet/* endpoints are NOT used.
  *
- *   /v4/user/create  → body: { name }          → returns user_code (integer)
- *   /v4/game/game-url→ body: { user_code: int,  → MUST be integer, not name string
- *                              game_code: string,
- *                              language: int,
- *                              lobby_url: string,   ← back button URL
- *                              callback_url: string }← seamless wallet URL
+ *   /v4/user/create  → body: { name }                    → returns user_code (integer)
+ *   /v4/game/all     → returns games with field: game_code (e.g. "vs20fruitsw")
+ *   /v4/game/game-url→ body: { user_code:    integer,     ← MUST be integer, not string
+ *                              game_symbol:   string,      ← SAME VALUE as game_code from /game/all
+ *                              language:      integer,       ← 1 = English
+ *                              lobby_url:     string,       ← back button URL
+ *                              callback_url:  string }      ← seamless wallet POST target
+ *
+ *   ⚠️  The field name mismatch is intentional on GoldSlot's side:
+ *       /game/all       uses   game_code
+ *       /game/game-url  uses   game_symbol
+ *       Both fields carry the same value (e.g. "vs20fruitsw").
+ *       Sending game_code to /game/game-url returns 1002 VALIDATION_ERROR
+ *       with data: [{"field":"game_symbol","message":"The game_symbol field is required."}]
  *
  *   Callback from GoldSlot server → POST /callback
  *     data.account = the name string passed to userCreate ("gs_<localUid>")
  *     commands: authenticate, balance, bet, win, cancel, status
  *
  *   VALIDATION_ERROR 1002 causes:
- *     - Sending unknown field names (return_url instead of lobby_url)
+ *     - Using game_code instead of game_symbol in /game/game-url  ← WAS THE BUG
+ *     - Sending unknown field names
  *     - Missing required fields (callback_url in seamless mode)
  *     - user_code passed as string instead of integer
  */
@@ -39,9 +48,8 @@ export class GoldSlotAPI {
   constructor(apiToken, baseUrl = "https://agent.goldslotpalase.com", callbackUrl = "") {
     this.apiToken    = apiToken;
     this.baseUrl     = baseUrl.replace(/\/$/, "");
-    this.callbackUrl = callbackUrl; // e.g. "https://www.sirgreen.online/callback"
+    this.callbackUrl = callbackUrl;
 
-    // ── Constructor diagnostics ─────────────────────────────────────────
     console.log(`${TAG} Constructed`);
     console.log(`${TAG}   baseUrl     = ${this.baseUrl}`);
     console.log(`${TAG}   callbackUrl = ${this.callbackUrl || "(EMPTY — will cause 1002 in seamless mode!)"}`);
@@ -62,21 +70,10 @@ export class GoldSlotAPI {
         "Accept-Encoding": "gzip, deflate, br",
       };
 
-      // ── Verbose outbound log ──────────────────────────────────────────
       console.log(`${TAG} ── REQUEST ──────────────────────────────`);
       console.log(`${TAG}   POST ${fullUrl}`);
-      console.log(`${TAG}   Headers:`);
-      for (const [k, v] of Object.entries(headers)) {
-        // Redact token beyond first 8 chars in the log
-        const display = k === "Authorization" ? `Bearer ${this.apiToken.slice(0,8)}…` : v;
-        console.log(`${TAG}     ${k}: ${display}`);
-      }
-      console.log(`${TAG}   Body (${payload.length} bytes):`);
-      console.log(`${TAG}     ${payload.toString("utf8")}`);
-      console.log(`${TAG}   Body field types:`);
-      for (const [k, v] of Object.entries(body)) {
-        console.log(`${TAG}     ${k} → ${typeof v} = ${JSON.stringify(v)}`);
-      }
+      console.log(`${TAG}   Body (${payload.length} bytes): ${payload.toString("utf8")}`);
+      console.log(`${TAG}   Field types: ${Object.entries(body).map(([k,v])=>`${k}:${typeof v}`).join(" | ")}`);
       console.log(`${TAG} ─────────────────────────────────────────`);
 
       const mod = parsed.protocol === "https:" ? https : http;
@@ -102,22 +99,18 @@ export class GoldSlotAPI {
 
           const bodyStr = decomp.toString("utf8");
 
-          // ── Verbose inbound log ────────────────────────────────────
           console.log(`${TAG} ── RESPONSE ─────────────────────────────`);
           console.log(`${TAG}   POST ${path} → HTTP ${res.statusCode}`);
-          console.log(`${TAG}   Content-Encoding: ${enc || "(none)"}`);
-          console.log(`${TAG}   Raw body (${raw.length}B → ${decomp.length}B decoded):`);
-          console.log(`${TAG}     ${bodyStr.slice(0, 1000)}`);
+          console.log(`${TAG}   Body: ${bodyStr.slice(0, 800)}`);
 
           let parsed_body;
           try {
             parsed_body = JSON.parse(bodyStr);
-            console.log(`${TAG}   Parsed response.code    = ${parsed_body.code}`);
-            console.log(`${TAG}   Parsed response.message = ${parsed_body.message ?? "(none)"}`);
-            if (parsed_body.data !== undefined)
-              console.log(`${TAG}   Parsed response.data    = ${JSON.stringify(parsed_body.data).slice(0, 300)}`);
+            console.log(`${TAG}   code=${parsed_body.code} message=${parsed_body.message ?? "(none)"}`);
+            if (parsed_body.data !== undefined && parsed_body.code !== 0)
+              console.log(`${TAG}   data=${JSON.stringify(parsed_body.data).slice(0, 400)}`);
             if (parsed_body.code !== 0)
-              console.warn(`${TAG} ⚠️  NON-ZERO code=${parsed_body.code} on POST ${path} — body sent was: ${payload.toString("utf8")}`);
+              console.warn(`${TAG} ⚠️  code=${parsed_body.code} on POST ${path} | sent: ${payload.toString("utf8")}`);
           } catch (e) {
             console.error(`${TAG}   JSON parse failed: ${e.message}`);
             console.log(`${TAG} ─────────────────────────────────────────`);
@@ -174,28 +167,29 @@ export class GoldSlotAPI {
   }
 
   // ── 5. Game Launch ────────────────────────────────────────────────────────
-  getGameUrl(userCode, gameCode, lobbyUrl = "", lang = 1) {
+  //
+  // ⚠️  /v4/game/all returns games using field name "game_code".
+  //     /v4/game/game-url requires that same value under field name "game_symbol".
+  //     These are the same value — different key names in different endpoints.
+  //
+  getGameUrl(userCode, gameSymbol, lobbyUrl = "", lang = 1) {
     const body = {
-      user_code: Number(userCode),   // integer — MUST NOT be string
-      game_code: String(gameCode),
-      language:  lang,
+      user_code:   Number(userCode),     // integer — MUST NOT be string
+      game_symbol: String(gameSymbol),   // ← was game_code — THIS was the 1002 bug
+      language:    lang,
     };
     if (lobbyUrl)         body.lobby_url    = lobbyUrl;
     if (this.callbackUrl) body.callback_url = this.callbackUrl;
 
-    // ── Pre-flight validation log ──────────────────────────────────────
-    console.log(`${TAG} getGameUrl() pre-flight check:`);
-    console.log(`${TAG}   userCode raw   = ${userCode}  (type: ${typeof userCode})`);
-    console.log(`${TAG}   userCode coerced → ${body.user_code}  (type: ${typeof body.user_code})`);
-    console.log(`${TAG}   game_code      = "${body.game_code}"  (type: ${typeof body.game_code})`);
-    console.log(`${TAG}   language       = ${body.language}`);
-    console.log(`${TAG}   lobby_url      = ${body.lobby_url ?? "(not set)"}`);
-    console.log(`${TAG}   callback_url   = ${body.callback_url ?? "(NOT SET — 1002 likely in seamless mode!)"}`);
-    console.log(`${TAG}   Full body JSON = ${JSON.stringify(body)}`);
+    console.log(`${TAG} getGameUrl() user_code=${body.user_code} game_symbol="${body.game_symbol}" lang=${lang}`);
+    console.log(`${TAG}   lobby_url    = ${body.lobby_url    ?? "(not set)"}`);
+    console.log(`${TAG}   callback_url = ${body.callback_url ?? "(NOT SET — required in seamless mode!)"}`);
+    console.log(`${TAG}   Full body    = ${JSON.stringify(body)}`);
+
     if (!body.callback_url)
-      console.warn(`${TAG} ⚠️  callbackUrl is EMPTY. Seamless mode REQUIRES callback_url — this is the most common cause of 1002.`);
-    if (typeof body.user_code !== "number" || !Number.isInteger(body.user_code) || body.user_code <= 0)
-      console.warn(`${TAG} ⚠️  user_code="${body.user_code}" looks invalid — GoldSlot requires a positive integer here.`);
+      console.warn(`${TAG} ⚠️  callbackUrl is EMPTY — seamless mode requires it.`);
+    if (!Number.isInteger(body.user_code) || body.user_code <= 0)
+      console.warn(`${TAG} ⚠️  user_code=${body.user_code} looks invalid — must be positive integer.`);
 
     return this._post("/v4/game/game-url", body);
   }
