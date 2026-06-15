@@ -220,10 +220,12 @@ function lobbyPage(bal, tag, gamesByProvider) {
     for (const { provider, providerName: pn, games } of gamesByProvider) {
       const cards = games.map(g => {
         const gid   = esc(String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? ""));
+        const pid   = esc(String(g.provider_id ?? provider ?? ""));
         const thumb = g.game_image
           ? `<img src="${esc(g.game_image)}" alt="${esc(g.game_name ?? g.name)}" loading="lazy">`
           : `<span style="font-size:2.5rem">🎰</span>`;
-        return `<div class="game-card" onclick="location.href='/game/${gid}'">\n  <div class="game-thumb">${thumb}</div>\n  <div class="game-info"><div class="game-name">${esc(g.game_name ?? g.name ?? gid)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? pn ?? provider)}</div></div>\n</div>`;
+        // Encode both game_code and provider_id into the URL: /game/<provider_id>/<game_code>
+        return `<div class="game-card" onclick="location.href='/game/${pid}/${gid}'">\n  <div class="game-thumb">${thumb}</div>\n  <div class="game-info"><div class="game-name">${esc(g.game_name ?? g.name ?? gid)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? pn ?? provider)}</div></div>\n</div>`;
       }).join("\n");
       sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
@@ -303,7 +305,6 @@ export class WebServer {
     this._states      = new Map();
     const gsToken     = config.goldSlotApiToken ?? "";
     const gsUrl       = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
-    // Pass the callback URL so getGameUrl includes it (required for seamless mode)
     const gsCbUrl     = `${this.baseUrl}/callback`;
     this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl, gsCbUrl) : null;
     this.callbackToken = config.goldSlotCallbackToken ?? "";
@@ -312,11 +313,9 @@ export class WebServer {
     this._gamesCacheTs = 0;
     this._gameById    = new Map();
     this._processedTrans = new Map();
-    // localUid → { name: "gs_<uid>", userCode: <integer> }
     this._gsUserCache = new Map();
   }
 
-  // ── Ensure GoldSlot account exists → { name, userCode } ──────────────────
   async _ensureGsUser(localUid) {
     if (!this.goldSlot) return null;
     if (this._gsUserCache.has(localUid)) return this._gsUserCache.get(localUid);
@@ -338,7 +337,6 @@ export class WebServer {
     }
   }
 
-  // ── Fetch + cache full game catalogue ─────────────────────────────────────
   async _fetchGames() {
     if (!this.goldSlot) return [];
     const now = Date.now();
@@ -384,7 +382,6 @@ export class WebServer {
     return grouped;
   }
 
-  // ── Idempotency map for callback transactions ─────────────────────────────
   _markTrans(guid, entry) {
     if (!guid) return;
     this._processedTrans.set(guid, entry);
@@ -394,7 +391,6 @@ export class WebServer {
     }
   }
 
-  // ── Callback token check ──────────────────────────────────────────────────
   _isValidCallbackToken(req) {
     if (!this.callbackToken) return true;
     const incoming = (req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "").trim();
@@ -408,10 +404,6 @@ export class WebServer {
     res.end(JSON.stringify(body));
   }
 
-  // ── Seamless callback handler ─────────────────────────────────────────────
-  //
-  // GoldSlot sends data.account = the name string passed to userCreate,
-  // e.g. "gs_1512241609448620032". Strip "gs_" prefix to get local Fluxer uid.
   async _handleCallback(req, res) {
     if (!this._isValidCallbackToken(req)) {
       console.warn("[Callback] Rejected — bad token");
@@ -422,7 +414,6 @@ export class WebServer {
     const { command, data, check } = payload;
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
-    // data.account = "gs_<localUid>" — strip prefix to get local uid
     const gsAccount       = String(data.account ?? "");
     const localUid        = gsAccount.startsWith("gs_") ? gsAccount.slice(3) : gsAccount;
     const transGuid       = String(data.trans_guid ?? "");
@@ -521,7 +512,6 @@ export class WebServer {
     return this._cbReply(res, 1, "UNKNOWN_COMMAND");
   }
 
-  // ── Server start ──────────────────────────────────────────────────────────
   async start() {
     _preloadAssets();
     this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm:", e));
@@ -538,7 +528,6 @@ export class WebServer {
     }, 10 * 60 * 1000);
   }
 
-  // ── Request router ────────────────────────────────────────────────────────
   async _handle(req, res) {
     const u = new URL(req.url, "http://localhost");
     const p = normalizeAssetUrlPath(u.pathname);
@@ -550,14 +539,12 @@ export class WebServer {
       res.writeHead(204); return res.end();
     }
 
-    // ── Callback (seamless integration endpoint) ──────────────────────────
     if (p === "/callback") {
       if (req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, service: "SirGreen Casino callback" })); }
       if (req.method === "POST") return this._handleCallback(req, res);
       res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
     }
 
-    // ── Debug endpoint ────────────────────────────────────────────────────
     if (p === "/api/goldslot/debug" && req.method === "GET") {
       if (!this.goldSlot) return this._json(res, 503, { error: "goldSlotApiToken not configured" });
       const out = {};
@@ -566,13 +553,13 @@ export class WebServer {
         const testName = `gs_debug_${Date.now()}`;
         out.userCreate = await this.goldSlot.userCreate(testName, this.gsParent || undefined);
         if (out.userCreate?.data?.user_code) {
-          out.getGameUrlTest = await this.goldSlot.getGameUrl(out.userCreate.data.user_code, "vs20fruitsw", `${this.baseUrl}/lobby`, 1);
+          // Use provider_id=1 (Pragmatic Play) for the debug test
+          out.getGameUrlTest = await this.goldSlot.getGameUrl(out.userCreate.data.user_code, "vs20fruitsw", 1, `${this.baseUrl}/lobby`, 1);
         }
       } catch(e) { out.error = e.message; }
       return this._json(res, 200, out);
     }
 
-    // ── Static assets ─────────────────────────────────────────────────────
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
@@ -581,7 +568,6 @@ export class WebServer {
       res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
-    // ── Lobby ─────────────────────────────────────────────────────────────
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
@@ -593,45 +579,59 @@ export class WebServer {
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
 
-    // ── Game launch ───────────────────────────────────────────────────────
+    // ── Game launch — URL format: /game/<provider_id>/<game_code> ─────────
+    // provider_id and game_code are both required by /v4/game/game-url
     if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
       const cookies  = parseCookies(req);
       const tag      = decodeURIComponent(cookies.dtag ?? "Player");
-      const gameCode = decodeURIComponent(p.slice("/game/".length).split("/")[0]);
+
+      // Parse /game/<provider_id>/<game_code>
+      const parts      = p.slice("/game/".length).split("/");
+      const providerId = parts.length >= 2 ? Number(decodeURIComponent(parts[0])) : NaN;
+      const gameCode   = parts.length >= 2
+        ? decodeURIComponent(parts.slice(1).join("/"))
+        : decodeURIComponent(parts[0] ?? "");
+
       if (!gameCode) return this._redirect(res, "/lobby");
       if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set.", "/lobby", "Back"));
 
-      // 1. Ensure GoldSlot account exists → { name, userCode }
+      // Fallback: look up provider_id from the game cache if not in URL
+      await this._fetchGames();
+      const gameMeta    = this._gameById.get(String(gameCode));
+      const resolvedPid = (!isNaN(providerId) && providerId > 0)
+        ? providerId
+        : Number(gameMeta?.provider_id ?? gameMeta?.providerCode ?? NaN);
+
+      console.log(`[GoldSlot] launch: gameCode=${gameCode} provider_id=${resolvedPid} (from url: ${providerId}, from cache: ${gameMeta?.provider_id})`);
+
+      if (isNaN(resolvedPid) || resolvedPid <= 0) {
+        console.error(`[GoldSlot] Cannot resolve provider_id for game_code=${gameCode} — game not in cache?`);
+        return this._html(res, 400, errPage("⚠️ Error", `Unknown provider for game "${gameCode}". Try returning to the lobby.`, "/lobby", "Back to Lobby"));
+      }
+
       const gs = await this._ensureGsUser(uid);
       if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
 
-      // 2. Get game launch URL
-      //    user_code = integer from userCreate
-      //    lobby_url = back-button destination
-      //    callback_url = this server's /callback (required for seamless mode)
       let gameUrl;
       try {
-        const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, `${this.baseUrl}/lobby`, 1);
-        console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} game_code=${gameCode} → code:${urlResp.code}`, urlResp.data?.url ?? urlResp.message ?? "");
+        const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, resolvedPid, `${this.baseUrl}/lobby`, 1);
+        console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} provider_id=${resolvedPid} game_code=${gameCode} → code:${urlResp.code}`, urlResp.data?.url ?? urlResp.message ?? "");
         if (urlResp.code !== 0 || !urlResp.data?.url)
-          return this._html(res, 500, errPage("⚠️ Error", `Could not launch game (code ${urlResp.code}: ${urlResp.message ?? ""}). Ensure agent is Approved in GoldSlot admin.`, "/lobby", "Back to Lobby"));
+          return this._html(res, 500, errPage("⚠️ Error", `Could not launch game (code ${urlResp.code}: ${urlResp.message ?? ""}). Ensure the provider is enabled in GoldSlot admin.`, "/lobby", "Back to Lobby"));
         gameUrl = urlResp.data.url;
       } catch(e) {
         console.error("[GoldSlot] getGameUrl:", e);
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
 
-      await this._fetchGames();
-      const gameMeta = this._gameById.get(String(gameCode));
       const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameCode;
       const user     = await this.db.getUser(uid);
       const bal      = Number(user?.bal ?? 0);
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // ── FC balance query (polled by game wrapper) ─────────────────────────
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -639,7 +639,6 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
-    // ── Login ─────────────────────────────────────────────────────────────
     if (p === "/login" && req.method === "GET") {
       if (!this.clientId) return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId, fluxerClientSecret, and webBaseUrl to config.json.", "#", "—"));
       const state = crypto.randomBytes(16).toString("hex");
@@ -648,7 +647,6 @@ export class WebServer {
       return this._html(res, 200, loginPage(authUrl));
     }
 
-    // ── OAuth callback ────────────────────────────────────────────────────
     if (p === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
@@ -684,7 +682,6 @@ export class WebServer {
       return this._redirect(res, "/lobby");
     }
 
-    // ── Logout ────────────────────────────────────────────────────────────
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {

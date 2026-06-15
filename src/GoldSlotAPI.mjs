@@ -6,29 +6,23 @@
  *         /v4/wallet/* endpoints are NOT used.
  *
  *   /v4/user/create  → body: { name }                    → returns user_code (integer)
- *   /v4/game/all     → returns games with field: game_code (e.g. "vs20fruitsw")
+ *   /v4/game/all     → returns games with field: game_code + provider_id
  *   /v4/game/game-url→ body: { user_code:    integer,     ← MUST be integer, not string
- *                              game_symbol:   string,      ← SAME VALUE as game_code from /game/all
- *                              language:      integer,       ← 1 = English
- *                              lobby_url:     string,       ← back button URL
- *                              callback_url:  string }      ← seamless wallet POST target
+ *                              game_symbol:   string,      ← game_code value from /game/all
+ *                              provider_id:   integer,     ← provider_id from /game/all — REQUIRED
+ *                              language:      integer,     ← 1 = English
+ *                              lobby_url:     string,      ← back button URL
+ *                              callback_url:  string }     ← seamless wallet POST target
  *
- *   ⚠️  The field name mismatch is intentional on GoldSlot's side:
- *       /game/all       uses   game_code
- *       /game/game-url  uses   game_symbol
- *       Both fields carry the same value (e.g. "vs20fruitsw").
- *       Sending game_code to /game/game-url returns 1002 VALIDATION_ERROR
- *       with data: [{"field":"game_symbol","message":"The game_symbol field is required."}]
+ *   ⚠️  Field name mismatches between endpoints (GoldSlot quirk):
+ *       /game/all       game_code   → /game/game-url  game_symbol   (same value, different key)
+ *       /game/all       provider_id → /game/game-url  provider_id   (same field name ✓)
+ *       Missing provider_id → 2007 PROVIDER_NOT_FOUND
+ *       Missing game_symbol → 1002 VALIDATION_ERROR
  *
  *   Callback from GoldSlot server → POST /callback
  *     data.account = the name string passed to userCreate ("gs_<localUid>")
  *     commands: authenticate, balance, bet, win, cancel, status
- *
- *   VALIDATION_ERROR 1002 causes:
- *     - Using game_code instead of game_symbol in /game/game-url  ← WAS THE BUG
- *     - Sending unknown field names
- *     - Missing required fields (callback_url in seamless mode)
- *     - user_code passed as string instead of integer
  */
 
 import https from "https";
@@ -168,20 +162,23 @@ export class GoldSlotAPI {
 
   // ── 5. Game Launch ────────────────────────────────────────────────────────
   //
-  // ⚠️  /v4/game/all returns games using field name "game_code".
-  //     /v4/game/game-url requires that same value under field name "game_symbol".
-  //     These are the same value — different key names in different endpoints.
+  // ⚠️  Field name quirks on /v4/game/game-url:
+  //     - game_symbol  = the game_code value from /game/all  (different key, same value)
+  //     - provider_id  = the provider_id from /game/all      (required — omitting → 2007)
   //
-  getGameUrl(userCode, gameSymbol, lobbyUrl = "", lang = 1) {
+  // providerId: integer from game.provider_id in /game/all response
+  //
+  getGameUrl(userCode, gameSymbol, providerId, lobbyUrl = "", lang = 1) {
     const body = {
-      user_code:   Number(userCode),     // integer — MUST NOT be string
-      game_symbol: String(gameSymbol),   // ← was game_code — THIS was the 1002 bug
+      user_code:   Number(userCode),    // integer — MUST NOT be string
+      provider_id: Number(providerId),  // integer — required, omitting → 2007 PROVIDER_NOT_FOUND
+      game_symbol: String(gameSymbol),  // game_code value — omitting → 1002 VALIDATION_ERROR
       language:    lang,
     };
     if (lobbyUrl)         body.lobby_url    = lobbyUrl;
     if (this.callbackUrl) body.callback_url = this.callbackUrl;
 
-    console.log(`${TAG} getGameUrl() user_code=${body.user_code} game_symbol="${body.game_symbol}" lang=${lang}`);
+    console.log(`${TAG} getGameUrl() user_code=${body.user_code} provider_id=${body.provider_id} game_symbol="${body.game_symbol}" lang=${lang}`);
     console.log(`${TAG}   lobby_url    = ${body.lobby_url    ?? "(not set)"}`);
     console.log(`${TAG}   callback_url = ${body.callback_url ?? "(NOT SET — required in seamless mode!)"}`);
     console.log(`${TAG}   Full body    = ${JSON.stringify(body)}`);
@@ -190,6 +187,8 @@ export class GoldSlotAPI {
       console.warn(`${TAG} ⚠️  callbackUrl is EMPTY — seamless mode requires it.`);
     if (!Number.isInteger(body.user_code) || body.user_code <= 0)
       console.warn(`${TAG} ⚠️  user_code=${body.user_code} looks invalid — must be positive integer.`);
+    if (!Number.isInteger(body.provider_id) || body.provider_id <= 0)
+      console.warn(`${TAG} ⚠️  provider_id=${body.provider_id} looks invalid — must be positive integer from /game/all.`);
 
     return this._post("/v4/game/game-url", body);
   }
