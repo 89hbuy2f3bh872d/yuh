@@ -9,16 +9,11 @@ import zlib from "zlib";
 import { URL } from "url";
 
 /**
- * Sanitise a display name so it always meets the API's min-length-2 rule.
- * Strips to alphanumeric + spaces, then pads with "_" if still too short.
+ * Sanitise a display name so it always meets the API min-length-2 rule.
  */
 function safeName(raw, fallback) {
-  let n = String(raw ?? fallback ?? "").trim();
-  // Remove characters the API is likely to reject (control chars, etc.)
-  n = n.replace(/[\x00-\x1f]/g, "").trim();
-  // Must be at least 2 chars
+  let n = String(raw ?? fallback ?? "").trim().replace(/[\x00-\x1f]/g, "").trim();
   if (n.length < 2) n = (n + "__").slice(0, Math.max(2, n.length + 2));
-  // Truncate to a safe max (most APIs cap display names at 64)
   return n.slice(0, 64);
 }
 
@@ -40,7 +35,6 @@ export class GoldSlotAPI {
         "User-Agent": "FluxerCasinoBot/4.0",
         "Accept-Encoding": "gzip, deflate, br",
       };
-
       const mod = parsed.protocol === "https:" ? https : http;
       const req = mod.request(
         {
@@ -59,7 +53,7 @@ export class GoldSlotAPI {
             let decomp;
             try {
               decomp =
-                enc === "br"  ? zlib.brotliDecompressSync(raw) :
+                enc === "br"      ? zlib.brotliDecompressSync(raw) :
                 enc === "gzip"    ? zlib.gunzipSync(raw) :
                 enc === "deflate" ? zlib.inflateSync(raw) : raw;
             } catch { decomp = raw; }
@@ -81,15 +75,11 @@ export class GoldSlotAPI {
   agentInfo() { return this._post("/v4/agent/info"); }
 
   // 2. User Account
-  /**
-   * @param {string} userId
-   * @param {string} [name]  - display name; must be ≥2 chars (enforced here)
-   * @param {number} [lang]
-   */
   userCreate(userId, name, lang = 1) {
-    const displayName = safeName(name ?? userId, userId);
+    const user_id     = String(userId);
+    const displayName = safeName(name ?? user_id, user_id);
     return this._post("/v4/user/create", {
-      user_id: String(userId),
+      user_id,
       name: displayName,
       language: lang,
     });
@@ -101,25 +91,28 @@ export class GoldSlotAPI {
 
   // 3. Wallet (Transfer Mode)
   walletDeposit(userId, amount, txId) {
+    const user_id = String(userId);
     return this._post("/v4/wallet/deposit", {
-      user_id: String(userId),
+      user_id,
       amount: Math.floor(amount),
-      tx_id: txId ?? `dep_${userId}_${Date.now()}`,
+      tx_id: txId ?? `dep_${user_id}_${Date.now()}`,
     });
   }
 
   walletWithdraw(userId, amount, txId) {
+    const user_id = String(userId);
     return this._post("/v4/wallet/withdraw", {
-      user_id: String(userId),
+      user_id,
       amount: Math.floor(amount),
-      tx_id: txId ?? `wd_${userId}_${Date.now()}`,
+      tx_id: txId ?? `wd_${user_id}_${Date.now()}`,
     });
   }
 
   walletWithdrawAll(userId, txId) {
+    const user_id = String(userId);
     return this._post("/v4/wallet/withdraw-all", {
-      user_id: String(userId),
-      tx_id: txId ?? `wdall_${userId}_${Date.now()}`,
+      user_id,
+      tx_id: txId ?? `wdall_${user_id}_${Date.now()}`,
     });
   }
 
@@ -129,12 +122,13 @@ export class GoldSlotAPI {
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
   // 5. Game Launch
-  getGameUrl(userId, gameId, returnUrl = "", lang = 1) {
+  // NOTE: the API field is `game_code`, not `game_id`
+  getGameUrl(userId, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
-      user_id: String(userId),
-      game_id: String(gameId),
+      user_id:    String(userId),
+      game_code:  String(gameCode),
       return_url: returnUrl,
-      language: lang,
+      language:   lang,
     });
   }
 
