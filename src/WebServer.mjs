@@ -403,11 +403,16 @@ export class WebServer {
     const gsToken = config.goldSlotApiToken ?? "";
     const gsUrl = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
     this.goldSlot = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
+    this.callbackToken = config.goldSlotCallbackToken ?? "";
 
     // In-memory game catalogue cache (refreshed every 10 min)
     this._gamesCache = null;
     this._gamesCacheTs = 0;
     this._gameById = new Map();
+
+    // Processed transaction IDs — prevents duplicate credit/debit
+    // Stored as a bounded LRU-like Set (max 50k entries)
+    this._processedTrans = new Set();
   }
 
   // ---------------------------------------------------------------------------
@@ -522,6 +527,184 @@ export class WebServer {
   }
 
   // ---------------------------------------------------------------------------
+  // Callback handler — called by GoldSlot server during gameplay
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Validate the inbound Callback-Token header.
+   */
+  _isValidCallbackToken(req) {
+    if (!this.callbackToken) return true; // no token configured = skip check
+    const incoming = req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "";
+    return incoming === this.callbackToken;
+  }
+
+  /**
+   * Build a standard callback response.
+   * code 0 = OK, 1 = generic error, 1001 = internal error
+   */
+  _cbReply(res, code, message, balance) {
+    const body = { result: code, status: code === 0 ? "OK" : message };
+    if (balance !== undefined) body.data = { balance };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  }
+
+  /**
+   * POST /callback
+   *
+   * Handles three command types from GoldSlot:
+   *
+   *   win    (type 2)  — player won; credit their FC wallet
+   *   cancel (type 16) — bet was cancelled; return the bet amount
+   *   status          — check whether a trans_guid was already processed
+   *
+   * Check codes in the request body tell us which validations to run:
+   *   21 — verify user exists
+   *   22 — verify user is active (not banned)
+   *   31 — return current balance
+   *   41 — verify trans_guid is NOT already processed (idempotency)
+   *   42 — verify trans_guid EXISTS (for status check)
+   *   43 — verify cancel_trans_guid is not already processed
+   */
+  async _handleCallback(req, res) {
+    // 1. Token check
+    if (!this._isValidCallbackToken(req)) {
+      console.warn("[Callback] Rejected request — bad Callback-Token");
+      return this._cbReply(res, 1, "INVALID_TOKEN");
+    }
+
+    // 2. Parse body
+    let payload;
+    try {
+      const raw = await readBody(req);
+      payload = JSON.parse(raw);
+    } catch {
+      return this._cbReply(res, 1, "INVALID_JSON");
+    }
+
+    const { command, data, check } = payload;
+    if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
+
+    const account = data.account ?? "";
+    const transGuid = data.trans_guid ?? "";
+    const cancelTransGuid = data.cancel_trans_guid ?? data.cancle_trans_guid ?? ""; // API has a typo variant
+    const amount = Number(data.amount ?? 0);
+    const checks = String(check ?? "").split(",").map((s) => s.trim());
+
+    // 3. Resolve user
+    let user;
+    try {
+      user = await this.db.getUser(account);
+    } catch (e) {
+      console.error("[Callback] DB error resolving user:", e);
+      return this._cbReply(res, 1001, "INTERNAL_ERROR");
+    }
+
+    // Check 21/22: user existence and active state
+    if (checks.includes("21") || checks.includes("22")) {
+      if (!user) {
+        console.warn(`[Callback] USER_NOT_FOUND for account: ${account}`);
+        return this._cbReply(res, 1, "USER_NOT_FOUND");
+      }
+      if (checks.includes("22") && user.banned) {
+        return this._cbReply(res, 1, "USER_INACTIVE");
+      }
+    }
+
+    const currentBal = Number(user?.bal ?? 0);
+
+    // ── STATUS command ─────────────────────────────────────────────────────
+    if (command === "status") {
+      // Check 42: does the trans_guid exist (was it processed)?
+      if (checks.includes("42")) {
+        const exists = this._processedTrans.has(transGuid || data.trans_guid);
+        if (!exists) return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
+      }
+      // Check 31: return balance
+      return this._cbReply(res, 0, "OK", currentBal);
+    }
+
+    // ── WIN command ────────────────────────────────────────────────────────
+    if (command === "win") {
+      // Check 41: prevent duplicate win credit
+      if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) {
+        console.warn(`[Callback] Duplicate win trans_guid: ${transGuid} — returning current balance`);
+        return this._cbReply(res, 0, "OK", currentBal);
+      }
+
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+
+      // Credit the win amount to the FC wallet
+      let newBal = currentBal;
+      if (amount > 0) {
+        try {
+          await this.db.updateBalance(account, amount);
+          const updated = await this.db.getUser(account);
+          newBal = Number(updated?.bal ?? currentBal + amount);
+          // Record win in game history
+          await this.db.recordGame(account, true, amount).catch(() => {});
+        } catch (e) {
+          console.error("[Callback] DB error crediting win:", e);
+          return this._cbReply(res, 1001, "INTERNAL_ERROR");
+        }
+      }
+
+      // Mark transaction as processed
+      if (transGuid) {
+        this._processedTrans.add(transGuid);
+        if (this._processedTrans.size > 50000) {
+          // Trim oldest entries to prevent unbounded growth
+          const iter = this._processedTrans.values();
+          for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
+        }
+      }
+
+      console.log(`[Callback] win  account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
+      return this._cbReply(res, 0, "OK", newBal);
+    }
+
+    // ── CANCEL command ─────────────────────────────────────────────────────
+    if (command === "cancel") {
+      // Check 43: prevent duplicate cancel
+      if (checks.includes("43") && cancelTransGuid && this._processedTrans.has(cancelTransGuid)) {
+        console.warn(`[Callback] Duplicate cancel trans: ${cancelTransGuid} — returning current balance`);
+        return this._cbReply(res, 0, "OK", currentBal);
+      }
+      // Check 41: original trans must exist to cancel it
+      if (checks.includes("41") && transGuid && !this._processedTrans.has(transGuid)) {
+        // Original transaction was never processed — safe no-op
+        return this._cbReply(res, 0, "OK", currentBal);
+      }
+
+      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
+
+      // Return the cancelled bet amount
+      let newBal = currentBal;
+      if (amount > 0) {
+        try {
+          await this.db.updateBalance(account, amount);
+          const updated = await this.db.getUser(account);
+          newBal = Number(updated?.bal ?? currentBal + amount);
+        } catch (e) {
+          console.error("[Callback] DB error processing cancel:", e);
+          return this._cbReply(res, 1001, "INTERNAL_ERROR");
+        }
+      }
+
+      if (cancelTransGuid) this._processedTrans.add(cancelTransGuid);
+      if (transGuid) this._processedTrans.delete(transGuid); // original is now void
+
+      console.log(`[Callback] cancel account=${account} amount=${amount} newBal=${newBal} trans=${transGuid}`);
+      return this._cbReply(res, 0, "OK", newBal);
+    }
+
+    // Unknown command
+    console.warn(`[Callback] Unknown command: ${command}`);
+    return this._cbReply(res, 1, "UNKNOWN_COMMAND");
+  }
+
+  // ---------------------------------------------------------------------------
   // Server lifecycle
   // ---------------------------------------------------------------------------
 
@@ -564,6 +747,11 @@ export class WebServer {
       if (fs.existsSync(FAVICON_PATH)) return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
       res.writeHead(204);
       return res.end();
+    }
+
+    // ── GoldSlot Callback (inbound from game server) ──────────────────────
+    if (p === "/callback" && req.method === "POST") {
+      return this._handleCallback(req, res);
     }
 
     // ── Static game assets: /assets/* ────────────────────────────────────────
@@ -617,7 +805,6 @@ export class WebServer {
       await this._depositToGS(uid);
 
       // Get the game launch URL
-      const returnUrl = `${this.baseUrl}/api/goldslot/sync-balance`;
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(uid, gameId, `${this.baseUrl}/lobby`, 1);
