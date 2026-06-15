@@ -1,13 +1,11 @@
 /**
- * GoldSlotAPI.mjs
- * Thin wrapper around the agent.goldslotpalase.com v4 REST API.
+ * GoldSlotAPI.mjs — agent.goldslotpalase.com v4
  *
- * KEY DESIGN NOTE:
- *   userCreate({ name }) returns { user_code, is_new_user }
- *   HOWEVER on this API version, userCreate returns the panel account/row ID
- *   in user_code, NOT the small integer user_code needed for wallet/game calls.
- *   Solution: always call userInfo({ name }) after userCreate to get the real
- *   user_code (a small integer like 1, 2, 3...).
+ * KEY FINDING (from live logs):
+ *   /v4/user/create returns user_code = panel account ID (large int, e.g. 407830262)
+ *   /v4/user/info   does NOT accept { name }, only { user_code: int }
+ *   /v4/wallet/*    returns USER_NOT_FOUND when called with user_code
+ *   => wallet + game-url endpoints must be called with { name } not { user_code }
  */
 
 import https from "https";
@@ -24,51 +22,45 @@ function safeName(raw, fallback) {
 export class GoldSlotAPI {
   constructor(apiToken, baseUrl = "https://agent.goldslotpalase.com") {
     this.apiToken = apiToken;
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.baseUrl  = baseUrl.replace(/\/$/, "");
   }
 
   _post(path, body = {}) {
     return new Promise((resolve, reject) => {
-      const parsed = new URL(`${this.baseUrl}${path}`);
+      const parsed  = new URL(`${this.baseUrl}${path}`);
       const payload = Buffer.from(JSON.stringify(body));
       const headers = {
-        Authorization: `Bearer ${this.apiToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
+        Authorization:    `Bearer ${this.apiToken}`,
+        Accept:           "application/json",
+        "Content-Type":   "application/json",
         "Content-Length": payload.length,
-        "User-Agent": "FluxerCasinoBot/4.0",
-        "Accept-Encoding": "gzip, deflate, br",
+        "User-Agent":     "FluxerCasinoBot/4.0",
+        "Accept-Encoding":"gzip, deflate, br",
       };
       const mod = parsed.protocol === "https:" ? https : http;
-      const req = mod.request(
-        {
-          hostname: parsed.hostname,
-          port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-          path: parsed.pathname + parsed.search,
-          method: "POST",
-          headers,
-        },
-        (res) => {
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => {
-            const raw = Buffer.concat(chunks);
-            const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
-            let decomp;
-            try {
-              decomp =
-                enc === "br"      ? zlib.brotliDecompressSync(raw) :
-                enc === "gzip"    ? zlib.gunzipSync(raw) :
-                enc === "deflate" ? zlib.inflateSync(raw) : raw;
-            } catch { decomp = raw; }
-            try {
-              resolve(JSON.parse(decomp.toString("utf8")));
-            } catch (e) {
-              reject(new Error(`GoldSlot non-JSON (HTTP ${res.statusCode}): ${decomp.slice(0, 200)}`));
-            }
-          });
-        },
-      );
+      const req = mod.request({
+        hostname: parsed.hostname,
+        port:     parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path:     parsed.pathname + parsed.search,
+        method:   "POST",
+        headers,
+      }, (res) => {
+        const chunks = [];
+        res.on("data", c => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks);
+          const enc = (res.headers["content-encoding"] ?? "").toLowerCase();
+          let decomp;
+          try {
+            decomp = enc === "br"      ? zlib.brotliDecompressSync(raw)
+                   : enc === "gzip"    ? zlib.gunzipSync(raw)
+                   : enc === "deflate" ? zlib.inflateSync(raw)
+                   : raw;
+          } catch { decomp = raw; }
+          try   { resolve(JSON.parse(decomp.toString("utf8"))); }
+          catch (e) { reject(new Error(`GoldSlot non-JSON (HTTP ${res.statusCode}): ${decomp.slice(0,200)}`)); }
+        });
+      });
       req.on("error", reject);
       req.write(payload);
       req.end();
@@ -78,48 +70,40 @@ export class GoldSlotAPI {
   // 1. Agent
   agentInfo() { return this._post("/v4/agent/info"); }
 
-  // 2. User Account
-  // userCreate: name must be unique per agent. parent is the parent agent name.
-  // Returns: { code, data: { user_code, is_new_user } }
-  // NOTE: user_code returned here may be the panel account ID, not the real user_code.
-  // Always follow up with userInfoByName to get the authoritative small integer user_code.
+  // 2. User
+  // userCreate is idempotent — safe to call every session.
   userCreate(name, parent) {
     const body = { name: safeName(name) };
     if (parent) body.parent = parent;
     return this._post("/v4/user/create", body);
   }
 
-  // userInfo: looks up by user_code (integer).
+  // userInfo by integer user_code (as documented)
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
 
-  // userInfoByName: look up user by name — returns the real user_code small integer.
-  userInfoByName(name) {
-    return this._post("/v4/user/info", { name: safeName(name) });
-  }
-
-  // 3. Wallet (Transfer Mode)
-  walletDeposit(userCode, amount, txId) {
+  // 3. Wallet — use name, NOT user_code (user_code causes USER_NOT_FOUND on this host)
+  walletDeposit(name, amount, txId) {
     return this._post("/v4/wallet/deposit", {
-      user_code: Number(userCode),
+      name:   safeName(name),
       amount: Math.floor(amount),
-      tx_id: txId ?? `dep_${userCode}_${Date.now()}`,
+      tx_id:  txId ?? `dep_${Date.now()}`,
     });
   }
 
-  walletWithdraw(userCode, amount, txId) {
+  walletWithdraw(name, amount, txId) {
     return this._post("/v4/wallet/withdraw", {
-      user_code: Number(userCode),
+      name:   safeName(name),
       amount: Math.floor(amount),
-      tx_id: txId ?? `wd_${userCode}_${Date.now()}`,
+      tx_id:  txId ?? `wd_${Date.now()}`,
     });
   }
 
-  walletWithdrawAll(userCode, txId) {
+  walletWithdrawAll(name, txId) {
     return this._post("/v4/wallet/withdraw-all", {
-      user_code: Number(userCode),
-      tx_id: txId ?? `wdall_${userCode}_${Date.now()}`,
+      name:  safeName(name),
+      tx_id: txId ?? `wdall_${Date.now()}`,
     });
   }
 
@@ -128,10 +112,10 @@ export class GoldSlotAPI {
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  // 5. Game Launch
-  getGameUrl(userCode, gameCode, returnUrl = "", lang = 1) {
+  // 5. Game Launch — use name, NOT user_code
+  getGameUrl(name, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
-      user_code:  Number(userCode),
+      name:       safeName(name),
       game_code:  String(gameCode),
       return_url: returnUrl,
       language:   lang,
@@ -148,9 +132,9 @@ export class GoldSlotAPI {
   // 7. Statistics
   getUserStats(userCode, startDate, endDate) {
     return this._post("/v4/statistics/user", {
-      user_code: Number(userCode),
+      user_code:  Number(userCode),
       start_date: startDate,
-      end_date: endDate,
+      end_date:   endDate,
     });
   }
 }

@@ -20,10 +20,6 @@ const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
 const FC_TO_GS_RATIO = 1;
 
-// user_code sanity threshold: the real user_code is a small sequential integer.
-// Anything >= this value is the panel account/row ID, not the real user_code.
-const USER_CODE_MAX = 100_000;
-
 const PROVIDER_NAMES = {
   1:"Pragmatic Play",2:"CQ9",3:"PG Soft",4:"Booongo",5:"Playson",
   6:"Habanero",7:"Jili",8:"PlayStar",9:"XGaming",10:"Hacksaw",11:"Live",
@@ -274,16 +270,70 @@ export class WebServer {
     this._states      = new Map();
     const gsToken     = config.goldSlotApiToken??"";
     const gsUrl       = config.goldSlotApiUrl??"https://agent.goldslotpalase.com";
-    this.goldSlot     = gsToken?new GoldSlotAPI(gsToken,gsUrl):null;
+    this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl) : null;
     this.callbackToken= config.goldSlotCallbackToken??"";
-    // Parent agent name — required by userCreate on sub-agent setups
-    this.gsParent     = config.goldSlotParent??"";  // set to "Kravle_USD" in config.json
+    this.gsParent     = config.goldSlotParent??"";  // e.g. "Kravle_USD"
     this._gamesCache  = null;
     this._gamesCacheTs= 0;
     this._gameById    = new Map();
     this._processedTrans = new Map();
-    // localUid → GoldSlot real user_code (small integer from userInfoByName)
-    this._gsUserCodeMap = new Map();
+    // localUid → gs_name string ("gs_<uid>") — wallet/game calls use name not user_code
+    this._gsNameMap   = new Map();
+  }
+
+  // Returns the gs_ name for a local uid, ensuring the user exists in GoldSlot
+  async _ensureGsUser(localUid) {
+    if (!this.goldSlot) return null;
+    const name = `gs_${localUid}`;
+    try {
+      const resp = await this.goldSlot.userCreate(name, this.gsParent || undefined);
+      console.log(`[GoldSlot] userCreate for name=${name}:`, JSON.stringify(resp));
+      if (resp.code !== 0) {
+        console.error("[GoldSlot] userCreate failed:", resp);
+        return null;
+      }
+      const isNew = resp.data?.is_new_user === true;
+      console.log(`[GoldSlot] User ${isNew ? "created" : "existing"}: name=${name}`);
+      this._gsNameMap.set(localUid, name);
+      return name;
+    } catch(e) { console.error("[GoldSlot] _ensureGsUser:", e); return null; }
+  }
+
+  async _depositToGS(localUid, gsName) {
+    if (!this.goldSlot) return 0;
+    const user    = await this.db.getUser(localUid);
+    const fcBal   = Math.floor(Number(user?.bal ?? 0));
+    if (fcBal <= 0) return 0;
+    const gsPoints = Math.floor(fcBal / FC_TO_GS_RATIO);
+    if (gsPoints <= 0) return 0;
+    try {
+      console.log(`[GoldSlot] walletDeposit name=${gsName} amount=${gsPoints}`);
+      const resp = await this.goldSlot.walletDeposit(gsName, gsPoints);
+      console.log(`[GoldSlot] walletDeposit response:`, JSON.stringify(resp));
+      if (resp.code === 0) { await this.db.updateBalance(localUid, -fcBal); return gsPoints; }
+      console.error("[GoldSlot] walletDeposit error:", resp);
+      return 0;
+    } catch(e) { console.error("[GoldSlot] _depositToGS:", e); return 0; }
+  }
+
+  async _withdrawFromGS(localUid) {
+    if (!this.goldSlot) return 0;
+    let gsName = this._gsNameMap.get(localUid);
+    if (!gsName) {
+      gsName = await this._ensureGsUser(localUid);
+      if (!gsName) return 0;
+    }
+    try {
+      const resp = await this.goldSlot.walletWithdrawAll(gsName);
+      if (resp.code === 0) {
+        const returned = Math.floor(Number(resp.data?.amount ?? 0) * FC_TO_GS_RATIO);
+        if (returned > 0) await this.db.updateBalance(localUid, returned);
+        return returned;
+      }
+      if (resp.code === 2006) return 0; // balance already 0
+      console.error("[GoldSlot] walletWithdrawAll error:", resp);
+      return 0;
+    } catch(e) { console.error("[GoldSlot] _withdrawFromGS:", e); return 0; }
   }
 
   async _fetchGames(){
@@ -316,8 +366,6 @@ export class WebServer {
             this._gameById.set(key,{...g,providerCode:pc,providerName:pn});
           }
           grouped=[...byProv.values()];
-        } else {
-          console.warn("[GoldSlot] /v4/game/all unknown shape:",JSON.stringify(first).slice(0,300));
         }
       }
     }catch(e){console.error("[GoldSlot] /v4/game/all exception:",e.message);}
@@ -326,96 +374,8 @@ export class WebServer {
       this._gamesCacheTs=now;
       const total=grouped.reduce((s,p)=>s+p.games.length,0);
       console.log(`[GoldSlot] Cached ${total} game(s) across ${grouped.length} provider(s).`);
-    } else {
-      console.warn("[GoldSlot] No games loaded.");
     }
     return grouped;
-  }
-
-  /**
-   * Resolve the REAL GoldSlot user_code for a local FC uid.
-   *
-   * The panel's left column (407830262 etc.) is NOT user_code — it is an
-   * internal account/row ID that this API version incorrectly echoes back in
-   * the user_code field of userCreate. The real user_code is a small sequential
-   * integer (1, 2, 3...) that only comes back from userInfoByName.
-   *
-   * Strategy:
-   *   1. POST /v4/user/create { name, parent }  — creates or confirms user exists
-   *   2. POST /v4/user/info  { name }           — ALWAYS: get the real user_code
-   *   3. Sanity-check: real user_code must be < USER_CODE_MAX (100,000)
-   */
-  async _ensureGsUser(localUid){
-    if(!this.goldSlot)return null;
-    const name=`gs_${localUid}`;
-    try{
-      // Step 1: create/confirm user (pass parent if configured)
-      const createResp=await this.goldSlot.userCreate(name, this.gsParent||undefined);
-      console.log(`[GoldSlot] userCreate raw for name=${name}:`, JSON.stringify(createResp));
-      if(createResp.code!==0){
-        console.error("[GoldSlot] userCreate failed:",createResp);
-        return null;
-      }
-
-      // Step 2: ALWAYS fetch by name — userCreate returns panel account ID, not real user_code
-      const infoResp=await this.goldSlot.userInfoByName(name);
-      console.log(`[GoldSlot] userInfoByName raw for name=${name}:`, JSON.stringify(infoResp));
-
-      if(infoResp.code!==0||infoResp.data==null){
-        console.error("[GoldSlot] userInfoByName failed:",infoResp);
-        return null;
-      }
-
-      const userCode=Number(infoResp.data.user_code??infoResp.data.id??infoResp.data.code);
-
-      // Step 3: sanity check — real user_code is a small integer
-      if(!Number.isFinite(userCode)||userCode<=0||userCode>=USER_CODE_MAX){
-        console.error(`[GoldSlot] userInfoByName returned suspicious user_code=${userCode} (expected < ${USER_CODE_MAX}). Full response:`, JSON.stringify(infoResp));
-        return null;
-      }
-
-      const isNew=createResp.data?.is_new_user===true;
-      console.log(`[GoldSlot] User ${isNew?"created":"existing"}: name=${name} real_user_code=${userCode}`);
-      this._gsUserCodeMap.set(localUid,userCode);
-      return userCode;
-    }catch(e){console.error("[GoldSlot] _ensureGsUser:",e);return null;}
-  }
-
-  async _depositToGS(localUid, userCode){
-    if(!this.goldSlot)return 0;
-    const user=await this.db.getUser(localUid);
-    const fcBal=Math.floor(Number(user?.bal??0));
-    if(fcBal<=0)return 0;
-    const gsPoints=Math.floor(fcBal/FC_TO_GS_RATIO);
-    if(gsPoints<=0)return 0;
-    try{
-      console.log(`[GoldSlot] walletDeposit user_code=${userCode} amount=${gsPoints}`);
-      const resp=await this.goldSlot.walletDeposit(userCode,gsPoints);
-      console.log(`[GoldSlot] walletDeposit response:`, JSON.stringify(resp));
-      if(resp.code===0){await this.db.updateBalance(localUid,-fcBal);return gsPoints;}
-      console.error("[GoldSlot] walletDeposit error:",resp);
-      return 0;
-    }catch(e){console.error("[GoldSlot] _depositToGS:",e);return 0;}
-  }
-
-  async _withdrawFromGS(localUid){
-    if(!this.goldSlot)return 0;
-    let userCode=this._gsUserCodeMap.get(localUid);
-    if(userCode==null){
-      userCode=await this._ensureGsUser(localUid);
-      if(userCode==null)return 0;
-    }
-    try{
-      const resp=await this.goldSlot.walletWithdrawAll(userCode);
-      if(resp.code===0){
-        const returned=Math.floor(Number(resp.data?.amount??0)*FC_TO_GS_RATIO);
-        if(returned>0)await this.db.updateBalance(localUid,returned);
-        return returned;
-      }
-      if(resp.code===2006)return 0;
-      console.error("[GoldSlot] walletWithdrawAll error:",resp);
-      return 0;
-    }catch(e){console.error("[GoldSlot] _withdrawFromGS:",e);return 0;}
   }
 
   _markTrans(guid,entry){
@@ -525,8 +485,8 @@ export class WebServer {
       try{
         const testName=`gs_debug_${Date.now()}`;
         out.userCreate=await this.goldSlot.userCreate(testName,this.gsParent||undefined);
-        out.userInfoByName=await this.goldSlot.userInfoByName(testName);
-      }catch(e){out.userDebug={error:e.message};}
+        out.walletDepositTest=await this.goldSlot.walletDeposit(testName,1);
+      }catch(e){out.error=e.message;}
       return this._json(res,200,out);
     }
     if(p.startsWith("/assets/")){
@@ -555,17 +515,17 @@ export class WebServer {
       if(!gameCode)return this._redirect(res,"/lobby");
       if(!this.goldSlot)return this._html(res,503,errPage("⚠️ Not Configured","goldSlotApiToken is not set.","/lobby","Back"));
 
-      const userCode=await this._ensureGsUser(uid);
-      if(userCode==null)return this._html(res,500,errPage("⚠️ Error","Could not resolve your casino account. Try again.","/lobby","Back"));
+      const gsName=await this._ensureGsUser(uid);
+      if(!gsName)return this._html(res,500,errPage("⚠️ Error","Could not create your casino account.","/lobby","Back"));
 
-      await this._depositToGS(uid,userCode);
+      await this._depositToGS(uid,gsName);
 
       let gameUrl;
       try{
-        const urlResp=await this.goldSlot.getGameUrl(userCode,gameCode,`${this.baseUrl}/lobby`,1);
-        console.log(`[GoldSlot] getGameUrl user_code=${userCode} game_code=${gameCode} → code:${urlResp.code}`,urlResp.data?.url??urlResp.message??"");
+        const urlResp=await this.goldSlot.getGameUrl(gsName,gameCode,`${this.baseUrl}/lobby`,1);
+        console.log(`[GoldSlot] getGameUrl name=${gsName} game_code=${gameCode} → code:${urlResp.code}`,urlResp.data?.url??urlResp.message??"");
         if(urlResp.code!==0||!urlResp.data?.url)
-          return this._html(res,500,errPage("⚠️ Error",`Could not launch game (code ${urlResp.code}: ${urlResp.message??""}). Check agent approval in GoldSlot admin.`,"/lobby","Back to Lobby"));
+          return this._html(res,500,errPage("⚠️ Error",`Could not launch game (code ${urlResp.code}: ${urlResp.message??""}). Ensure agent is Approved in GoldSlot admin.`,"/lobby","Back to Lobby"));
         gameUrl=urlResp.data.url;
       }catch(e){console.error("[GoldSlot] getGameUrl:",e);return this._html(res,500,errPage("⚠️ Error","Game launch failed.","/lobby","Back"));}
 
