@@ -11,8 +11,8 @@
   "webPort":            80,
 
   "goldSlotApiUrl":        "https://agent.goldslotpalase.com",
-  "goldSlotApiToken":      "445cac41-de57-4e3c-9aed-7a5aa949236b",
-  "goldSlotCallbackToken": "9a7bc98e-098c-4c54-b941-d67fa8e4309d",
+  "goldSlotApiToken":      "YOUR_GOLDSLOT_API_TOKEN",
+  "goldSlotCallbackToken": "YOUR_GOLDSLOT_CALLBACK_TOKEN",
 
   "_callbackUrl_note": "Set your Callback URL to https://www.sirgreen.online/callback in https://admin.goldslotpalase.com/#/settings",
 

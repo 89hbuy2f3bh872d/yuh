@@ -15,7 +15,7 @@ export default {
             "**`&daily`** — Claim your daily FC bonus\n" +
             "**`&pay <user> <amount>`** — Send FC to another user\n" +
             "**`&leaderboard`** — Top FC holders\n" +
-            "**`&web`** — Open the casino — play Sir Bandit (6×5 slots) and more"
+            "**`&web`** — Open the casino lobby — hundreds of slots, live games & more powered by GoldSlot"
           ),
       ],
     });

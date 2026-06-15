@@ -13,7 +13,7 @@ export default {
       components: [{
         type: 2,
         style: 5,
-        label: "🐟 Open Casino Lobby",
+        label: "🎰 Open Casino Lobby",
         url: `${base}/lobby`,
       }],
     };
@@ -21,10 +21,10 @@ export default {
     return message.channel.send({
       embeds: [
         embed(COLORS.accent)
-          .setTitle("🐟 SirGreen Casino — Web Lobby")
+          .setTitle("🎰 SirGreen Casino — Game Lobby")
           .setDescription(
-            `Play **Fish Slot** in your browser, check your FC balance, and more.\n\n` +
-            `Login with your Fluxer account — your FluxCoin balance syncs automatically.`
+            `Browse **hundreds of real casino games** in your browser — slots, live tables, and more from Pragmatic Play, PG Soft, Jili, CQ9, Habanero, and others.\n\n` +
+            `Login with your Fluxer account — your **FluxCoin balance** is your wallet. Win and lose FC across every game.`
           ),
       ],
       components: [row],
