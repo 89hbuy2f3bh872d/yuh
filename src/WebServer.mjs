@@ -18,8 +18,6 @@ const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
-const FC_TO_GS_RATIO = 1;
-
 const PROVIDER_NAMES = {
   1:"Pragmatic Play",2:"CQ9",3:"PG Soft",4:"Booongo",5:"Playson",
   6:"Habanero",7:"Jili",8:"PlayStar",9:"XGaming",10:"Hacksaw",11:"Live",
@@ -267,7 +265,7 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
 </head>
 <body>
 <div id="fcBar">
-  <button class="fc-back" onclick="exitGame()">← Lobby</button>
+  <button class="fc-back" onclick="location.href='/lobby'">← Lobby</button>
   <span class="fc-title">${esc(gameName)}</span>
   <span class="fc-spacer"></span>
   <div class="fc-bal">💰&nbsp;<strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
@@ -277,23 +275,15 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
 <iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
 (function(){
-  let leaving = false;
-  async function syncBalance() {
+  // Poll balance from DB via callback — seamless mode, no wallet transfer needed
+  async function refreshBal() {
     try {
-      const r = await fetch('/api/goldslot/sync-balance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      const d = await r.json();
-      if (r.ok && d.newBal !== undefined) document.getElementById('fcBalNum').textContent = d.newBal.toLocaleString();
+      const r = await fetch('/api/balance');
+      if (r.ok) { const d = await r.json(); document.getElementById('fcBalNum').textContent = (d.bal||0).toLocaleString(); }
     } catch(_) {}
   }
-  const timer = setInterval(syncBalance, 15000);
-  window.exitGame = async function() {
-    if (leaving) return;
-    leaving = true;
-    clearInterval(timer);
-    await syncBalance();
-    location.href = '/lobby';
-  };
-  document.getElementById('gameFrame').addEventListener('load', syncBalance);
+  setInterval(refreshBal, 8000);
+  document.getElementById('gameFrame').addEventListener('load', refreshBal);
 })();
 </script>
 </body>
@@ -322,29 +312,18 @@ export class WebServer {
     this._gameById    = new Map();
     this._processedTrans = new Map();
     // localUid → { name: "gs_<uid>", userCode: <integer> }
-    // name  is used for ALL wallet + game-url API calls
-    // userCode is stored for stats only, never passed to wallet/game-url
     this._gsUserCache = new Map();
   }
 
-  // ── Internal: ensure GoldSlot account exists, return { name, userCode } ────
-  //
-  // ONLY calls userCreate (idempotent). Returns null on failure.
-  // Never calls userInfoByName — that endpoint does not exist on this host.
+  // ── Ensure GoldSlot account exists → { name, userCode } ──────────────────
   async _ensureGsUser(localUid) {
     if (!this.goldSlot) return null;
-
-    // Return cached result so we don't hammer userCreate every request
     if (this._gsUserCache.has(localUid)) return this._gsUserCache.get(localUid);
-
     const name = `gs_${localUid}`;
     try {
       const resp = await this.goldSlot.userCreate(name, this.gsParent || undefined);
       console.log(`[GoldSlot] userCreate raw response for name=${name}:`, JSON.stringify(resp));
-      if (resp.code !== 0) {
-        console.error("[GoldSlot] userCreate failed:", resp);
-        return null;
-      }
+      if (resp.code !== 0) { console.error("[GoldSlot] userCreate failed:", resp); return null; }
       const userCode = resp.data?.user_code ?? null;
       const isNew    = resp.data?.is_new_user === true;
       console.log(`[GoldSlot] User ${isNew ? "created" : "existing"}: name=${name} userCode=${userCode}`);
@@ -357,55 +336,7 @@ export class WebServer {
     }
   }
 
-  // ── Internal: deposit FC balance → GoldSlot wallet (uses name string) ─────
-  async _depositToGS(localUid, gsName) {
-    if (!this.goldSlot) return 0;
-    const user     = await this.db.getUser(localUid);
-    const fcBal    = Math.floor(Number(user?.bal ?? 0));
-    if (fcBal <= 0) return 0;
-    const gsPoints = Math.floor(fcBal / FC_TO_GS_RATIO);
-    if (gsPoints <= 0) return 0;
-    try {
-      console.log(`[GoldSlot] walletDeposit name=${gsName} amount=${gsPoints}`);
-      const resp = await this.goldSlot.walletDeposit(gsName, gsPoints);
-      console.log(`[GoldSlot] walletDeposit response:`, JSON.stringify(resp));
-      if (resp.code === 0) {
-        await this.db.updateBalance(localUid, -fcBal);
-        return gsPoints;
-      }
-      console.error("[GoldSlot] walletDeposit error:", resp);
-      return 0;
-    } catch(e) {
-      console.error("[GoldSlot] _depositToGS:", e);
-      return 0;
-    }
-  }
-
-  // ── Internal: withdraw all from GoldSlot wallet → FC balance ──────────────
-  async _withdrawFromGS(localUid) {
-    if (!this.goldSlot) return 0;
-    let gs = this._gsUserCache.get(localUid);
-    if (!gs) {
-      gs = await this._ensureGsUser(localUid);
-      if (!gs) return 0;
-    }
-    try {
-      const resp = await this.goldSlot.walletWithdrawAll(gs.name);
-      if (resp.code === 0) {
-        const returned = Math.floor(Number(resp.data?.amount ?? 0) * FC_TO_GS_RATIO);
-        if (returned > 0) await this.db.updateBalance(localUid, returned);
-        return returned;
-      }
-      if (resp.code === 2006) return 0; // already zero balance — not an error
-      console.error("[GoldSlot] walletWithdrawAll error:", resp);
-      return 0;
-    } catch(e) {
-      console.error("[GoldSlot] _withdrawFromGS:", e);
-      return 0;
-    }
-  }
-
-  // ── Internal: fetch + cache full game catalogue ───────────────────────────
+  // ── Fetch + cache full game catalogue ─────────────────────────────────────
   async _fetchGames() {
     if (!this.goldSlot) return [];
     const now = Date.now();
@@ -417,7 +348,6 @@ export class WebServer {
       if (resp.code === 0 && Array.isArray(resp.data) && resp.data.length > 0) {
         const first = resp.data[0];
         if (Array.isArray(first?.games)) {
-          // Response is grouped by provider: [ { provider, name, games: [...] } ]
           for (const prov of resp.data) {
             const games = Array.isArray(prov.games) ? prov.games : [];
             const pc    = String(prov.provider ?? prov.code ?? prov.id ?? "UNKNOWN");
@@ -429,7 +359,6 @@ export class WebServer {
             if (games.length) grouped.push({ provider: pc, providerName: pn, games });
           }
         } else if (first?.game_code !== undefined || first?.game_id !== undefined || first?.id !== undefined || first?.code !== undefined) {
-          // Flat list — group by provider_id
           const byProv = new Map();
           for (const g of resp.data) {
             const pid = g.provider_id ?? g.provider ?? g.provider_code ?? "UNKNOWN";
@@ -453,7 +382,7 @@ export class WebServer {
     return grouped;
   }
 
-  // ── Internal: idempotency map for callback transactions ───────────────────
+  // ── Idempotency map for callback transactions ─────────────────────────────
   _markTrans(guid, entry) {
     if (!guid) return;
     this._processedTrans.set(guid, entry);
@@ -463,7 +392,7 @@ export class WebServer {
     }
   }
 
-  // ── Callback authentication ───────────────────────────────────────────────
+  // ── Callback token check ──────────────────────────────────────────────────
   _isValidCallbackToken(req) {
     if (!this.callbackToken) return true;
     const incoming = (req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "").trim();
@@ -477,6 +406,10 @@ export class WebServer {
     res.end(JSON.stringify(body));
   }
 
+  // ── Seamless callback handler ─────────────────────────────────────────────
+  //
+  // GoldSlot sends data.account = the name string passed to userCreate,
+  // e.g. "gs_1512241609448620032". Strip "gs_" prefix to get local Fluxer uid.
   async _handleCallback(req, res) {
     if (!this._isValidCallbackToken(req)) {
       console.warn("[Callback] Rejected — bad token");
@@ -487,24 +420,26 @@ export class WebServer {
     const { command, data, check } = payload;
     if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
 
-    const account       = String(data.account ?? "");
+    // data.account = "gs_<localUid>" — strip prefix to get local uid
+    const gsAccount     = String(data.account ?? "");
+    const localUid      = gsAccount.startsWith("gs_") ? gsAccount.slice(3) : gsAccount;
     const transGuid     = String(data.trans_guid ?? "");
     const cancelTransGuid = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
     const amount        = Number(data.amount ?? 0);
     const checks        = String(check ?? "").split(",").map(s => s.trim());
 
     let user;
-    try { user = await this.db.getUser(account); } catch(e) { console.error("[Callback] DB:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
+    try { user = await this.db.getUser(localUid); } catch(e) { console.error("[Callback] DB:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
 
-    if (checks.includes("21") && !user) { console.warn(`[Callback] USER_NOT_FOUND account=${account}`); return this._cbReply(res, 1, "USER_NOT_FOUND"); }
+    if (checks.includes("21") && !user) { console.warn(`[Callback] USER_NOT_FOUND account=${gsAccount} localUid=${localUid}`); return this._cbReply(res, 1, "USER_NOT_FOUND"); }
     if (checks.includes("22") && user?.banned) return this._cbReply(res, 1, "USER_INACTIVE");
 
     const currentBal = Math.round(Number(user?.bal ?? 0));
 
     if (command === "authenticate") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      console.log(`[Callback] authenticate account=${account} bal=${currentBal}`);
-      return this._cbReply(res, 0, "OK", { account, balance: currentBal });
+      console.log(`[Callback] authenticate account=${gsAccount} localUid=${localUid} bal=${currentBal}`);
+      return this._cbReply(res, 0, "OK", { account: gsAccount, balance: currentBal });
     }
     if (command === "balance") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
@@ -518,19 +453,19 @@ export class WebServer {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
       const betAmt = Math.round(amount);
       if (betAmt > 0 && currentBal < betAmt) {
-        console.warn(`[Callback] BALANCE_NOT_ENOUGH account=${account}`);
+        console.warn(`[Callback] BALANCE_NOT_ENOUGH account=${gsAccount}`);
         return this._cbReply(res, 1, "BALANCE_NOT_ENOUGH");
       }
       let newBal = currentBal;
       if (betAmt > 0) {
         try {
-          await this.db.updateBalance(account, -betAmt);
-          const r = await this.db.getUser(account);
+          await this.db.updateBalance(localUid, -betAmt);
+          const r = await this.db.getUser(localUid);
           newBal = Math.round(Number(r?.bal ?? currentBal - betAmt));
         } catch(e) { console.error("[Callback] DB bet:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
       }
-      this._markTrans(transGuid, { type: "bet", account, amount: betAmt });
-      console.log(`[Callback] bet account=${account} amount=${betAmt} newBal=${newBal}`);
+      this._markTrans(transGuid, { type: "bet", localUid, amount: betAmt });
+      console.log(`[Callback] bet account=${gsAccount} amount=${betAmt} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "win") {
@@ -543,16 +478,16 @@ export class WebServer {
       let newBal = currentBal;
       if (winAmt > 0) {
         try {
-          await this.db.updateBalance(account, winAmt);
-          const r = await this.db.getUser(account);
+          await this.db.updateBalance(localUid, winAmt);
+          const r = await this.db.getUser(localUid);
           newBal = Math.round(Number(r?.bal ?? currentBal + winAmt));
-          await this.db.recordGame(account, true, winAmt).catch(() => {});
+          await this.db.recordGame(localUid, true, winAmt).catch(() => {});
         } catch(e) { console.error("[Callback] DB win:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
       } else {
-        await this.db.recordGame(account, false, 0).catch(() => {});
+        await this.db.recordGame(localUid, false, 0).catch(() => {});
       }
-      this._markTrans(transGuid, { type: "win", account, amount: winAmt });
-      console.log(`[Callback] win account=${account} amount=${winAmt} newBal=${newBal}`);
+      this._markTrans(transGuid, { type: "win", localUid, amount: winAmt });
+      console.log(`[Callback] win account=${gsAccount} amount=${winAmt} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "cancel") {
@@ -565,20 +500,20 @@ export class WebServer {
       let newBal = currentBal;
       if (originalBet > 0) {
         try {
-          await this.db.updateBalance(account, originalBet);
-          const r = await this.db.getUser(account);
+          await this.db.updateBalance(localUid, originalBet);
+          const r = await this.db.getUser(localUid);
           newBal = Math.round(Number(r?.bal ?? currentBal + originalBet));
         } catch(e) { console.error("[Callback] DB cancel:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
       }
-      this._markTrans(cancelTransGuid, { type: "cancel", account, amount: originalBet });
+      this._markTrans(cancelTransGuid, { type: "cancel", localUid, amount: originalBet });
       if (transGuid) this._processedTrans.delete(transGuid);
-      console.log(`[Callback] cancel account=${account} refund=${originalBet} newBal=${newBal}`);
+      console.log(`[Callback] cancel account=${gsAccount} refund=${originalBet} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "status") {
       const entry = this._processedTrans.get(transGuid);
       if (checks.includes("42") && !entry) return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
-      return this._cbReply(res, 0, "OK", { account, trans_guid: transGuid, trans_status: entry ? "OK" : "NOT_FOUND" });
+      return this._cbReply(res, 0, "OK", { account: gsAccount, trans_guid: transGuid, trans_status: entry ? "OK" : "NOT_FOUND" });
     }
     console.warn(`[Callback] Unknown command: ${command}`);
     return this._cbReply(res, 1, "UNKNOWN_COMMAND");
@@ -613,22 +548,24 @@ export class WebServer {
       res.writeHead(204); return res.end();
     }
 
-    // ── Callback (seamless integration endpoint) ─────────────────────────
+    // ── Callback (seamless integration endpoint) ──────────────────────────
     if (p === "/callback") {
       if (req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, service: "SirGreen Casino callback" })); }
       if (req.method === "POST") return this._handleCallback(req, res);
       res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
     }
 
-    // ── Debug endpoint (GET /api/goldslot/debug) ─────────────────────────
+    // ── Debug endpoint ────────────────────────────────────────────────────
     if (p === "/api/goldslot/debug" && req.method === "GET") {
       if (!this.goldSlot) return this._json(res, 503, { error: "goldSlotApiToken not configured" });
       const out = {};
       try { out.agentInfo = await this.goldSlot.agentInfo(); } catch(e) { out.agentInfo = { error: e.message }; }
       try {
         const testName = `gs_debug_${Date.now()}`;
-        out.userCreate      = await this.goldSlot.userCreate(testName, this.gsParent || undefined);
-        out.walletDepositTest = await this.goldSlot.walletDeposit(testName, 1);
+        out.userCreate = await this.goldSlot.userCreate(testName, this.gsParent || undefined);
+        if (out.userCreate?.data?.user_code) {
+          out.getGameUrlTest = await this.goldSlot.getGameUrl(out.userCreate.data.user_code, "vs20fruitsw", `${this.baseUrl}/lobby`, 1);
+        }
       } catch(e) { out.error = e.message; }
       return this._json(res, 200, out);
     }
@@ -646,10 +583,10 @@ export class WebServer {
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const user           = await this.db.getUser(uid);
-      const cookies        = parseCookies(req);
-      const bal            = Number(user?.bal ?? 0);
-      const tag            = decodeURIComponent(cookies.dtag ?? "Player");
+      const user            = await this.db.getUser(uid);
+      const cookies         = parseCookies(req);
+      const bal             = Number(user?.bal ?? 0);
+      const tag             = decodeURIComponent(cookies.dtag ?? "Player");
       const gamesByProvider = await this._fetchGames();
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
@@ -664,18 +601,15 @@ export class WebServer {
       if (!gameCode) return this._redirect(res, "/lobby");
       if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set.", "/lobby", "Back"));
 
-      // 1. Ensure GoldSlot account exists — returns { name, userCode }
+      // 1. Ensure GoldSlot account exists → { name, userCode }
       const gs = await this._ensureGsUser(uid);
       if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
 
-      // 2. Move FC balance → GoldSlot wallet (passes gs.name string, not integer)
-      await this._depositToGS(uid, gs.name);
-
-      // 3. Get game launch URL (passes gs.name string, not integer)
+      // 2. Get game launch URL — MUST pass userCode (integer), not name string
       let gameUrl;
       try {
-        const urlResp = await this.goldSlot.getGameUrl(gs.name, gameCode, `${this.baseUrl}/lobby`, 1);
-        console.log(`[GoldSlot] getGameUrl name=${gs.name} game_code=${gameCode} → code:${urlResp.code}`, urlResp.data?.url ?? urlResp.message ?? "");
+        const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, `${this.baseUrl}/lobby`, 1);
+        console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} game_code=${gameCode} → code:${urlResp.code}`, urlResp.data?.url ?? urlResp.message ?? "");
         if (urlResp.code !== 0 || !urlResp.data?.url)
           return this._html(res, 500, errPage("⚠️ Error", `Could not launch game (code ${urlResp.code}: ${urlResp.message ?? ""}). Ensure agent is Approved in GoldSlot admin.`, "/lobby", "Back to Lobby"));
         gameUrl = urlResp.data.url;
@@ -692,17 +626,7 @@ export class WebServer {
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
-    // ── Balance sync (called by game wrapper every 15 s) ──────────────────
-    if (p === "/api/goldslot/sync-balance" && req.method === "POST") {
-      const uid = this._uid(req);
-      if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      const returned = await this._withdrawFromGS(uid);
-      if (returned > 0) await this.db.recordGame(uid, true, returned).catch(() => {});
-      const updated = await this.db.getUser(uid);
-      return this._json(res, 200, { ok: true, newBal: Number(updated?.bal ?? 0) });
-    }
-
-    // ── FC balance query ──────────────────────────────────────────────────
+    // ── FC balance query (polled by game wrapper) ─────────────────────────
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
@@ -759,7 +683,6 @@ export class WebServer {
     if (p === "/logout") {
       const uid = this._uid(req);
       if (uid) {
-        await this._withdrawFromGS(uid).catch(() => {});
         const c = parseCookies(req);
         if (c.sid) await this.db.revokeSession(uid, c.sid).catch(() => {});
       }

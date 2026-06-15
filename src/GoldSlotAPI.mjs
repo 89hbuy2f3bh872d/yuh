@@ -1,12 +1,17 @@
 /**
  * GoldSlotAPI.mjs — agent.goldslotpalase.com v4
  *
- * CONFIRMED from live API behaviour:
- *   /v4/user/create  → returns user_code (integer, e.g. 407830550)
- *   /v4/wallet/*     → MUST use { name: "gs_..." }  — user_code causes 2002 USER_NOT_FOUND
- *   /v4/game/game-url→ MUST use { name: "gs_..." }  — user_code causes 1002 VALIDATION_ERROR
- *   /v4/user/info    → accepts { user_code: int }    — informational only, not needed for flow
- *   userInfoByName   → DOES NOT EXIST on this host  — never call it
+ * CONFIRMED from Postman docs + live API behaviour:
+ *   MODE: Seamless — the callback URL IS the wallet.
+ *         /v4/wallet/* endpoints are NOT used.
+ *
+ *   /v4/user/create  → body: { name }          → returns user_code (integer)
+ *   /v4/game/game-url→ body: { user_code: int } → MUST be integer, not name string
+ *   /v4/game/all     → returns grouped or flat game list
+ *
+ *   Callback from GoldSlot server → POST /callback
+ *     data.account = the name string you passed to userCreate ("gs_<localUid>")
+ *     commands: authenticate, balance, bet, win, cancel, status
  */
 
 import https from "https";
@@ -79,33 +84,9 @@ export class GoldSlotAPI {
     return this._post("/v4/user/create", body);
   }
 
-  // Lookup by integer user_code (informational only — NOT used in wallet/game flow).
+  // Lookup by integer user_code (informational only).
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
-  }
-
-  // ── 3. Wallet  (MUST pass name string, NOT user_code integer) ─────────────
-  walletDeposit(name, amount, txId) {
-    return this._post("/v4/wallet/deposit", {
-      name:   safeName(name),
-      amount: Math.floor(amount),
-      tx_id:  txId ?? `dep_${Date.now()}`,
-    });
-  }
-
-  walletWithdraw(name, amount, txId) {
-    return this._post("/v4/wallet/withdraw", {
-      name:   safeName(name),
-      amount: Math.floor(amount),
-      tx_id:  txId ?? `wd_${Date.now()}`,
-    });
-  }
-
-  walletWithdrawAll(name, txId) {
-    return this._post("/v4/wallet/withdraw-all", {
-      name:  safeName(name),
-      tx_id: txId ?? `wdall_${Date.now()}`,
-    });
   }
 
   // ── 4. Game Details ───────────────────────────────────────────────────────
@@ -113,10 +94,11 @@ export class GoldSlotAPI {
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  // ── 5. Game Launch  (MUST pass name string, NOT user_code integer) ────────
-  getGameUrl(name, gameCode, returnUrl = "", lang = 1) {
+  // ── 5. Game Launch ────────────────────────────────────────────────────────
+  // MUST pass user_code (integer) — NOT the name string.
+  getGameUrl(userCode, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
-      name:       safeName(name),
+      user_code:  Number(userCode),
       game_code:  String(gameCode),
       return_url: returnUrl,
       language:   lang,
