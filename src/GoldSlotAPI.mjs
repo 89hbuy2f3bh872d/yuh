@@ -27,6 +27,8 @@ import http  from "http";
 import zlib  from "zlib";
 import { URL } from "url";
 
+const TAG = "[GoldSlotAPI]";
+
 function safeName(raw, fallback) {
   let n = String(raw ?? fallback ?? "").trim().replace(/[\x00-\x1f]/g, "").trim();
   if (n.length < 2) n = (n + "__").slice(0, Math.max(2, n.length + 2));
@@ -38,13 +40,20 @@ export class GoldSlotAPI {
     this.apiToken    = apiToken;
     this.baseUrl     = baseUrl.replace(/\/$/, "");
     this.callbackUrl = callbackUrl; // e.g. "https://www.sirgreen.online/callback"
+
+    // ── Constructor diagnostics ─────────────────────────────────────────
+    console.log(`${TAG} Constructed`);
+    console.log(`${TAG}   baseUrl     = ${this.baseUrl}`);
+    console.log(`${TAG}   callbackUrl = ${this.callbackUrl || "(EMPTY — will cause 1002 in seamless mode!)"}`);
+    console.log(`${TAG}   apiToken    = ${this.apiToken ? this.apiToken.slice(0,8) + "…" : "(MISSING — will cause TOKEN_NOT_FOUND!)"}`);
   }
 
   _post(path, body = {}) {
     return new Promise((resolve, reject) => {
-      const parsed  = new URL(`${this.baseUrl}${path}`);
-      const payload = Buffer.from(JSON.stringify(body));
-      const headers = {
+      const fullUrl  = `${this.baseUrl}${path}`;
+      const parsed   = new URL(fullUrl);
+      const payload  = Buffer.from(JSON.stringify(body));
+      const headers  = {
         Authorization:     `Bearer ${this.apiToken}`,
         Accept:            "application/json",
         "Content-Type":    "application/json",
@@ -52,6 +61,24 @@ export class GoldSlotAPI {
         "User-Agent":      "FluxerCasinoBot/4.0",
         "Accept-Encoding": "gzip, deflate, br",
       };
+
+      // ── Verbose outbound log ──────────────────────────────────────────
+      console.log(`${TAG} ── REQUEST ──────────────────────────────`);
+      console.log(`${TAG}   POST ${fullUrl}`);
+      console.log(`${TAG}   Headers:`);
+      for (const [k, v] of Object.entries(headers)) {
+        // Redact token beyond first 8 chars in the log
+        const display = k === "Authorization" ? `Bearer ${this.apiToken.slice(0,8)}…` : v;
+        console.log(`${TAG}     ${k}: ${display}`);
+      }
+      console.log(`${TAG}   Body (${payload.length} bytes):`);
+      console.log(`${TAG}     ${payload.toString("utf8")}`);
+      console.log(`${TAG}   Body field types:`);
+      for (const [k, v] of Object.entries(body)) {
+        console.log(`${TAG}     ${k} → ${typeof v} = ${JSON.stringify(v)}`);
+      }
+      console.log(`${TAG} ─────────────────────────────────────────`);
+
       const mod = parsed.protocol === "https:" ? https : http;
       const req = mod.request({
         hostname: parsed.hostname,
@@ -72,66 +99,121 @@ export class GoldSlotAPI {
                    : enc === "deflate" ? zlib.inflateSync(raw)
                    : raw;
           } catch { decomp = raw; }
-          try   { resolve(JSON.parse(decomp.toString("utf8"))); }
-          catch (e) { reject(new Error(`GoldSlot non-JSON (HTTP ${res.statusCode}): ${decomp.slice(0,200)}`)); }
+
+          const bodyStr = decomp.toString("utf8");
+
+          // ── Verbose inbound log ────────────────────────────────────
+          console.log(`${TAG} ── RESPONSE ─────────────────────────────`);
+          console.log(`${TAG}   POST ${path} → HTTP ${res.statusCode}`);
+          console.log(`${TAG}   Content-Encoding: ${enc || "(none)"}`);
+          console.log(`${TAG}   Raw body (${raw.length}B → ${decomp.length}B decoded):`);
+          console.log(`${TAG}     ${bodyStr.slice(0, 1000)}`);
+
+          let parsed_body;
+          try {
+            parsed_body = JSON.parse(bodyStr);
+            console.log(`${TAG}   Parsed response.code    = ${parsed_body.code}`);
+            console.log(`${TAG}   Parsed response.message = ${parsed_body.message ?? "(none)"}`);
+            if (parsed_body.data !== undefined)
+              console.log(`${TAG}   Parsed response.data    = ${JSON.stringify(parsed_body.data).slice(0, 300)}`);
+            if (parsed_body.code !== 0)
+              console.warn(`${TAG} ⚠️  NON-ZERO code=${parsed_body.code} on POST ${path} — body sent was: ${payload.toString("utf8")}`);
+          } catch (e) {
+            console.error(`${TAG}   JSON parse failed: ${e.message}`);
+            console.log(`${TAG} ─────────────────────────────────────────`);
+            return reject(new Error(`GoldSlot non-JSON (HTTP ${res.statusCode}): ${bodyStr.slice(0,200)}`));
+          }
+
+          console.log(`${TAG} ─────────────────────────────────────────`);
+          resolve(parsed_body);
         });
       });
-      req.on("error", reject);
+
+      req.on("error", (err) => {
+        console.error(`${TAG} !! Network error on POST ${path}: ${err.message}`);
+        reject(err);
+      });
+
       req.write(payload);
       req.end();
     });
   }
 
   // ── 1. Agent ──────────────────────────────────────────────────────────────
-  agentInfo() { return this._post("/v4/agent/info"); }
+  agentInfo() {
+    console.log(`${TAG} agentInfo()`);
+    return this._post("/v4/agent/info");
+  }
 
   // ── 2. User ───────────────────────────────────────────────────────────────
-  // Idempotent — safe to call every session. Returns { user_code, is_new_user }.
   userCreate(name, parent) {
-    const body = { name: safeName(name) };
+    const safed = safeName(name);
+    const body  = { name: safed };
     if (parent) body.parent = parent;
+    console.log(`${TAG} userCreate() name="${safed}" parent=${parent ?? "(none)"}`);
     return this._post("/v4/user/create", body);
   }
 
-  // Lookup by integer user_code.
   userInfo(userCode) {
+    console.log(`${TAG} userInfo() userCode=${userCode} type=${typeof userCode}`);
     return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
 
   // ── 4. Game Details ───────────────────────────────────────────────────────
-  getProviders(lang = 1) { return this._post("/v4/game/providers", { language: lang }); }
-  getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
-  getAllGames(lang = 1)  { return this._post("/v4/game/all",      { language: lang }); }
+  getProviders(lang = 1) {
+    console.log(`${TAG} getProviders() lang=${lang}`);
+    return this._post("/v4/game/providers", { language: lang });
+  }
+  getGames(provider, lang = 1) {
+    console.log(`${TAG} getGames() provider=${provider} lang=${lang}`);
+    return this._post("/v4/game/games", { provider, language: lang });
+  }
+  getAllGames(lang = 1) {
+    console.log(`${TAG} getAllGames() lang=${lang}`);
+    return this._post("/v4/game/all", { language: lang });
+  }
 
   // ── 5. Game Launch ────────────────────────────────────────────────────────
-  //
-  // user_code  — integer returned by userCreate (NEVER the name string)
-  // gameCode   — game_code string from getAllGames
-  // lobbyUrl   — where the in-game back/exit button returns the player
-  // lang       — language id (1 = English)
-  //
-  // Seamless mode requires callback_url so GoldSlot knows where to POST
-  // bet/win/cancel events. Without it the API returns VALIDATION_ERROR 1002.
   getGameUrl(userCode, gameCode, lobbyUrl = "", lang = 1) {
     const body = {
       user_code: Number(userCode),   // integer — MUST NOT be string
       game_code: String(gameCode),
       language:  lang,
     };
-    if (lobbyUrl)        body.lobby_url    = lobbyUrl;
+    if (lobbyUrl)         body.lobby_url    = lobbyUrl;
     if (this.callbackUrl) body.callback_url = this.callbackUrl;
+
+    // ── Pre-flight validation log ──────────────────────────────────────
+    console.log(`${TAG} getGameUrl() pre-flight check:`);
+    console.log(`${TAG}   userCode raw   = ${userCode}  (type: ${typeof userCode})`);
+    console.log(`${TAG}   userCode coerced → ${body.user_code}  (type: ${typeof body.user_code})`);
+    console.log(`${TAG}   game_code      = "${body.game_code}"  (type: ${typeof body.game_code})`);
+    console.log(`${TAG}   language       = ${body.language}`);
+    console.log(`${TAG}   lobby_url      = ${body.lobby_url ?? "(not set)"}`);
+    console.log(`${TAG}   callback_url   = ${body.callback_url ?? "(NOT SET — 1002 likely in seamless mode!)"}`);
+    console.log(`${TAG}   Full body JSON = ${JSON.stringify(body)}`);
+    if (!body.callback_url)
+      console.warn(`${TAG} ⚠️  callbackUrl is EMPTY. Seamless mode REQUIRES callback_url — this is the most common cause of 1002.`);
+    if (typeof body.user_code !== "number" || !Number.isInteger(body.user_code) || body.user_code <= 0)
+      console.warn(`${TAG} ⚠️  user_code="${body.user_code}" looks invalid — GoldSlot requires a positive integer here.`);
+
     return this._post("/v4/game/game-url", body);
   }
 
-  getOnlineGames() { return this._post("/v4/game/online-games"); }
+  getOnlineGames() {
+    console.log(`${TAG} getOnlineGames()`);
+    return this._post("/v4/game/online-games");
+  }
 
   // ── 6. Transactions ───────────────────────────────────────────────────────
   getTransactions(startDate, endDate, opts = {}) {
+    console.log(`${TAG} getTransactions() ${startDate} → ${endDate}`);
     return this._post("/v4/game/transaction", { start_date: startDate, end_date: endDate, ...opts });
   }
 
   // ── 7. Statistics ─────────────────────────────────────────────────────────
   getUserStats(userCode, startDate, endDate) {
+    console.log(`${TAG} getUserStats() userCode=${userCode} ${startDate} → ${endDate}`);
     return this._post("/v4/statistics/user", {
       user_code:  Number(userCode),
       start_date: startDate,
