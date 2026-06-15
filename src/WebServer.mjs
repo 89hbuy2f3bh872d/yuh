@@ -415,7 +415,6 @@ export class WebServer {
         } else if (first?.game_code !== undefined || first?.game_id !== undefined || first?.id !== undefined || first?.code !== undefined) {
           const byProv = new Map();
           for (const g of resp.data) {
-            // Resolve provider identity — API uses numeric provider_id
             const pid = g.provider_id ?? g.provider ?? g.provider_code ?? "UNKNOWN";
             const pc  = String(pid);
             const pn  = g.provider_name ?? providerName(pid);
@@ -445,14 +444,24 @@ export class WebServer {
     return grouped;
   }
 
-  async _ensureGsUser(uid) {
+  /**
+   * Ensure the GoldSlot user account exists, creating it if needed.
+   * @param {string} uid   - Fluxer user ID (used as GoldSlot user_id)
+   * @param {string} [tag] - Display name; falls back to uid if omitted
+   */
+  async _ensureGsUser(uid, tag) {
     if (!this.goldSlot) return null;
+    const displayName = String(tag ?? uid);
     try {
       const info = await this.goldSlot.userInfo(uid);
       if (info.code === 0) return info.data;
       if (info.code === 2002) {
-        const created = await this.goldSlot.userCreate(uid);
-        if (created.code === 0) return created.data;
+        // User does not exist yet — create with explicit name
+        const created = await this.goldSlot.userCreate(uid, displayName);
+        if (created.code === 0) {
+          console.log(`[GoldSlot] Created user ${uid} (${displayName})`);
+          return created.data;
+        }
         console.error("[GoldSlot] userCreate failed:", created);
         return null;
       }
@@ -720,7 +729,6 @@ export class WebServer {
       res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
     }
 
-    // GET /api/goldslot/debug — returns raw API responses for diagnosis
     if (p === "/api/goldslot/debug" && req.method === "GET") {
       if (!this.goldSlot) {
         return this._json(res, 503, { error: "goldSlotApiToken not configured" });
@@ -737,7 +745,6 @@ export class WebServer {
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
       const disk = assetUrlToDiskPath(p);
       if (disk && fs.existsSync(disk)) return serveFileWithRanges(req, res, disk, getMime(disk));
-      console.warn("[Web] Asset cache miss, serving from disk:", p);
       res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
@@ -755,12 +762,15 @@ export class WebServer {
     if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const gameId = decodeURIComponent(p.slice("/game/".length).split("/")[0]);
+      const cookies = parseCookies(req);
+      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
+      const gameId  = decodeURIComponent(p.slice("/game/".length).split("/")[0]);
       if (!gameId) return this._redirect(res, "/lobby");
       if (!this.goldSlot)
         return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set in config.json.", "/lobby", "Back"));
 
-      const gsUser = await this._ensureGsUser(uid);
+      // Pass the player's username as the display name for GoldSlot
+      const gsUser = await this._ensureGsUser(uid, tag);
       if (!gsUser)
         return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account. Try again.", "/lobby", "Back"));
 
@@ -782,10 +792,8 @@ export class WebServer {
       await this._fetchGames();
       const gameMeta = this._gameById.get(String(gameId));
       const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameId;
-      const cookies  = parseCookies(req);
       const user     = await this.db.getUser(uid);
       const bal      = Number(user?.bal ?? 0);
-      const tag      = decodeURIComponent(cookies.dtag ?? "Player");
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
