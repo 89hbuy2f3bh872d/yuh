@@ -1,16 +1,17 @@
 /**
  * GoldSlotAPI.mjs — agent.goldslotpalase.com v4
  *
- * KEY FINDING (from live logs):
- *   /v4/user/create returns user_code = panel account ID (large int, e.g. 407830262)
- *   /v4/user/info   does NOT accept { name }, only { user_code: int }
- *   /v4/wallet/*    returns USER_NOT_FOUND when called with user_code
- *   => wallet + game-url endpoints must be called with { name } not { user_code }
+ * CONFIRMED from live API behaviour:
+ *   /v4/user/create  → returns user_code (integer, e.g. 407830550)
+ *   /v4/wallet/*     → MUST use { name: "gs_..." }  — user_code causes 2002 USER_NOT_FOUND
+ *   /v4/game/game-url→ MUST use { name: "gs_..." }  — user_code causes 1002 VALIDATION_ERROR
+ *   /v4/user/info    → accepts { user_code: int }    — informational only, not needed for flow
+ *   userInfoByName   → DOES NOT EXIST on this host  — never call it
  */
 
 import https from "https";
-import http from "http";
-import zlib from "zlib";
+import http  from "http";
+import zlib  from "zlib";
 import { URL } from "url";
 
 function safeName(raw, fallback) {
@@ -30,12 +31,12 @@ export class GoldSlotAPI {
       const parsed  = new URL(`${this.baseUrl}${path}`);
       const payload = Buffer.from(JSON.stringify(body));
       const headers = {
-        Authorization:    `Bearer ${this.apiToken}`,
-        Accept:           "application/json",
-        "Content-Type":   "application/json",
-        "Content-Length": payload.length,
-        "User-Agent":     "FluxerCasinoBot/4.0",
-        "Accept-Encoding":"gzip, deflate, br",
+        Authorization:     `Bearer ${this.apiToken}`,
+        Accept:            "application/json",
+        "Content-Type":    "application/json",
+        "Content-Length":  payload.length,
+        "User-Agent":      "FluxerCasinoBot/4.0",
+        "Accept-Encoding": "gzip, deflate, br",
       };
       const mod = parsed.protocol === "https:" ? https : http;
       const req = mod.request({
@@ -67,23 +68,23 @@ export class GoldSlotAPI {
     });
   }
 
-  // 1. Agent
+  // ── 1. Agent ──────────────────────────────────────────────────────────────
   agentInfo() { return this._post("/v4/agent/info"); }
 
-  // 2. User
-  // userCreate is idempotent — safe to call every session.
+  // ── 2. User ───────────────────────────────────────────────────────────────
+  // Idempotent — safe to call every session. Returns { user_code, is_new_user }.
   userCreate(name, parent) {
     const body = { name: safeName(name) };
     if (parent) body.parent = parent;
     return this._post("/v4/user/create", body);
   }
 
-  // userInfo by integer user_code (as documented)
+  // Lookup by integer user_code (informational only — NOT used in wallet/game flow).
   userInfo(userCode) {
     return this._post("/v4/user/info", { user_code: Number(userCode) });
   }
 
-  // 3. Wallet — use name, NOT user_code (user_code causes USER_NOT_FOUND on this host)
+  // ── 3. Wallet  (MUST pass name string, NOT user_code integer) ─────────────
   walletDeposit(name, amount, txId) {
     return this._post("/v4/wallet/deposit", {
       name:   safeName(name),
@@ -107,12 +108,12 @@ export class GoldSlotAPI {
     });
   }
 
-  // 4. Game Details
+  // ── 4. Game Details ───────────────────────────────────────────────────────
   getProviders(lang = 1) { return this._post("/v4/game/providers", { language: lang }); }
   getGames(provider, lang = 1) { return this._post("/v4/game/games", { provider, language: lang }); }
   getAllGames(lang = 1) { return this._post("/v4/game/all", { language: lang }); }
 
-  // 5. Game Launch — use name, NOT user_code
+  // ── 5. Game Launch  (MUST pass name string, NOT user_code integer) ────────
   getGameUrl(name, gameCode, returnUrl = "", lang = 1) {
     return this._post("/v4/game/game-url", {
       name:       safeName(name),
@@ -124,12 +125,12 @@ export class GoldSlotAPI {
 
   getOnlineGames() { return this._post("/v4/game/online-games"); }
 
-  // 6. Transactions
+  // ── 6. Transactions ───────────────────────────────────────────────────────
   getTransactions(startDate, endDate, opts = {}) {
     return this._post("/v4/game/transaction", { start_date: startDate, end_date: endDate, ...opts });
   }
 
-  // 7. Statistics
+  // ── 7. Statistics ─────────────────────────────────────────────────────────
   getUserStats(userCode, startDate, endDate) {
     return this._post("/v4/statistics/user", {
       user_code:  Number(userCode),
