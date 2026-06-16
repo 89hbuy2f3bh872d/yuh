@@ -14,6 +14,10 @@ const __dirname  = path.dirname(__filename);
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
 const GAMES_HTML_DIR   = path.resolve(__dirname, "../games");
 const FAVICON_PATH     = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
+// Cache-bust assets per server start: assets are sent with a 24h max-age, so a
+// stable build tag (changes every restart/deploy) forces browsers to refetch
+// updated CSS/JS while still allowing long caching within a single run.
+const ASSET_VER = Date.now().toString(36);
 
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
@@ -1265,6 +1269,8 @@ export class WebServer {
       .replace(/__TAG__/g, esc(tag))
       .replace(/__AVATAR__/g, esc(avatar));
     for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
+    // Cache-bust local CSS/JS so deployed changes load immediately.
+    html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
     return this._html(res, 200, html);
   }
 
