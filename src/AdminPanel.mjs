@@ -236,7 +236,7 @@ function pageHeader({ eyebrow, title, sub, color }) {
   </div>`;
 }
 
-function buildPage(data) {
+function buildPage(data, prefix) {
   const { globals, commands, guilds, daily, topUsers, buildAt } = data;
   const refreshedAt = new Date(buildAt).toLocaleTimeString("en-US", {
     hour12: false,
@@ -547,7 +547,7 @@ export class AdminPanel {
       daily,
       topUsers,
       buildAt: Date.now(),
-    });
+    }, this.prefix);
   }
 
   /** Convenience: return the login-required page. */
