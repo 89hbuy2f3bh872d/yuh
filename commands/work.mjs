@@ -3,6 +3,7 @@ import { COLORS } from "../src/theme.mjs";
 const COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 const MIN_EARN = 80;
 const MAX_EARN = 220;
+const WORK_FIELD = "lw"; // stored in user document alongside ld (lastDaily)
 
 const JOBS = [
   { emoji: "🧹", text: "swept the casino floor" },
@@ -17,8 +18,8 @@ const JOBS = [
   { emoji: "📦", text: "unloaded a shipment of dice" },
 ];
 
-// Per-user cooldown map (resets on restart — fine for a Discord bot)
-const _lastWork = new Map();
+// In-flight guards: same pattern as daily.mjs
+const _inflight = new Map();
 
 export default {
   name: "work",
@@ -27,36 +28,57 @@ export default {
 
   async execute({ message, db, embed }) {
     const uid = message.author.id;
-    const now = Date.now();
-    const last = _lastWork.get(uid) ?? 0;
-    const diff = now - last;
 
-    if (diff < COOLDOWN_MS) {
-      const remaining = COOLDOWN_MS - diff;
-      const m = Math.floor(remaining / 60_000);
-      const s = Math.floor((remaining % 60_000) / 1000);
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn)
-          .setDescription(`⏳ You're still on your break. Come back in **${m}m ${s}s**.`)
-      ]});
+    if (_inflight.has(uid)) {
+      await _inflight.get(uid);
     }
 
-    const amount = Math.floor(Math.random() * (MAX_EARN - MIN_EARN + 1)) + MIN_EARN;
-    const job = JOBS[Math.floor(Math.random() * JOBS.length)];
+    let release;
+    const p = new Promise(resolve => { release = resolve; });
+    _inflight.set(uid, p);
 
-    _lastWork.set(uid, now);
-    await db.updateBalance(uid, amount);
+    try {
+      // Read the lw field for persistent cooldown (persists across bot restarts)
+      const u = await db.getUser(uid);
+      const now = Date.now();
+      const last = u.lw ?? 0;
+      const diff = now - last;
 
-    const user = await db.getUser(uid);
+      if (diff < COOLDOWN_MS) {
+        const remaining = COOLDOWN_MS - diff;
+        const m = Math.floor(remaining / 60_000);
+        const s = Math.floor((remaining % 60_000) / 1000);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn)
+            .setDescription(`⏳ You're still on your break. Come back in **${m}m ${s}s**.`)
+        ]});
+      }
 
-    return message.channel.send({ embeds: [
-      embed(COLORS.primary)
-        .setTitle(`${job.emoji} Shift Complete`)
-        .setDescription(
-          `You **${job.text}** and earned **+${amount.toLocaleString()} FC**!\n` +
-          `💰 Balance: **${Math.floor(user.bal).toLocaleString()} FC**`
-        )
-        .setFooter({ text: "Next shift available in 30 minutes." })
-    ]});
+      const amount = Math.floor(Math.random() * (MAX_EARN - MIN_EARN + 1)) + MIN_EARN;
+      const job = JOBS[Math.floor(Math.random() * JOBS.length)];
+
+      // Atomically credit earnings and persist cooldown timestamp
+      await db.updateBalance(uid, amount);
+      await db._users.updateOne(
+        { _id: uid },
+        { $set: { [WORK_FIELD]: now } },
+        { upsert: true }
+      );
+
+      const user = await db.getUser(uid);
+
+      return message.channel.send({ embeds: [
+        embed(COLORS.primary)
+          .setTitle(`${job.emoji} Shift Complete`)
+          .setDescription(
+            `You **${job.text}** and earned **+${amount.toLocaleString()} FC**!\n` +
+            `💰 Balance: **${Math.floor(user.bal).toLocaleString()} FC**`
+          )
+          .setFooter({ text: "Next shift available in 30 minutes." })
+      ]});
+    } finally {
+      _inflight.delete(uid);
+      release();
+    }
   },
 };

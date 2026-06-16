@@ -64,8 +64,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet upfront
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -84,9 +85,9 @@ export default {
     if (betType === "odd")   { won = result > 0 && result <= 35 && result % 2 !== 0; multiplier = 1; }
     if (isNumBet)            { won = result === numBet; multiplier = 34; }
 
-    const delta = won ? betAmt * multiplier : -betAmt;
-    await db.updateBalance(uid, delta);
-    await db.recordGame(uid, won, Math.abs(delta));
+    const winAmt = won ? betAmt * multiplier : 0;
+    if (winAmt > 0) await db.updateBalance(uid, winAmt);
+    await db.recordGame(uid, won, betAmt);
     const u2 = await db.getUser(uid);
 
     return message.channel.send({ embeds: [

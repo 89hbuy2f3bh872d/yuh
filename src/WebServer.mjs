@@ -314,6 +314,10 @@ export class WebServer {
     this.clientSecret = config.fluxerClientSecret ?? config.discordClientSecret ?? "";
     this.baseUrl      = config.webBaseUrl ?? "https://www.sirgreen.online";
     this.redirectUri  = `${this.baseUrl}/oauth/callback`;
+    // Optional: bind sessions to the IP address they were created from.
+    // Reduces token-theft window but may log out users behind aggressive NAT/CGNAT.
+    this._sessionIpBinding  = Boolean(config.sessionIpBinding);
+    this._sessionIpTolerance = Number(config.sessionIpToleranceMs ?? 0); // grace period for flaky IPs
     this._states      = new Map();
     const gsToken     = config.goldSlotApiToken ?? "";
     const gsUrl       = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
@@ -471,8 +475,9 @@ export class WebServer {
   // ─── Admin route helpers ──────────────────────────────────────────────────
 
   _buildAdminLoginUrl() {
-    const state = crypto.randomBytes(16).toString("hex");
-    this._states.set(state, Date.now());
+    const state  = crypto.randomBytes(16).toString("hex");
+    const expiry = Date.now() + 10 * 60 * 1000; // CSRF state valid for 10 min
+    this._states.set(state, { createdAt: Date.now(), expiry });
     return `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
   }
 
@@ -517,9 +522,12 @@ export class WebServer {
     );
     this._server.listen(this.port, "0.0.0.0", () => console.log(`[Web] SirGreen Casino on port ${this.port}`));
     setInterval(() => {
-      const cut = Date.now() - 15 * 60 * 1000;
-      for (const [s, ts] of this._states) if (ts < cut) this._states.delete(s);
-    }, 10 * 60 * 1000);
+      const now = Date.now();
+      for (const [s, entry] of this._states) {
+        const cutoff = entry.expiry ?? (Number(entry) + 15 * 60 * 1000);
+        if (now > cutoff) this._states.delete(s);
+      }
+    }, 5 * 60 * 1000);
   }
 
   // ─── Main request handler ─────────────────────────────────────────────────
@@ -584,15 +592,20 @@ export class WebServer {
       if (!GOLDSLOT_ENABLED) return this._redirect(res, "/lobby");
       const cookies  = parseCookies(req);
       const tag      = decodeURIComponent(cookies.dtag ?? "Player");
-      const parts      = p.slice("/game/".length).split("/");
-      const providerId = parts.length >= 2 ? Number(decodeURIComponent(parts[0])) : NaN;
-      const gameCode   = parts.length >= 2 ? decodeURIComponent(parts.slice(1).join("/")) : decodeURIComponent(parts[0] ?? "");
-      if (!gameCode) return this._redirect(res, "/lobby");
+      // Validate that the path components are non-empty alphanum strings.
+      // gameCode may legitimately contain hyphens/underscores, so we allow those.
+      const rawParts = p.slice("/game/".length).split("/");
+      const rawPid   = decodeURIComponent(rawParts[0] ?? "");
+      const rawGame  = decodeURIComponent(rawParts.slice(1).join("/") ?? rawParts[0] ?? "");
+      if (!/^\d{1,6}$/.test(rawPid)) return this._redirect(res, "/lobby");
+      if (!rawGame || !/^[a-zA-Z0-9_-]{1,64}$/.test(rawGame)) return this._redirect(res, "/lobby");
+      const providerId = Number(rawPid);
+      const gameCode   = rawGame;
       if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set.", "/lobby", "Back"));
       await this._fetchGames();
-      const gameMeta    = this._gameById.get(String(gameCode));
+      const gameMeta    = this._gameById.get(gameCode);
       const resolvedPid = (!isNaN(providerId) && providerId > 0) ? providerId : Number(gameMeta?.provider_id ?? gameMeta?.providerCode ?? NaN);
-      if (isNaN(resolvedPid) || resolvedPid <= 0) return this._html(res, 400, errPage("⚠️ Error", `Unknown provider for game "${gameCode}".`, "/lobby", "Back to Lobby"));
+      if (isNaN(resolvedPid) || resolvedPid <= 0) return this._html(res, 400, errPage("⚠️ Error", `Unknown provider for game "${esc(gameCode)}".`, "/lobby", "Back to Lobby"));
       const gs = await this._ensureGsUser(uid);
       if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
       let gameUrl;
@@ -617,8 +630,9 @@ export class WebServer {
 
     if (p === "/login" && req.method === "GET") {
       if (!this.clientId) return this._html(res, 500, errPage("⚠️ Not Configured", "Add fluxerClientId, fluxerClientSecret, and webBaseUrl to config.json.", "#", "—"));
-      const state = crypto.randomBytes(16).toString("hex");
-      this._states.set(state, Date.now());
+      const state  = crypto.randomBytes(16).toString("hex");
+      const expiry = Date.now() + 10 * 60 * 1000;
+      this._states.set(state, { createdAt: Date.now(), expiry });
       const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
       return this._html(res, 200, loginPage(authUrl));
     }
@@ -626,7 +640,13 @@ export class WebServer {
     if (p === "/oauth/callback" && req.method === "GET") {
       const code  = u.searchParams.get("code");
       const state = u.searchParams.get("state");
-      if (!code || !state || !this._states.has(state)) return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+      const stored = this._states.get(state);
+      if (!code || !state || !stored) return this._html(res, 400, errPage("❌ Login Failed", "Invalid or expired login state.", "/login", "Try again"));
+      // Reject stale or expired CSRF states
+      if (Date.now() > (stored.expiry ?? 0)) {
+        this._states.delete(state);
+        return this._html(res, 400, errPage("❌ Login Failed", "Login state expired. Please try again.", "/login", "Try again"));
+      }
       this._states.delete(state);
       let tokenData;
       try {
@@ -641,14 +661,20 @@ export class WebServer {
       let me;
       try { me = JSON.parse(await nodeFetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } })); }
       catch { return this._html(res, 500, errPage("⚠️ Error", "Could not fetch Fluxer profile.", "/login", "Retry")); }
-      const userId = me.id;
-      const tag    = me.username ?? me.tag ?? userId;
-      const avatar = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
-      const session = crypto.randomBytes(32).toString("hex");
-      await this.db.createSession(userId, session, 2 * 60 * 60 * 1000);
+      const userId    = me.id;
+      const tag       = me.username ?? me.tag ?? userId;
+      const avatar    = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      const ip        = (req.headers["x-forwarded-for"] ?? req.headers["x-real-ip"] ?? "").split(",")[0].trim() || null;
+      const oldSid    = parseCookies(req).sid; // revoke old session to prevent fixation
+      const newSid    = crypto.randomBytes(32).toString("hex");
+      if (oldSid) {
+        await this.db.rotateSession(userId, oldSid, newSid, 2 * 60 * 60 * 1000, ip).catch(() => {});
+      } else {
+        await this.db.createSession(userId, newSid, 2 * 60 * 60 * 1000, ip);
+      }
       const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
       res.setHeader("Set-Cookie", [
-        `sid=${session}; ${base}`,
+        `sid=${newSid}; ${base}`,
         `uid=${userId}; ${base}`,
         `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
         `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
@@ -667,7 +693,27 @@ export class WebServer {
     res.writeHead(404); res.end("Not found");
   }
 
-  _uid(req)  { const c = parseCookies(req); return c.sid && c.uid ? c.uid : null; }
+  _uid(req)  {
+    const c = parseCookies(req);
+    if (!c.sid || !c.uid) return null;
+    // Optional IP-binding: reject sessions if the connecting IP changed.
+    if (this._sessionIpBinding) {
+      const ip = (req.headers["x-forwarded-for"] ?? req.headers["x-real-ip"] ?? "").split(",")[0].trim() || null;
+      const cached = this._ipCache?.get(`${c.uid}:${c.sid}`);
+      if (cached !== undefined && cached !== ip) {
+        // Grace period: allow a brief window for legitimate IP shifts (e.g. mobile networks).
+        const now = Date.now();
+        const entry = this._ipGrace?.get(`${c.uid}:${c.sid}`);
+        if (!entry || now - entry > this._sessionIpTolerance) {
+          console.warn(`[Session] IP mismatch for uid=${c.uid}: cached=${cached} got=${ip}`);
+          return null;
+        }
+      }
+      if (!this._ipCache) this._ipCache = new Map();
+      this._ipCache.set(`${c.uid}:${c.sid}`, ip);
+    }
+    return c.uid;
+  }
   _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
   _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
   _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }

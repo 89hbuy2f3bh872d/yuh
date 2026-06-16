@@ -7,6 +7,19 @@ import { HouseEdge } from "../src/HouseEdge.mjs";
 const SUITS = ["♠", "♥", "♦", "♣"];
 const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 
+// Game state: uid -> { deck, player, dealer, bet, startedAt }
+const _games = new Map();
+const MIN_BET = 10;
+const GAME_TTL_MS = 10 * 60 * 1000; // 10-minute game expiry
+
+// Prune stale in-memory games every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - GAME_TTL_MS;
+  for (const [uid, g] of _games) {
+    if (g.startedAt < cutoff) _games.delete(uid);
+  }
+}, 5 * 60 * 1000);
+
 function buildDeck() {
   const d = [];
   for (const s of SUITS) for (const r of RANKS) d.push({ r, s });
@@ -35,9 +48,6 @@ function handVal(hand) {
 
 function fmt(hand) { return hand.map(c => `${c.r}${c.s}`).join(" "); }
 
-const _games = new Map(); // uid -> game state
-const MIN_BET = 10;
-
 export default {
   name: "blackjack",
   aliases: ["bj"],
@@ -45,11 +55,20 @@ export default {
 
   async execute({ message, args, db, embed }) {
     const uid = message.author.id;
+    const now = Date.now();
 
     // --- Ongoing game actions ---
     const action = args[0]?.toLowerCase();
     if (_games.has(uid) && ["hit","h","stand","s","stay"].includes(action)) {
       const g = _games.get(uid);
+
+      // Reject if game has expired
+      if (g.startedAt < now - GAME_TTL_MS) {
+        _games.delete(uid);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn).setDescription("⚠️ Your game expired. Start a new one with `&blackjack <bet>`.")
+        ]});
+      }
 
       if (["hit","h"].includes(action)) {
         g.player.push(g.deck.pop());
@@ -57,8 +76,7 @@ export default {
 
         if (pv > 21) {
           _games.delete(uid);
-          await db.updateBalance(uid, -g.bet);
-          await db.recordGame(uid, false, g.bet);
+          const result = await db.atomicGame(uid, g.bet, 0);
           return message.channel.send({ embeds: [
             embed(COLORS.error)
               .setTitle("💥 Bust!")
@@ -90,25 +108,24 @@ export default {
       const pv = handVal(g.player);
       const dv = handVal(g.dealer);
 
-      let result, delta, titleEmoji;
+      let result, won, titleEmoji;
       if (dv > 21 || pv > dv) {
-        // Player wins — pay 1:1
-        delta = g.bet;
-        result = `🏆 You win **+${delta.toLocaleString()} FC**!\n${HouseEdge.baitWin()}`;
+        won = true;
+        const winAmt = g.bet; // 1:1 payout
+        result = `🏆 You win **+${winAmt.toLocaleString()} FC**!\n${HouseEdge.baitWin()}`;
         titleEmoji = "🏆 You Win!";
+        await db.atomicGame(uid, g.bet, winAmt);
       } else {
-        // Push (tie) → house wins. Bust already handled above.
-        delta = -g.bet;
+        won = false;
         result = `House wins (**-${g.bet.toLocaleString()} FC**).\n${HouseEdge.baitLoss()}`;
         titleEmoji = pv === dv ? "🤝 Tie — House Wins" : "🏦 Dealer Wins";
+        await db.atomicGame(uid, g.bet, 0);
       }
 
-      await db.updateBalance(uid, delta);
-      await db.recordGame(uid, delta > 0, Math.abs(delta));
       const user = await db.getUser(uid);
 
       return message.channel.send({ embeds: [
-        embed(delta > 0 ? COLORS.primary : COLORS.error)
+        embed(won ? COLORS.primary : COLORS.error)
           .setTitle(titleEmoji)
           .setDescription(
             `Your hand: ${fmt(g.player)} = **${pv}**\n` +
@@ -132,8 +149,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betArg) {
+    // Atomically deduct the bet first — if user can't afford it, reject immediately
+    const deducted = await db.atomicDeduct(uid, -betArg);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -146,24 +164,26 @@ export default {
     // Immediate blackjack check — natural 21
     if (handVal(player) === 21) {
       const dv = handVal(dealer);
-      const won = dv !== 21;
-      const delta = won ? Math.floor(betArg * 1.5) : -betArg; // BJ pays 3:2, tie → lose
-      await db.updateBalance(uid, delta);
-      await db.recordGame(uid, won, Math.abs(delta));
+      const wonBJ = dv !== 21;
+      const winAmt = wonBJ ? Math.floor(betArg * 1.5) : 0; // BJ pays 3:2, tie → lose bet
+      if (wonBJ) await db.updateBalance(uid, winAmt);
+      await db.recordGame(uid, wonBJ, betArg);
       const u2 = await db.getUser(uid);
       return message.channel.send({ embeds: [
-        embed(won ? COLORS.primary : COLORS.error)
-          .setTitle(won ? "🎉 Blackjack!" : "🤝 Both Blackjack — House Wins")
+        embed(wonBJ ? COLORS.primary : COLORS.error)
+          .setTitle(wonBJ ? "🎉 Blackjack!" : "🤝 Both Blackjack — House Wins")
           .setDescription(
             `Your hand: ${fmt(player)} = **21**\n` +
             `Dealer hand: ${fmt(dealer)} = **${dv}**\n\n` +
-            (won ? `You win **+${Math.abs(delta).toLocaleString()} FC** (3:2)!` : `House wins **-${betArg.toLocaleString()} FC**.`) +
+            (wonBJ
+              ? `You win **+${winAmt.toLocaleString()} FC** (3:2)!`
+              : `House wins **-${betArg.toLocaleString()} FC**.`) +
             `\n💰 Balance: **${Math.floor(u2.bal).toLocaleString()} FC**`
           )
       ]});
     }
 
-    _games.set(uid, { deck, player, dealer, bet: betArg });
+    _games.set(uid, { deck, player, dealer, bet: betArg, startedAt: now });
 
     return message.channel.send({ embeds: [
       embed(COLORS.primary)

@@ -52,17 +52,23 @@ export default {
       return message.channel.send({ embeds: [embed(COLORS.error).setDescription("\u274c Mention a valid user to pay.")] });
     }
 
+    // Read balance only for "all"/"half" shorthand resolution.
+    // The actual deduction is handled atomically inside transfer()'s transaction,
+    // so no TOCTOU race is possible here regardless of what we read.
     const u = await db.getUser(uid);
     const amount = parseBet(args[1], u.bal);
 
     if (isNaN(amount) || amount <= 0) {
       return message.channel.send({ embeds: [embed(COLORS.error).setDescription("\u274c Invalid amount. e.g. `&pay @user 500` or `&pay @user all`")] });
     }
-    if (amount > u.bal) {
+
+    // Transfer is atomic (MongoDB transaction) \u2014 balance check happens inside it.
+    // We pass amount here even though the shorthand already resolved against u.bal
+    // because the transaction re-checks the live balance before deducting.
+    const ok = await db.transfer(uid, target.id, amount);
+    if (!ok) {
       return message.channel.send({ embeds: [embed(COLORS.error).setDescription("\u274c Insufficient FC.")] });
     }
-
-    await db.transfer(uid, target.id, amount);
 
     return message.channel.send({ embeds: [
       embed(COLORS.primary)

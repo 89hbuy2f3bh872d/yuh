@@ -43,8 +43,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet upfront
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -70,12 +71,11 @@ export default {
       resultText = "No match";
     }
 
-    const delta = multiplier > 0 ? Math.floor(betAmt * multiplier) - betAmt : -betAmt;
-    // delta > 0 means net profit; delta < 0 means loss; delta == 0 = push
-    const won = delta > 0;
-
-    await db.updateBalance(uid, delta);
-    await db.recordGame(uid, won, Math.abs(delta));
+    const winAmt = multiplier > 0 ? Math.floor(betAmt * multiplier) : 0;
+    // atomicDeduct already took the bet; net change = winAmt
+    if (winAmt > 0) await db.updateBalance(uid, winAmt);
+    const won = winAmt > 0;
+    await db.recordGame(uid, won, betAmt);
     const u2 = await db.getUser(uid);
 
     return message.channel.send({ embeds: [
@@ -84,7 +84,7 @@ export default {
         .setDescription(
           `Bet: **${betAmt.toLocaleString()} FC**\n${resultText}\n\n` +
           (won
-            ? `✅ Won **+${Math.abs(delta).toLocaleString()} FC**!\n${HouseEdge.baitWin()}`
+            ? `✅ Won **+${winAmt.toLocaleString()} FC**!\n${HouseEdge.baitWin()}`
             : `❌ Lost **${betAmt.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`) +
           `\n\n💰 Balance: **${Math.floor(u2.bal).toLocaleString()} FC**`
         )

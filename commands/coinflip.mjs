@@ -28,8 +28,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet upfront
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -42,9 +43,10 @@ export default {
     const landedStr   = landedHeads ? "Heads" : "Tails";
     const coinEmoji   = landedHeads ? "🪙" : "🔵";
 
-    const delta = won ? Math.floor(betAmt * 1.8) : -betAmt;
-    await db.updateBalance(uid, delta);
-    await db.recordGame(uid, won, Math.abs(delta));
+    const winAmt = won ? Math.floor(betAmt * 1.8) : 0;
+    // atomicDeduct already took the bet; net change = winAmt
+    if (winAmt > 0) await db.updateBalance(uid, winAmt);
+    await db.recordGame(uid, won, betAmt);
     const u2 = await db.getUser(uid);
 
     return message.channel.send({ embeds: [
@@ -53,7 +55,7 @@ export default {
         .setDescription(
           `You called **${playerPickedHeads ? "Heads" : "Tails"}** for **${betAmt.toLocaleString()} FC**\n\n` +
           (won
-            ? `✅ Correct! **+${Math.floor(betAmt * 1.8).toLocaleString()} FC** (1.8x)\n${HouseEdge.baitWin()}`
+            ? `✅ Correct! **+${winAmt.toLocaleString()} FC** (1.8x)\n${HouseEdge.baitWin()}`
             : `❌ Wrong side! Lost **${betAmt.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`) +
           `\n\n💰 Balance: **${Math.floor(u2.bal).toLocaleString()} FC**`
         )

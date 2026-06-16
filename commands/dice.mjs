@@ -54,8 +54,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -69,9 +70,10 @@ export default {
     if (betType === "low")   { won = roll <= 3; multiplier = 1.7; }
     if (betType === "exact") { won = roll === exactNum; multiplier = 5; }
 
-    const delta = won ? Math.floor(betAmt * multiplier) : -betAmt;
-    await db.updateBalance(uid, delta);
-    await db.recordGame(uid, won, Math.abs(delta));
+    const winAmt = won ? Math.floor(betAmt * multiplier) : 0;
+    // atomicDeduct already took the bet; net = winAmt - betAmt
+    if (winAmt > 0) await db.updateBalance(uid, winAmt);
+    await db.recordGame(uid, won, betAmt);
     const u2 = await db.getUser(uid);
 
     const betLabel = betType === "exact" ? `exact ${exactNum}` : betType;
@@ -82,7 +84,7 @@ export default {
         .setDescription(
           `You bet **${betLabel}** for **${betAmt.toLocaleString()} FC**\n\n` +
           (won
-            ? `✅ **+${Math.abs(delta).toLocaleString()} FC**!\n${HouseEdge.baitWin()}`
+            ? `✅ **+${winAmt.toLocaleString()} FC**!\n${HouseEdge.baitWin()}`
             : `❌ Lost **${betAmt.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`) +
           `\n\n💰 Balance: **${Math.floor(u2.bal).toLocaleString()} FC**`
         )

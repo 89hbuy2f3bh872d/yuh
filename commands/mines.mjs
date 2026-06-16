@@ -8,9 +8,18 @@ import { HouseEdge } from "../src/HouseEdge.mjs";
 
 const MIN_BET  = 20;
 const GRID_SIZE = 25;
+const GAME_TTL_MS = 15 * 60 * 1000; // 15-minute game expiry
 
-// Active games: uid -> { bet, mines: Set<index>, revealed: Set<index>, multiplier, mineCt }
+// Active games: uid -> { bet, mines: Set<index>, revealed: Set<index>, multiplier, mineCt, startedAt }
 const _active = new Map();
+
+// Prune stale games every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - GAME_TTL_MS;
+  for (const [uid, g] of _active) {
+    if (g.startedAt < cutoff) _active.delete(uid);
+  }
+}, 5 * 60 * 1000);
 
 function fairMultiplier(revealed, mineCount) {
   // Probability of surviving `revealed` picks with `mineCount` mines on 25 tiles
@@ -36,6 +45,7 @@ export default {
 
   async execute({ message, args, db, embed, prefix }) {
     const uid = message.author.id;
+    const now = Date.now();
     const sub = args[0]?.toLowerCase();
 
     // --- Pick ---
@@ -44,6 +54,12 @@ export default {
       if (!g) return message.channel.send({ embeds: [
         embed(COLORS.warn).setDescription(`⚠️ No active mines game. Start one with \`${prefix}mines <bet>\`.`)
       ]});
+      if (g.startedAt < now - GAME_TTL_MS) {
+        _active.delete(uid);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn).setDescription("⚠️ Game expired. Start a new one with `&mines <bet>`.")
+        ]});
+      }
 
       const tile = parseInt(args[1], 10);
       if (isNaN(tile) || tile < 1 || tile > GRID_SIZE) {
@@ -59,9 +75,8 @@ export default {
       }
 
       if (g.mines.has(idx)) {
-        // Hit a mine
+        // Hit a mine — bet already deducted on game start
         _active.delete(uid);
-        await db.updateBalance(uid, -g.bet);
         await db.recordGame(uid, false, g.bet);
         const u2 = await db.getUser(uid);
         const grid = buildGrid(g);
@@ -98,10 +113,18 @@ export default {
       if (!g) return message.channel.send({ embeds: [
         embed(COLORS.warn).setDescription(`⚠️ No active mines game.`)
       ]});
+      if (g.startedAt < now - GAME_TTL_MS) {
+        _active.delete(uid);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn).setDescription("⚠️ Game expired. Start a new one with `&mines <bet>`.")
+        ]});
+      }
 
       _active.delete(uid);
 
       if (g.revealed.size === 0) {
+        // No tiles picked — return the bet (bet was deducted on start, so credit it back)
+        await db.updateBalance(uid, g.bet);
         return message.channel.send({ embeds: [
           embed(COLORS.warn).setDescription("⚠️ You haven't picked any tiles yet — bet returned.")
         ]});
@@ -109,6 +132,7 @@ export default {
 
       const payout = Math.floor(g.bet * g.multiplier);
       const delta  = payout - g.bet;
+      // Net change = payout (bet already deducted on start)
       await db.updateBalance(uid, delta);
       await db.recordGame(uid, true, payout);
       const u2 = await db.getUser(uid);
@@ -128,12 +152,16 @@ export default {
     // --- New game ---
     if (_active.has(uid)) {
       const g = _active.get(uid);
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn).setDescription(
-          `⚠️ You have an active mines game (${g.revealed.size} tiles revealed). ` +
-          `Type \`${prefix}mines pick <n>\` or \`${prefix}mines cashout\`.`
-        )
-      ]});
+      if (g.startedAt >= now - GAME_TTL_MS) {
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn).setDescription(
+            `⚠️ You have an active mines game (${g.revealed.size} tiles revealed). ` +
+            `Type \`${prefix}mines pick <n>\` or \`${prefix}mines cashout\`.`
+          )
+        ]});
+      }
+      // Expired — fall through to allow new game
+      _active.delete(uid);
     }
 
     const betAmt  = parseInt(args[0], 10);
@@ -152,8 +180,9 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet upfront
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
@@ -165,6 +194,7 @@ export default {
       revealed: new Set(),
       multiplier: 1,
       mineCt,
+      startedAt: now,
     });
 
     return message.channel.send({ embeds: [

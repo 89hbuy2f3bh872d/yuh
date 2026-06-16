@@ -6,8 +6,9 @@ import { HouseEdge } from "../src/HouseEdge.mjs";
 
 const MIN_BET = 10;
 
-// Active games: uid -> { bet, startedAt, msgId, channelId }
+// Active games: uid -> { bet, startedAt, crashAt }
 const _active = new Map();
+const CASHOUT_WORDS = new Set(["cashout", "cash", "out", "stop", "take"]);
 
 function generateMultiplier() {
   // House-weighted crash multiplier: ~55% chance of crashing before 1.5x
@@ -20,7 +21,8 @@ function generateMultiplier() {
   return (10 + Math.random() * 40).toFixed(2);                    // 10x–50x (rare)
 }
 
-const CASHOUT_WORD = ["cashout", "cash", "out", "stop", "take"];
+const AUTO_RESOLVE_MS = 30_000;
+const GAME_TTL_MS     = 60_000; // 1-minute expiry
 
 export default {
   name: "crash",
@@ -29,19 +31,28 @@ export default {
 
   async execute({ message, args, db, embed, prefix }) {
     const uid = message.author.id;
+    const now = Date.now();
 
     // --- Cash out ---
-    if (_active.has(uid) && CASHOUT_WORD.includes(args[0]?.toLowerCase())) {
+    if (_active.has(uid) && CASHOUT_WORDS.has(args[0]?.toLowerCase())) {
       const g = _active.get(uid);
-      const elapsed = (Date.now() - g.startedAt) / 1000; // seconds
-      const cashedAt = Math.max(1.01, 1 + elapsed * 0.35); // rises 0.35x/s
+
+      // Reject stale game
+      if (g.startedAt < now - GAME_TTL_MS) {
+        _active.delete(uid);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn).setDescription("⚠️ Game expired. Start a new one with `&crash <bet>`.")
+        ]});
+      }
+
+      const elapsed = (now - g.startedAt) / 1000;
+      const cashedAt = Math.max(1.01, 1 + elapsed * 0.35);
       const crashAt  = parseFloat(g.crashAt);
 
       if (cashedAt >= crashAt) {
         // Already crashed
         _active.delete(uid);
-        await db.updateBalance(uid, -g.bet);
-        await db.recordGame(uid, false, g.bet);
+        await db.atomicGame(uid, g.bet, 0);
         const u2 = await db.getUser(uid);
         return message.channel.send({ embeds: [
           embed(COLORS.error)
@@ -56,8 +67,8 @@ export default {
 
       _active.delete(uid);
       const won = Math.floor(g.bet * cashedAt);
-      const delta = won - g.bet;
-      await db.updateBalance(uid, delta);
+      // Use atomicGame: bet was already deducted on game start, so net change = won
+      await db.updateBalance(uid, won);
       await db.recordGame(uid, true, won);
       const u2 = await db.getUser(uid);
       return message.channel.send({ embeds: [
@@ -65,7 +76,7 @@ export default {
           .setTitle(`🚀 Cashed Out at ${cashedAt.toFixed(2)}x!`)
           .setDescription(
             `You cashed out **${g.bet.toLocaleString()} FC** at **${cashedAt.toFixed(2)}x** → **${won.toLocaleString()} FC**\n` +
-            `Net: **+${delta.toLocaleString()} FC** ${HouseEdge.baitWin()}` +
+            `Net: **+${(won - g.bet).toLocaleString()} FC** ${HouseEdge.baitWin()}` +
             `\n💰 Balance: **${Math.floor(u2.bal).toLocaleString()} FC**`
           )
       ]});
@@ -74,12 +85,16 @@ export default {
     // --- Already in game ---
     if (_active.has(uid)) {
       const g = _active.get(uid);
-      const elapsed = (Date.now() - g.startedAt) / 1000;
-      const cur = Math.max(1.01, 1 + elapsed * 0.35);
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn)
-          .setDescription(`🚀 Currently at **${cur.toFixed(2)}x** — type \`${prefix}crash cashout\` to cash out!`)
-      ]});
+      if (g.startedAt >= now - GAME_TTL_MS) {
+        const elapsed = (now - g.startedAt) / 1000;
+        const cur = Math.max(1.01, 1 + elapsed * 0.35);
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn)
+            .setDescription(`🚀 Currently at **${cur.toFixed(2)}x** — type \`${prefix}crash cashout\` to cash out!`)
+        ]});
+      }
+      // Expired game — clean up
+      _active.delete(uid);
     }
 
     // --- New game ---
@@ -90,31 +105,43 @@ export default {
       ]});
     }
 
-    const user = await db.getUser(uid);
-    if ((user.bal ?? 0) < betAmt) {
+    // Atomically deduct the bet upfront
+    const deducted = await db.atomicDeduct(uid, -betAmt);
+    if (!deducted) {
       return message.channel.send({ embeds: [
         embed(COLORS.error).setDescription("❌ Not enough FC. Try `&work` to earn some.")
       ]});
     }
 
-    const crashAt = generateMultiplier();
-    _active.set(uid, { bet: betAmt, startedAt: Date.now(), crashAt });
+    const startedAt = now;
+    const crashAt  = generateMultiplier();
+    _active.set(uid, { bet: betAmt, startedAt, crashAt });
 
-    // Auto-resolve after 30 seconds if no cashout
+    // Auto-resolve after 30 seconds — use uid stored in closure so the timeout
+    // always resolves the correct user even if the same user starts multiple games
+    const autoResolveUid = uid;
+    const autoResolveBet = betAmt;
+    const autoResolveCrash = crashAt;
+    const autoResolveStarted = startedAt;
+    const autoResolveMsg = message;
+
     setTimeout(async () => {
-      if (!_active.has(uid)) return;
-      _active.delete(uid);
-      await db.updateBalance(uid, -betAmt).catch(() => {});
-      await db.recordGame(uid, false, betAmt).catch(() => {});
-      message.channel.send({ embeds: [
+      if (!_active.has(autoResolveUid)) return;
+      // Only resolve if this is the same game session (same start time)
+      const g = _active.get(autoResolveUid);
+      if (!g || g.startedAt !== autoResolveStarted) return;
+      _active.delete(autoResolveUid);
+      // bet was already deducted; record loss
+      await db.recordGame(autoResolveUid, false, autoResolveBet).catch(() => {});
+      autoResolveMsg.channel.send({ embeds: [
         embed(COLORS.error)
-          .setTitle(`💥 Crashed at ${crashAt}x!`)
+          .setTitle(`💥 Crashed at ${autoResolveCrash}x!`)
           .setDescription(
-            `<@${uid}> — The rocket crashed at **${crashAt}x** and you didn't cash out.\n` +
-            `Lost **${betAmt.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`
+            `<@${autoResolveUid}> — The rocket crashed at **${autoResolveCrash}x** and you didn't cash out.\n` +
+            `Lost **${autoResolveBet.toLocaleString()} FC**\n${HouseEdge.baitLoss()}`
           )
       ]}).catch(() => {});
-    }, 30_000);
+    }, AUTO_RESOLVE_MS);
 
     return message.channel.send({ embeds: [
       embed(COLORS.primary)
