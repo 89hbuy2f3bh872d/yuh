@@ -47,17 +47,88 @@
   </div>
 </aside>
 <script>
-/* Cursor-reactive animated background (runs on every page using this sidebar). */
+/* Floating hexagon network background. Nodes drift + connect; cursor repels nearby
+   nodes. Canvas = own compositor layer, so it never repaints page content. */
 (function(){
-  if(window.__bgfx)return; window.__bgfx=1;
-  var root=document.documentElement, raf=0, mx=50, my=50;
-  window.addEventListener('pointermove',function(e){
-    mx=e.clientX/window.innerWidth*100; my=e.clientY/window.innerHeight*100;
-    if(!raf)raf=requestAnimationFrame(function(){
-      raf=0;
-      root.style.setProperty('--mx',mx.toFixed(1)+'%');
-      root.style.setProperty('--my',my.toFixed(1)+'%');
-    });
-  },{passive:true});
+  if(window.__bgHex)return; window.__bgHex=1;
+  var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var cv=document.createElement('canvas'); cv.id='bgHex';
+  (document.body||document.documentElement).insertBefore(cv,(document.body||document.documentElement).firstChild);
+  var ctx=cv.getContext('2d',{alpha:true});
+  var W=0,H=0,DPR=1,nodes=[],mouse={x:-9999,y:-9999,active:false},raf=0,running=true;
+  var LINK=132, MR=150, ACCENT=[34,197,94];
+
+  function size(){
+    DPR=Math.min(window.devicePixelRatio||1,1.5);
+    W=window.innerWidth; H=window.innerHeight;
+    cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    var target=Math.round(Math.min(90,Math.max(28,(W*H)/22000)));
+    nodes=[];
+    for(var i=0;i<target;i++){
+      nodes.push({x:Math.random()*W,y:Math.random()*H,
+        vx:(Math.random()-0.5)*0.22,vy:(Math.random()-0.5)*0.22,
+        r:5+Math.random()*4,a:Math.random()*Math.PI});
+    }
+  }
+
+  function hex(x,y,r,rot,fill,stroke){
+    ctx.beginPath();
+    for(var k=0;k<6;k++){
+      var ang=rot+k*Math.PI/3, px=x+Math.cos(ang)*r, py=y+Math.sin(ang)*r;
+      if(k===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}
+  }
+
+  function frame(){
+    raf=0; if(!running)return;
+    ctx.clearRect(0,0,W,H);
+    var i,j,n,m,dx,dy,d2,d;
+    // move
+    for(i=0;i<nodes.length;i++){
+      n=nodes[i];
+      n.x+=n.vx; n.y+=n.vy; n.a+=0.004;
+      if(n.x<-20)n.x=W+20; else if(n.x>W+20)n.x=-20;
+      if(n.y<-20)n.y=H+20; else if(n.y>H+20)n.y=-20;
+      if(mouse.active){
+        dx=n.x-mouse.x; dy=n.y-mouse.y; d2=dx*dx+dy*dy;
+        if(d2<MR*MR && d2>0.01){ d=Math.sqrt(d2); var f=(MR-d)/MR*1.4; n.x+=dx/d*f; n.y+=dy/d*f; }
+      }
+    }
+    // links
+    for(i=0;i<nodes.length;i++){
+      n=nodes[i];
+      for(j=i+1;j<nodes.length;j++){
+        m=nodes[j]; dx=n.x-m.x; dy=n.y-m.y; d2=dx*dx+dy*dy;
+        if(d2<LINK*LINK){
+          var al=(1-Math.sqrt(d2)/LINK)*0.20;
+          ctx.strokeStyle='rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+al.toFixed(3)+')';
+          ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(n.x,n.y); ctx.lineTo(m.x,m.y); ctx.stroke();
+        }
+      }
+      // cursor-proximity glow
+      var near=0;
+      if(mouse.active){ dx=n.x-mouse.x; dy=n.y-mouse.y; near=Math.max(0,1-Math.sqrt(dx*dx+dy*dy)/MR); }
+      var base=0.18+near*0.5;
+      hex(n.x,n.y,n.r,n.a,'rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+(0.05+near*0.18).toFixed(3)+')',
+        'rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+base.toFixed(3)+')');
+    }
+    raf=requestAnimationFrame(frame);
+  }
+  function kick(){ if(!raf&&running)raf=requestAnimationFrame(frame); }
+
+  window.addEventListener('pointermove',function(e){ mouse.x=e.clientX; mouse.y=e.clientY; mouse.active=true; },{passive:true});
+  window.addEventListener('pointerleave',function(){ mouse.active=false; },{passive:true});
+  window.addEventListener('resize',function(){ size(); kick(); });
+  document.addEventListener('visibilitychange',function(){
+    running=!document.hidden; if(running)kick(); else if(raf){cancelAnimationFrame(raf);raf=0;}
+  });
+
+  size();
+  if(prefersReduced){ frame(); /* one static paint */ }
+  else kick();
 })();
 </script>

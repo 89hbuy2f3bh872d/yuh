@@ -452,12 +452,14 @@ function renderArena(){
   // ===== RESULT OVERLAY =====
   if (b.phase === 'done' && !currentBattle.resultShown) {
     currentBattle.resultShown = true;
-    var revealMs = caseCount * staggerMs + spinMs + 400;
+    // Time the last case finishes its spin, relative to when opening started.
+    var revealMs = (caseCount > 0 ? (caseCount - 1) * staggerMs + spinMs : 0) + 500;
+    var elapsed = openedAt ? (Date.now() - openedAt) : revealMs;
+    var remain = Math.max(250, revealMs - elapsed);
     if (b.jackpot && players.length) {
-      setTimeout(function () { runJackpotWheel(b); }, Math.max(900, revealMs));
+      setTimeout(function () { runJackpotWheel(b); }, remain);
     } else {
-      // Wait for spin+reveal animations to finish before showing result
-      setTimeout(function () { showResult(); }, Math.max(1200, revealMs));
+      setTimeout(function () { showResult(); }, remain);
     }
   }
 }
