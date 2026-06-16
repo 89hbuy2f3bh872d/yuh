@@ -208,9 +208,11 @@
 .pcol-reel::before,.pcol-reel::after{content:'';position:absolute;left:0;right:0;height:48px;z-index:2;pointer-events:none}
 .pcol-reel::before{top:0;background:linear-gradient(180deg,var(--bg),transparent)}
 .pcol-reel::after{bottom:0;background:linear-gradient(0deg,var(--bg),transparent)}
-.pcol-marker{position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;background:var(--accent);box-shadow:0 0 12px var(--accent);z-index:3}
+.pcol-marker{position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;z-index:3;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(34,197,94,.55) 25%,rgba(34,197,94,.7) 50%,rgba(34,197,94,.55) 75%,transparent);
+  box-shadow:0 0 10px rgba(34,197,94,.3)}
 .pcol-strip{position:absolute;left:0;right:0;top:0;will-change:transform}
-.pcol-item{height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;border-bottom:2px solid transparent}
+.pcol-item{height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;border-bottom:1px solid rgba(34,197,94,.08)}
 .pcol-emoji{font-size:2.3rem;line-height:1}
 .pcol-val{font-size:.62rem;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 .pcol-item.win .pcol-emoji{filter:drop-shadow(0 0 7px var(--accent))}

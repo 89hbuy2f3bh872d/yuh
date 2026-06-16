@@ -526,17 +526,25 @@ function spinPlayerCase(b, p, idx, dur){
   strip.style.transition = 'none';
   strip.style.transform = 'translateY(0)';
   var center = winH / 2 - H / 2;
-  var targetY = -(REEL * H) + center;
-  var overshoot = targetY - H * 0.6; // scroll a bit past the reward first
+  var targetY = -(REEL * H) + center;       // reward centered exactly on the marker line
+  // Bait WITHOUT ever crossing the line: the reward only ever sits AT or BELOW
+  // the marker (translateY stays >= targetY). It rises to just under the line,
+  // dips back down, then settles onto it.
+  var nearY = targetY + H * 0.30;           // climbs to just under the line
+  var backY = targetY + H * 0.62;           // pulls back down (the fake-out)
   void strip.offsetHeight;
   requestAnimationFrame(function () {
-    strip.style.transition = 'transform ' + (dur * 0.8 / 1000).toFixed(3) + 's cubic-bezier(.15,.85,.25,1)';
-    strip.style.transform = 'translateY(' + overshoot + 'px)';
+    strip.style.transition = 'transform ' + (dur * 0.66 / 1000).toFixed(3) + 's cubic-bezier(.10,.72,.20,1)';
+    strip.style.transform = 'translateY(' + nearY + 'px)';
   });
   setTimeout(function () {
-    strip.style.transition = 'transform ' + (dur * 0.2 / 1000).toFixed(3) + 's cubic-bezier(.4,0,.2,1)';
+    strip.style.transition = 'transform ' + (dur * 0.17 / 1000).toFixed(3) + 's cubic-bezier(.4,0,.5,1)';
+    strip.style.transform = 'translateY(' + backY + 'px)';
+  }, dur * 0.66);
+  setTimeout(function () {
+    strip.style.transition = 'transform ' + (dur * 0.17 / 1000).toFixed(3) + 's cubic-bezier(.25,0,.2,1)';
     strip.style.transform = 'translateY(' + targetY + 'px)';
-  }, dur * 0.8);
+  }, dur * 0.83);
 }
 
 // Late-join / refresh: drop straight to the finished state, no animation.

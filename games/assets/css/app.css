@@ -57,12 +57,18 @@ input,select,textarea{font:inherit;color:inherit}
 .sb-mark{width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:900;font-size:.95rem;flex-shrink:0}
 .sb-brand-txt{font-weight:800;font-size:.95rem;letter-spacing:-.01em}
 .sb-brand-txt b{color:var(--accent)}
-/* Clean typewriter reveal for the brand wordmark. */
+/* Looping typewriter for the brand wordmark: type → hold → erase → repeat. */
 .sb-tw{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;max-width:0;
   border-right:1.5px solid var(--accent);
-  animation:sbType 1.1s steps(8,end) .25s forwards, sbCaret .62s step-end .25s 7 both}
-@keyframes sbType{from{max-width:0}to{max-width:10ch}}
-@keyframes sbCaret{from,to{border-color:transparent}50%{border-color:var(--accent)}}
+  animation:sbType 5.5s steps(8,end) infinite, sbCaret .7s step-end infinite}
+@keyframes sbType{
+  0%{max-width:0}
+  16%{max-width:10ch}   /* typed */
+  60%{max-width:10ch}   /* hold */
+  76%{max-width:0}      /* erased */
+  100%{max-width:0}     /* pause before retype */
+}
+@keyframes sbCaret{0%,100%{border-color:var(--accent)}50%{border-color:transparent}}
 @media(prefers-reduced-motion:reduce){.sb-tw{max-width:10ch;animation:none;border-color:transparent}}
 .sb-brand-sub{font-size:.56rem;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:.1rem}
 
