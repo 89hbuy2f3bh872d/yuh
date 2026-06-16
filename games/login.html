@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/login.css">
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-vignette"></div>
+<div class="orbs">
+  <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+  <div class="orb o4"></div><div class="orb o5"></div>
+</div>
+<div class="cursor-glow" id="glow"></div>
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-mark">G</div>
+    <div class="login-title">Sir<b>Green</b></div>
+    <div class="login-sub">Powered by FluxCoins</div>
+    <div class="login-desc">Sign in with your <b>Fluxer</b> account to play with your FluxCoin balance.</div>
+    <a class="login-btn" href="__AUTH_URL__">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+      Login with Fluxer
+    </a>
+    <div class="login-foot">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || window.innerWidth < 640) return;
+  var glow = document.getElementById('glow');
+  var tx = window.innerWidth/2, ty = window.innerHeight/2, gx = tx, gy = ty;
+  // trail pool
+  var POOL = 14, trails = [], ti = 0;
+  for (var i=0;i<POOL;i++){ var d=document.createElement('div'); d.className='trail'; document.body.appendChild(d); trails.push(d); }
+  window.addEventListener('pointermove', function(e){
+    tx = e.clientX; ty = e.clientY;
+    var t = trails[ti % POOL]; ti++;
+    t.style.transform = 'translate(' + tx + 'px,' + ty + 'px) translate(-50%,-50%)';
+    t.style.opacity = '.7';
+    (function(el){ setTimeout(function(){ el.style.opacity='0'; }, 90); })(t);
+  });
+  function loop(){
+    gx += (tx-gx)*0.12; gy += (ty-gy)*0.12;
+    glow.style.transform = 'translate(' + gx + 'px,' + gy + 'px) translate(-50%,-50%)';
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>

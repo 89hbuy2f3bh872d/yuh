@@ -176,6 +176,47 @@ export class Database {
     await this._users.updateOne({ _id: id }, { $inc: inc } , { upsert: true });
   }
 
+  // ─── Fluxer identity cache (for the misc send-money picker) ──────────────────
+
+  /**
+   * Cache a user's Fluxer display name + avatar URL on their doc.
+   * Called on every OAuth login so the misc picker can show real names
+   * without per-user Fluxer API calls. Fields: tag (username), av (avatar URL).
+   */
+  async setProfile(userId, { tag, avatar } = {}) {
+    const id = this._uid(userId);
+    const set = {};
+    if (typeof tag === "string" && tag.length) set.tag = tag.slice(0, 64);
+    if (typeof avatar === "string") set.av = avatar.slice(0, 256);
+    if (!Object.keys(set).length) return;
+    await this._users.updateOne({ _id: id }, { $set: set }, { upsert: true });
+  }
+
+  /**
+   * Search users for the transfer picker. Matches on _id prefix OR cached
+   * tag (case-insensitive). Excludes excludeId. Returns lightweight docs —
+   * NEVER leak other users' balances to a requester (bal omitted by caller).
+   */
+  async searchUsers(q, limit = 25, excludeId = null) {
+    const lim = clamp(limit, 1, 50);
+    const term = String(q ?? "").trim();
+    let filter;
+    if (!term) {
+      filter = {};
+    } else {
+      // Escape regex metacharacters in the user-supplied term
+      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = { $regex: safe, $options: "i" };
+      filter = { $or: [{ _id: rx }, { tag: rx }] };
+    }
+    if (excludeId) filter = { $and: [filter, { _id: { $ne: String(excludeId) } }] };
+    return this._users
+      .find(filter)
+      .project({ _id: 1, tag: 1, av: 1 })
+      .limit(lim)
+      .toArray();
+  }
+
   /**
    * Atomic two-party transfer using a MongoDB transaction.
    * Only succeeds if sender has sufficient funds AND both documents

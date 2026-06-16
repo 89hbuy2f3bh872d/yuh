@@ -61,221 +61,8 @@ const PAGES = [
   { id: "battles", label: "Battles", color: "var(--orange)" },
 ];
 
-const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">`;
-
-const CSS = `
-:root{
-  --bg:#09090b;
-  --surface:#111113;
-  --surface-2:#18181b;
-  --surface-3:#1f1f23;
-  --border:#27272a;
-  --border-soft:#1f1f23;
-  --text-bright:#fafafa;
-  --text:#a1a1aa;
-  --text-dim:#52525b;
-  --text-faint:#3f3f46;
-  --accent:#22c55e;
-  --accent-hover:#16a34a;
-  --gold:#eab308;
-  --purple:#a855f7;
-  --blue:#3b82f6;
-  --orange:#f97316;
-  --red:#ef4444;
-  --teal:#14b8a6;
-
-  --r-sm:8px;
-  --r-md:12px;
-  --r-lg:16px;
-
-  --shadow-sm:0 1px 2px 0 rgb(0 0 0 / 0.4);
-  --shadow-md:0 2px 6px -1px rgb(0 0 0 / 0.5), 0 1px 3px -1px rgb(0 0 0 / 0.4);
-
-  --font-body:'Inter',system-ui,-apple-system,sans-serif;
-  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace;
-}
-
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:14px}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;font-feature-settings:"cv11","ss01"}
-a{color:inherit;text-decoration:none}
-button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-input,textarea,select{font:inherit;color:inherit}
-button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
-::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-
-/* ── Layout ───────────────────────────────────────────────────────────── */
-.layout{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
-.sidebar{background:var(--bg);border-right:1px solid var(--border);padding:1.25rem 0.85rem;display:flex;flex-direction:column;gap:.15rem;position:sticky;top:0;height:100vh;overflow-y:auto}
-.logo{display:flex;align-items:center;gap:.6rem;padding:.4rem .5rem 1.1rem;border-bottom:1px solid var(--border);margin-bottom:.6rem}
-.logo-icon{font-size:1.4rem;line-height:1}
-.logo-text{font-family:var(--font-body);font-size:.95rem;font-weight:700;color:var(--text-bright);letter-spacing:-.01em}
-.logo-sub{font-size:.6rem;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;margin-top:.1rem;font-weight:500}
-
-/* ── Sidebar nav — text-only with a left accent bar on active ─────────── */
-.nav-item{
-  position:relative;
-  display:flex;
-  align-items:center;
-  padding:.5rem .7rem .5rem .9rem;
-  border-radius:var(--r-sm);
-  font-size:.82rem;
-  font-weight:500;
-  color:var(--text);
-  width:100%;
-  text-align:left;
-  transition:background 150ms ease,color 150ms ease;
-}
-.nav-item::before{
-  content:"";
-  position:absolute;
-  left:0;top:6px;bottom:6px;
-  width:2px;
-  border-radius:0 2px 2px 0;
-  background:transparent;
-  transition:background 150ms ease;
-}
-.nav-item:hover{background:var(--surface);color:var(--text-bright)}
-.nav-item.active{background:var(--surface);color:var(--text-bright);font-weight:600}
-.nav-item.active::before{background:var(--pc,var(--accent))}
-.nav-section{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);padding:.7rem .9rem .35rem;font-weight:600}
-.sidebar-foot{display:flex;flex-direction:column;gap:.1rem;padding:.6rem .9rem 0;margin-top:.5rem;border-top:1px solid var(--border)}
-.sidebar-foot a{font-size:.72rem;color:var(--text-dim);padding:.25rem 0;transition:color 150ms ease}
-.sidebar-foot a:hover{color:var(--red)}
-.sidebar-foot .ts{font-size:.62rem;color:var(--text-dim);font-family:var(--font-mono);margin-top:.1rem}
-
-.main{padding:1.85rem 2.25rem;overflow-x:hidden;max-width:100%}
-
-/* ── Pages — only the active one renders ──────────────────────────────── */
-.page{display:none}
-.page.page-active{display:block;animation:fadeIn 180ms ease both}
-@keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-
-/* ── Page header ──────────────────────────────────────────────────────── */
-.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.6rem;gap:1rem;padding-bottom:1.1rem;border-bottom:1px solid var(--border)}
-.page-eyebrow{font-size:.65rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--pc,var(--accent));margin-bottom:.4rem}
-.page-title{font-family:var(--font-body);font-size:1.5rem;font-weight:700;color:var(--text-bright);letter-spacing:-.02em;line-height:1.1}
-.page-sub{font-size:.78rem;color:var(--text-dim);margin-top:.4rem}
-.badge{display:inline-flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:.25rem .65rem;font-size:.65rem;font-weight:500;color:var(--text);white-space:nowrap}
-.badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%}
-
-/* ── KPI cards ────────────────────────────────────────────────────────── */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-bottom:1.75rem}
-.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1rem 1.1rem;box-shadow:var(--shadow-sm);transition:border-color 150ms ease,transform 150ms ease}
-.kpi:hover{border-color:var(--text-dim)}
-.kpi-label{font-size:.65rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.5rem}
-.kpi-value{font-family:var(--font-body);font-size:1.6rem;font-weight:700;color:var(--text-bright);letter-spacing:-.025em;line-height:1}
-.kpi-sub{font-size:.65rem;color:var(--text-dim);margin-top:.4rem}
-
-/* ── Section ──────────────────────────────────────────────────────────── */
-.section{margin-bottom:1.9rem}
-.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
-.section-title{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-bright);display:flex;align-items:center;gap:.5rem}
-.section-title::before{content:"";display:block;width:3px;height:13px;background:var(--accent);border-radius:2px}
-.stat-row{display:flex;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap}
-.stat-pill{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:.55rem .9rem;font-size:.72rem;color:var(--text-dim)}
-.stat-pill b{font-family:var(--font-mono);color:var(--text-bright);font-size:.85rem;margin-right:.35rem;font-weight:600}
-
-/* ── Table ────────────────────────────────────────────────────────────── */
-.tbl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-sm)}
-table{width:100%;border-collapse:collapse}
-thead tr{background:var(--surface-2)}
-th{padding:.65rem .9rem;font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:.6rem .9rem;font-size:.78rem;color:var(--text);border-bottom:1px solid var(--border);white-space:nowrap;transition:background 150ms ease}
-tbody tr:last-child td{border-bottom:none}
-tbody tr:hover td{background:var(--surface-2)}
-.rank{font-weight:600;color:var(--text-dim);width:36px;font-family:var(--font-mono)}
-.rank.medal{font-size:.95rem}
-.uid{font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim)}
-.bal-val{font-weight:600;color:var(--accent);font-family:var(--font-mono)}
-.bar-wrap{width:120px;background:var(--surface-3);border-radius:99px;height:5px;display:inline-block;vertical-align:middle;overflow:hidden}
-.bar-inner{height:100%;background:var(--accent);border-radius:99px;min-width:2px;transition:width 300ms ease}
-
-/* ── Command cards ────────────────────────────────────────────────────── */
-.cmd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.65rem}
-.cmd-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:.75rem .95rem;display:flex;flex-direction:column;gap:.55rem;transition:border-color 150ms ease}
-.cmd-card:hover{border-color:var(--text-dim)}
-.cmd-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
-.cmd-name{font-size:.78rem;font-weight:600;color:var(--text-bright);font-family:var(--font-mono)}
-.cmd-count{font-family:var(--font-body);font-size:1rem;font-weight:700;color:var(--orange)}
-.cmd-bar{width:100%;background:var(--surface-3);border-radius:99px;height:4px;overflow:hidden}
-.cmd-bar-inner{height:100%;background:var(--orange);border-radius:99px;min-width:2px;transition:width 300ms ease}
-
-/* ── Guild cards ──────────────────────────────────────────────────────── */
-.guild-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.75rem}
-.guild-card{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--fc,var(--border));border-radius:var(--r-sm);padding:.85rem 1rem;transition:border-color 150ms ease}
-.guild-card:hover{border-color:var(--text-dim)}
-.guild-name{font-size:.85rem;font-weight:600;color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.guild-id{font-size:.65rem;color:var(--text-dim);font-family:var(--font-mono);margin-top:.2rem}
-.guild-meta{display:flex;gap:.4rem;margin-top:.65rem;flex-wrap:wrap}
-.guild-tag{font-size:.65rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:.15rem .5rem;border-radius:6px;font-weight:500}
-.guild-fresh{font-size:.65rem;font-weight:500;margin-top:.55rem;color:var(--fc,var(--text-dim))}
-
-/* ── Bar chart ────────────────────────────────────────────────────────── */
-.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1.2rem 1.4rem;box-shadow:var(--shadow-sm)}
-.bar-chart{display:flex;align-items:flex-end;gap:6px;height:140px;margin-top:.85rem;padding-top:1rem}
-.bar-col{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;min-width:0;height:100%;justify-content:flex-end}
-.bar-col-bar{width:100%;background:var(--gold);border-radius:4px 4px 0 0;min-height:3px;transition:opacity 150ms ease,transform 150ms ease;cursor:default}
-.bar-col-bar:hover{opacity:.7}
-.bar-col-lbl{font-size:.6rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38px;text-align:center;font-family:var(--font-mono)}
-
-/* ── Empty state ──────────────────────────────────────────────────────── */
-.empty{color:var(--text-dim);font-size:.8rem;background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-sm);padding:1.4rem;text-align:center}
-
-/* ── Forms (used inside management pages) ─────────────────────────────── */
-.input{
-  width:100%;
-  font-size:.78rem;
-  padding:.5rem .7rem;
-  border-radius:var(--r-sm);
-  background:var(--bg);
-  border:1px solid var(--border);
-  color:var(--text);
-  transition:border-color 150ms ease;
-}
-.input:focus{border-color:var(--accent);outline:none}
-.btn{
-  display:inline-flex;
-  align-items:center;
-  gap:.4rem;
-  padding:.45rem .95rem;
-  border-radius:var(--r-sm);
-  font-weight:600;
-  font-size:.78rem;
-  border:1px solid transparent;
-  transition:background 150ms ease,border-color 150ms ease,color 150ms ease;
-}
-.btn-primary{background:var(--accent);color:#052e16}
-.btn-primary:hover{background:var(--accent-hover)}
-.btn-ghost{background:var(--surface);color:var(--text);border-color:var(--border)}
-.btn-ghost:hover{background:var(--surface-2);color:var(--text-bright);border-color:var(--text-dim)}
-.btn-danger{color:var(--red);background:none;font-weight:600;font-size:.7rem;padding:.25rem .5rem;border-radius:6px}
-.btn-danger:hover{background:var(--surface)}
-
-/* ── Access denied / login ───────────────────────────────────────────── */
-.denied{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:var(--font-body);padding:1rem}
-.denied-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:2.5rem 2rem;max-width:400px;text-align:center;box-shadow:var(--shadow-md)}
-.denied-icon{font-size:2.5rem;margin-bottom:.75rem}
-.denied-title{font-family:var(--font-body);font-size:1.25rem;font-weight:700;color:var(--text-bright);margin-bottom:.5rem;letter-spacing:-.01em}
-.denied-msg{font-size:.82rem;color:var(--text);line-height:1.6;margin-bottom:1.25rem}
-.denied-id{font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);padding:.3rem .7rem;border-radius:var(--r-sm);display:inline-block}
-
-/* ── Responsive ───────────────────────────────────────────────────────── */
-@media(max-width:780px){
-  .layout{grid-template-columns:1fr}
-  .sidebar{display:none}
-  .main{padding:1.1rem}
-}
-`;
-
 function shell(body, title) {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${FONTS}<title>${esc(title)}</title><style>${CSS}</style></head><body>${body}</body></html>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="stylesheet" href="/assets/css/admin.css"></head><body>${body}</body></html>`;
 }
 
 function deniedPage(uid) {
@@ -547,17 +334,28 @@ function buildPage(data, prefix) {
       </table>
     </div>
     <div style="margin-top:1.5rem;padding:1.1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">
-      <div style="font-size:.8rem;font-weight:600;color:var(--text-bright);margin-bottom:.7rem">Add / Edit Tier</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;font-size:.74rem">
+      <div style="font-size:.8rem;font-weight:600;color:var(--text-bright);margin-bottom:.7rem">Create a tier</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.6rem;font-size:.74rem">
         <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">ID (unique)</label><input id="ct-id" class="input" placeholder="mythic"></div>
         <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">Label</label><input id="ct-label" class="input" placeholder="Mythic"></div>
         <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">Entry cost (FC)</label><input id="ct-entry" type="number" class="input" placeholder="1000"></div>
-        <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">Color</label><input id="ct-color" class="input" placeholder="#22c55e"></div>
-        <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">Background</label><input id="ct-bg" class="input" placeholder="#0a1f0a"></div>
-        <div style="display:flex;align-items:flex-end"><button class="btn btn-primary" onclick="adminSaveCase()">Save tier</button></div>
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.25rem;font-weight:500">Color</label><input id="ct-color" type="color" class="input" value="#22c55e" style="padding:.2rem;height:38px"></div>
       </div>
-      <div style="margin-top:.7rem;font-size:.7rem;color:var(--text-dim)">Items JSON (array of {s, n, v, w}):</div>
-      <textarea id="ct-items" class="input" style="height:90px;font-size:.68rem;font-family:var(--font-mono);margin-top:.35rem;resize:vertical" placeholder='[{"s":"💎","n":"Diamond","v":2000,"w":28}]'></textarea>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:1rem 0 .5rem">
+        <div style="font-size:.74rem;font-weight:600;color:var(--text-bright)">Items</div>
+        <div style="font-size:.72rem;color:var(--text-dim)">Live RTP: <b id="ct-rtp" style="color:var(--accent)">—</b></div>
+      </div>
+      <div style="display:grid;grid-template-columns:60px 1fr 1fr 1fr 32px;gap:.5rem;font-size:.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;font-weight:600;padding:0 .1rem .35rem">
+        <div>Emoji</div><div>Name</div><div>Value (FC)</div><div>Weight</div><div></div>
+      </div>
+      <div id="ct-rows"></div>
+      <button class="btn btn-secondary" onclick="adminAddItemRow()" style="margin-top:.5rem"><span style="font-size:1rem;line-height:1">+</span> Add item</button>
+
+      <div style="margin-top:1.1rem;display:flex;gap:.5rem">
+        <button class="btn btn-primary" onclick="adminSaveCase()">Save tier</button>
+        <button class="btn btn-ghost" onclick="adminAddCase()">Clear</button>
+      </div>
     </div>`;
 
   // ── Balances management ────────────────────────────────────────────────────
@@ -704,6 +502,47 @@ function buildPage(data, prefix) {
         '</tr>';
       }).join('');
     }).catch(function(e){ console.error('adminLoadCases', e); });
+    // Seed the creator form once (≥1 item row + entry→RTP listener).
+    var rows = document.getElementById('ct-rows');
+    if (rows && !rows.children.length) { window.adminAddItemRow(); }
+    var entryEl = document.getElementById('ct-entry');
+    if (entryEl && !entryEl._rtpBound) { entryEl._rtpBound = true; entryEl.addEventListener('input', window.adminCalcRtp); }
+  };
+
+  // Build one item row [emoji][name][value][weight][remove].
+  window.adminAddItemRow = function adminAddItemRow(s, n, v, w){
+    var rows = document.getElementById('ct-rows');
+    if (!rows) return;
+    var row = document.createElement('div');
+    row.className = 'ct-item-row';
+    row.style.cssText = 'display:grid;grid-template-columns:60px 1fr 1fr 1fr 32px;gap:.5rem;margin-bottom:.4rem';
+    row.innerHTML =
+      '<input class="input ct-s" maxlength="4" style="text-align:center" placeholder="💎" value="'+esc(s||'')+'">' +
+      '<input class="input ct-n" placeholder="Diamond" value="'+esc(n||'')+'">' +
+      '<input class="input ct-v" type="number" min="0" placeholder="2000" value="'+(v!=null?esc(v):'')+'">' +
+      '<input class="input ct-w" type="number" min="1" placeholder="10" value="'+(w!=null?esc(w):'')+'">' +
+      '<button class="btn-danger" title="Remove" onclick="this.parentNode.remove();adminCalcRtp()" style="padding:0;font-size:1.1rem">&times;</button>';
+    rows.appendChild(row);
+    Array.prototype.forEach.call(row.querySelectorAll('input'), function(inp){ inp.addEventListener('input', adminCalcRtp); });
+    adminCalcRtp();
+  };
+
+  // Live RTP = weighted-average item value ÷ entry cost.
+  window.adminCalcRtp = function adminCalcRtp(){
+    var el = document.getElementById('ct-rtp');
+    if (!el) return;
+    var entry = parseFloat((document.getElementById('ct-entry')||{}).value) || 0;
+    var rows = document.querySelectorAll('#ct-rows .ct-item-row');
+    var totW = 0, totV = 0;
+    Array.prototype.forEach.call(rows, function(r){
+      var v = parseFloat(r.querySelector('.ct-v').value) || 0;
+      var w = parseFloat(r.querySelector('.ct-w').value) || 0;
+      totW += w; totV += v * w;
+    });
+    if (!entry || !totW) { el.textContent = '—'; return; }
+    var rtp = Math.round((totV / totW) / entry * 100);
+    el.textContent = rtp + '%';
+    el.style.color = rtp > 100 ? 'var(--red)' : 'var(--accent)';
   };
 
   window.adminAddCase = function adminAddCase(){
@@ -713,33 +552,40 @@ function buildPage(data, prefix) {
     document.getElementById('ct-label').value = '';
     document.getElementById('ct-entry').value = '';
     document.getElementById('ct-color').value = '#22c55e';
-    document.getElementById('ct-bg').value = '#0a1f0a';
-    document.getElementById('ct-items').value = '';
+    document.getElementById('ct-rows').innerHTML = '';
+    adminAddItemRow();
+    adminCalcRtp();
     idEl.focus();
   };
 
   window.adminSaveCase = function adminSaveCase(){
-    var id    = (document.getElementById('ct-id')    || {}).value || '';
-    var label = (document.getElementById('ct-label') || {}).value || '';
+    var id    = ((document.getElementById('ct-id')    || {}).value || '').trim();
+    var label = ((document.getElementById('ct-label') || {}).value || '').trim();
     var entry = parseInt((document.getElementById('ct-entry') || {}).value) || 0;
     var color = ((document.getElementById('ct-color') || {}).value || '').trim() || '#22c55e';
-    var bg    = ((document.getElementById('ct-bg')    || {}).value || '').trim() || '#0a1f0a';
-    var itemsStr = ((document.getElementById('ct-items') || {}).value || '').trim();
-    id = id.trim(); label = label.trim();
     if (!id || !label || !entry) { alert('ID, label, and entry cost are required.'); return; }
-    var items;
-    try { items = JSON.parse(itemsStr); }
-    catch(e) { alert('Items must be valid JSON.'); return; }
-    if (!Array.isArray(items) || !items.length) { alert('At least one item is required.'); return; }
+    var items = [];
+    var rows = document.querySelectorAll('#ct-rows .ct-item-row');
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var s = r.querySelector('.ct-s').value.trim();
+      var n = r.querySelector('.ct-n').value.trim();
+      var v = parseInt(r.querySelector('.ct-v').value);
+      var w = parseInt(r.querySelector('.ct-w').value);
+      if (!s || !n || !(v >= 0) || !(w > 0)) { alert('Item ' + (i+1) + ' is incomplete (need emoji, name, value, weight).'); return; }
+      items.push({ s:s, n:n, v:v, w:w });
+    }
+    if (!items.length) { alert('Add at least one item.'); return; }
     fetch('/api/admin/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id:id, label:label, entry:entry, color:color, bg:bg, items:items })
+      body: JSON.stringify({ id:id, label:label, entry:entry, color:color, bg:'#0a1f0a', items:items })
     })
       .then(function(r){ return r.json(); })
       .then(function(d){
         if (d && d.error) { alert(d.error); return; }
         alert('Tier saved!');
+        window.adminAddCase();
         window.adminLoadCases();
       })
       .catch(function(e){ alert('Error: ' + e.message); });

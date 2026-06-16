@@ -10,12 +10,6 @@
   "webBaseUrl":         "https://www.sirgreen.online",
   "webPort":            80,
 
-  "goldSlotApiUrl":        "https://agent.goldslotpalase.com",
-  "goldSlotApiToken":      "YOUR_GOLDSLOT_API_TOKEN",
-  "goldSlotCallbackToken": "YOUR_GOLDSLOT_CALLBACK_TOKEN",
-
-  "_callbackUrl_note": "Set your Callback URL to https://www.sirgreen.online/callback in https://admin.goldslotpalase.com/#/settings",
-
   "fluxerListServerId": "1512882040398159873", // FluxerList community/server ID (from the server page URL)
   "fluxerListApiKey":  "fl_your_api_key_here",
 

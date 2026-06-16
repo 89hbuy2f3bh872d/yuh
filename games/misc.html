@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Send Money — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.misc-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:1.25rem;align-items:start}
+.search-box{display:flex;gap:.5rem;margin-bottom:.9rem}
+.user-list{display:flex;flex-direction:column;gap:.4rem;max-height:460px;overflow-y:auto;padding-right:.3rem}
+.user-row{display:flex;align-items:center;gap:.7rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.55rem .7rem;cursor:pointer;transition:border-color .15s,background .15s}
+.user-row:hover{border-color:var(--border2)}
+.user-row.sel{border-color:var(--accent);background:var(--accent-soft)}
+.user-av{width:34px;height:34px;border-radius:50%;background:var(--surface3);border:1px solid var(--border);flex-shrink:0;object-fit:cover}
+.user-meta{min-width:0;flex:1}
+.user-name{font-size:.84rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-id{font-size:.62rem;color:var(--text3);font-family:ui-monospace,monospace}
+.user-pick{font-size:.62rem;font-weight:700;color:var(--accent);opacity:0;transition:opacity .15s}
+.user-row.sel .user-pick{opacity:1}
+.send-card .recipient{display:flex;align-items:center;gap:.7rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.7rem;margin-bottom:1rem}
+.send-card .recipient.empty{color:var(--text3);font-size:.8rem;justify-content:center}
+.amt-row{display:flex;gap:.4rem;margin-top:.4rem}
+.amt-chip{flex:1;padding:.4rem;border-radius:6px;background:var(--surface2);border:1px solid var(--border);font-size:.72rem;font-weight:600;color:var(--text2);transition:all .15s}
+.amt-chip:hover{border-color:var(--accent);color:var(--accent)}
+.send-status{font-size:.78rem;margin-top:.8rem;text-align:center;min-height:1.1rem}
+.send-status.ok{color:var(--accent)}
+.send-status.err{color:var(--red)}
+@media(max-width:760px){.misc-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        Send Money
+      </h1>
+      <div class="page-sub">Transfer FluxCoins to another player.</div>
+    </div>
+  </div>
+
+  <div class="misc-grid">
+    <div class="card">
+      <div class="card-title">Find a player</div>
+      <div class="search-box">
+        <input class="input" id="q" placeholder="Search by username or ID…" autocomplete="off">
+      </div>
+      <div class="user-list" id="list"><div class="empty"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>Type to search players</div></div>
+    </div>
+
+    <div class="card send-card">
+      <div class="card-title">Transfer</div>
+      <div class="recipient empty" id="recipient">No recipient selected</div>
+      <label class="field-label">Amount (FC)</label>
+      <input class="input" id="amount" type="number" min="1" placeholder="0" inputmode="numeric">
+      <div class="amt-row">
+        <button class="amt-chip" data-amt="100">100</button>
+        <button class="amt-chip" data-amt="1000">1K</button>
+        <button class="amt-chip" data-amt="10000">10K</button>
+        <button class="amt-chip" data-amt="100000">100K</button>
+      </div>
+      <button class="btn btn-primary" id="sendBtn" style="width:100%;justify-content:center;margin-top:1rem;padding:.7rem" disabled>Send FC</button>
+      <div class="send-status" id="status"></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+var selected = null;
+var listEl = document.getElementById('list');
+var qEl = document.getElementById('q');
+var recEl = document.getElementById('recipient');
+var amtEl = document.getElementById('amount');
+var sendBtn = document.getElementById('sendBtn');
+var statusEl = document.getElementById('status');
+var searchTimer = null;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function fmt(n){return Number(n||0).toLocaleString()}
+
+function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=document.getElementById('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=fmt(d.bal)}).catch(function(){})}
+refreshBal();setInterval(refreshBal,8000);
+
+qEl.addEventListener('input', function(){
+  clearTimeout(searchTimer);
+  var v = qEl.value.trim();
+  if (!v){ listEl.innerHTML = '<div class="empty"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>Type to search players</div>'; return; }
+  searchTimer = setTimeout(function(){ doSearch(v); }, 250);
+});
+
+function doSearch(v){
+  fetch('/api/users/search?q=' + encodeURIComponent(v)).then(function(r){return r.json()}).then(function(d){
+    var users = (d && d.users) || [];
+    if (!users.length){ listEl.innerHTML = '<div class="empty">No players found</div>'; return; }
+    listEl.innerHTML = users.map(function(u){
+      var name = u.tag || u.id;
+      var av = u.avatar || '';
+      return '<div class="user-row" data-id="'+esc(u.id)+'" data-name="'+esc(name)+'" data-av="'+esc(av)+'">' +
+        (av ? '<img class="user-av" src="'+esc(av)+'" onerror="this.style.visibility=\'hidden\'">' : '<div class="user-av"></div>') +
+        '<div class="user-meta"><div class="user-name">'+esc(name)+'</div><div class="user-id">'+esc(u.id)+'</div></div>' +
+        '<span class="user-pick">Select</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(listEl.querySelectorAll('.user-row'), function(row){
+      row.addEventListener('click', function(){ pick(row); });
+    });
+  }).catch(function(){ listEl.innerHTML = '<div class="empty">Search failed</div>'; });
+}
+
+function pick(row){
+  Array.prototype.forEach.call(listEl.querySelectorAll('.user-row'), function(r){ r.classList.remove('sel'); });
+  row.classList.add('sel');
+  selected = { id: row.dataset.id, name: row.dataset.name, av: row.dataset.av };
+  recEl.className = 'recipient';
+  recEl.innerHTML = (selected.av ? '<img class="user-av" src="'+esc(selected.av)+'" onerror="this.style.visibility=\'hidden\'">' : '<div class="user-av"></div>') +
+    '<div class="user-meta"><div class="user-name">'+esc(selected.name)+'</div><div class="user-id">'+esc(selected.id)+'</div></div>';
+  updateBtn();
+}
+
+Array.prototype.forEach.call(document.querySelectorAll('.amt-chip'), function(c){
+  c.addEventListener('click', function(){ amtEl.value = c.dataset.amt; updateBtn(); });
+});
+amtEl.addEventListener('input', updateBtn);
+function updateBtn(){ sendBtn.disabled = !(selected && Number(amtEl.value) > 0); }
+
+sendBtn.addEventListener('click', function(){
+  if (!selected) return;
+  var amount = Math.floor(Number(amtEl.value));
+  if (!(amount > 0)) return;
+  sendBtn.disabled = true; statusEl.className = 'send-status'; statusEl.textContent = 'Sending…';
+  fetch('/api/transfer', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ toId: selected.id, amount: amount }) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.error){ statusEl.className='send-status err'; statusEl.textContent = d.error; }
+      else { statusEl.className='send-status ok'; statusEl.textContent = 'Sent ' + fmt(amount) + ' FC to ' + selected.name; amtEl.value=''; refreshBal(); }
+    })
+    .catch(function(){ statusEl.className='send-status err'; statusEl.textContent='Transfer failed'; })
+    .finally(function(){ updateBtn(); });
+});
+</script>
+</body>
+</html>

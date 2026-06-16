@@ -6,12 +6,7 @@ import zlib    from "zlib";
 import fs      from "fs";
 import path    from "path";
 import { fileURLToPath } from "url";
-import { GoldSlotAPI }   from "./GoldSlotAPI.mjs";
 import { AdminPanel }    from "./AdminPanel.mjs";
-
-// ─── Feature flag ─────────────────────────────────────────────────────────────
-const GOLDSLOT_ENABLED = false;
-// ─────────────────────────────────────────────────────────────────────────────
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -23,12 +18,6 @@ const FAVICON_PATH     = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
-
-const PROVIDER_NAMES = {
-  1:"Pragmatic Play",2:"CQ9",3:"PG Soft",4:"Booongo",5:"Playson",
-  6:"Habanero",7:"Jili",8:"PlayStar",9:"XGaming",10:"Hacksaw",11:"Live",
-};
-function providerName(id) { return PROVIDER_NAMES[Number(id)] ?? `Provider ${id}`; }
 
 const MIME = {
   ".html":"text/html; charset=utf-8",".js":"application/javascript; charset=utf-8",
@@ -170,168 +159,42 @@ function serveFileWithRanges(req, res, fp, mime = getMime(fp), cc = "public, max
 }
 
 // ─── HTML templates ───────────────────────────────────────────────────────────
+// All page CSS/HTML lives in games/ (static files under /assets/css + partials).
+// Pages are served by renderPage() with __TOKEN__ replacement. Only the tiny
+// error page is generated inline.
 
-const SHARED_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#09090b;--surface:#111113;--surface2:#18181b;--surface3:#1f1f23;--border:#27272a;--border2:#3f3f46;--accent:#22c55e;--accent-hover:#16a34a;--text:#fafafa;--text2:#a1a1aa;--text3:#71717a;--text4:#3f3f46;--gold:#eab308;--red:#ef4444;--blue:#3b82f6;--purple:#a855f7;--radius:8px;--radius-lg:12px}
-html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden}
-a{color:inherit;text-decoration:none}
-button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}::-webkit-scrollbar-thumb:hover{background:var(--border2)}
+const ADMIN_ID = "1512241609448620032";
 
-.nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);background:rgba(9,9,11,.8);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;padding:.55rem 1.5rem;min-height:50px}
-.nav-logo{display:flex;align-items:center;gap:.45rem;font-weight:800;font-size:.92rem;color:var(--text);letter-spacing:-.01em;white-space:nowrap}
-.nav-logo .mark{width:22px;height:22px;border-radius:5px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:900;font-size:.7rem}
-.nav-logo b{color:var(--accent)}
-.nav-spacer{flex:1}
-.nav-bal{display:flex;align-items:center;gap:.35rem;font-size:.76rem;font-weight:600;color:var(--text2);white-space:nowrap;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:.25rem .65rem .25rem .5rem}
-.nav-bal b{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
-.nav-tag{font-size:.68rem;color:var(--text3);font-weight:500}
-.nav-link{font-size:.7rem;font-weight:600;color:var(--text3);padding:.3rem .65rem;border-radius:6px;transition:all .15s;display:inline-flex;align-items:center;gap:.3rem}
-.nav-link:hover{background:var(--surface);color:var(--text)}
-
-.wrap{padding:1.5rem;max-width:1100px;margin:0 auto}
-
-.section-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:1.1rem;display:flex;align-items:center;gap:.45rem}
-.section-title::before{content:"";display:block;width:3px;height:12px;background:var(--accent);border-radius:2px}
-.provider-title{font-size:.66rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:1.5rem 0 .5rem;padding-bottom:.35rem;border-bottom:1px solid var(--border)}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.6rem}
-.game-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:all .15s}
-.game-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.3)}
-.game-thumb{width:100%;aspect-ratio:4/3;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:2.2rem;overflow:hidden;position:relative}
-.game-thumb img{width:100%;height:100%;object-fit:cover}
-.game-info{padding:.4rem .55rem .55rem}
-.game-name{font-size:.7rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.game-meta{font-size:.56rem;color:var(--text3);margin-top:.1rem}
-
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 0%,#0a1f0a 0%,var(--bg) 60%)}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2.5rem 2rem;max-width:380px;width:100%;text-align:center;position:relative}
-.login-card::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:60%;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
-.login-logo{font-size:2.5rem;margin-bottom:.5rem}
-.login-title{font-size:1.6rem;font-weight:900;color:var(--text);letter-spacing:-.02em;margin-bottom:.15rem}
-.login-title b{color:var(--accent)}
-.login-sub{font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;color:var(--text3);margin-bottom:1.5rem}
-.login-desc{font-size:.85rem;color:var(--text2);display:block;margin-bottom:1.4rem;line-height:1.55}
-.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;background:var(--accent);color:var(--bg);font-size:.85rem;font-weight:700;padding:.7rem 1.5rem;border-radius:var(--radius);transition:all .15s;width:100%}
-.login-btn:hover{background:var(--accent-hover)}
-.login-footer{margin-top:1.2rem;font-size:.62rem;color:var(--text4);line-height:1.6}
-
-.err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 0%,#0a1f0a 0%,var(--bg) 60%)}
-.err-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2rem;max-width:400px;width:100%;text-align:center}
-.err-card h1{color:var(--accent);font-size:1.2rem;font-weight:800;margin-bottom:.6rem}
-.err-card p{color:var(--text2);margin-bottom:1rem;line-height:1.5;font-size:.85rem}
-.err-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:var(--bg);font-weight:700;padding:.6rem 1.2rem;border-radius:var(--radius);font-size:.82rem;transition:all .15s}
-.err-btn:hover{background:var(--accent-hover)}
-
-.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:.7rem}
-.coming-soon-icon{font-size:3rem}
-.coming-soon-title{font-size:1.3rem;font-weight:900;color:var(--text)}
-.coming-soon-sub{font-size:.82rem;color:var(--text2);max-width:42ch;line-height:1.55}
-
-#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(9,9,11,.92);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none;font-family:'Inter',system-ui,sans-serif;color:var(--text)}
-.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .6rem;border-radius:6px;font-size:.7rem;font-weight:600;white-space:nowrap;transition:all .15s}
-.fc-back:hover{border-color:var(--accent);color:var(--accent)}
-.fc-spacer{flex:1}
-.fc-title{font-size:.7rem;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
-.fc-bal{display:flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.2rem .5rem;font-weight:600;white-space:nowrap;font-size:.76rem}
-.fc-bal strong{color:var(--accent);font-size:.86rem;font-variant-numeric:tabular-nums}
-.fc-user{font-size:.65rem;color:var(--text3);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
-.fc-logout{font-size:.64rem;color:var(--text3);white-space:nowrap;transition:color .15s}
-.fc-logout:hover{color:var(--accent)}
-#gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
-
-@media(max-width:640px){.login-card{padding:1.8rem 1.3rem}.err-card{padding:1.5rem}.nav{padding:.5rem 1rem}.games-grid{grid-template-columns:repeat(auto-fill,minmax(135px,1fr))}}
-`;
-
-function shell(head, body) {
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SirGreen Casino</title>\n<style>${SHARED_CSS}</style>\n${head ?? ""}\n</head>\n<body>\n${body}\n</body>\n</html>`;
-}
-
-function lobbyPage(bal, tag, gamesByProvider) {
-  let sections = "";
-  if (!gamesByProvider || gamesByProvider.length === 0) {
-    sections = `<p style="color:var(--text3);font-size:.85rem">No games available right now.</p>`;
-  } else {
-    for (const { provider, providerName: pn, games } of gamesByProvider) {
-      const cards = games.map(g => {
-        const gid   = esc(String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? ""));
-        const pid   = esc(String(g.provider_id ?? provider ?? ""));
-        const thumb = g.game_image
-          ? `<img src="${esc(g.game_image)}" alt="${esc(g.game_name ?? g.name)}" loading="lazy">`
-          : `<span style="font-size:2.5rem">🎰</span>`;
-        return `<div class="game-card" onclick="location.href='/game/${pid}/${gid}'">\n  <div class="game-thumb">${thumb}</div>\n  <div class="game-info"><div class="game-name">${esc(g.game_name ?? g.name ?? gid)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? pn ?? provider)}</div></div>\n</div>`;
-      }).join("\n");
-      sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
-    }
-  }
-  return shell("", `<nav class="nav"><div class="nav-logo"><span class="mark">G</span><span>Sir<b>Green</b></span></div><div class="nav-spacer"></div><div class="nav-bal"><b>${Number(bal).toLocaleString()}</b>&nbsp;FC</div><span class="nav-tag">${esc(tag)}</span><a href="/case-battle" class="nav-link"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6 3 3-6 6-3-3z"/></svg>Battles</a><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="section-title">Game Lobby</div>${sections}</div>`);
-}
-
-function comingSoonPage(bal, tag) {
-  return shell("", `<nav class="nav"><div class="nav-logo"><span class="mark">G</span><span>Sir<b>Green</b></span></div><div class="nav-spacer"></div><div class="nav-bal"><b>${Number(bal).toLocaleString()}</b>&nbsp;FC</div><span class="nav-tag">${esc(tag)}</span><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on the way.</div></div></div>`);
-}
-
-function loginPage(authUrl) {
-  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">Sir<b>Green</b></div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:var(--accent)">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
-}
+/** Minimal standalone error page (links shared app.css). */
 function errPage(title, msg, href, label) {
-  return shell("", `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`);
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SirGreen Casino</title><link rel="stylesheet" href="/assets/css/app.css"><style>.errw{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 0%,#0a1f0a 0%,var(--bg) 60%)}.errc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:2rem;max-width:400px;width:100%;text-align:center}.errc h1{color:var(--accent);font-size:1.2rem;font-weight:800;margin-bottom:.6rem}.errc p{color:var(--text2);margin-bottom:1rem;line-height:1.5;font-size:.85rem}</style></head><body><div class="errw"><div class="errc"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="btn btn-primary" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div></body></html>`;
 }
 
-function gameWrapperPage(bal, tag, gameUrl, gameName) {
-  const safeBal = Number(bal) || 0;
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>${esc(gameName)} — SirGreen</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#09090b;--surface:#111113;--surface2:#18181b;--border:#27272a;--border2:#3f3f46;--accent:#22c55e;--accent-hover:#16a34a;--text:#fafafa;--text2:#a1a1aa;--text3:#71717a}
-html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
-a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;text-decoration:none}
-#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(9,9,11,.92);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none}
-.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .6rem;border-radius:6px;font-size:.7rem;font-weight:600;white-space:nowrap;transition:all .15s}
-.fc-back:hover{border-color:var(--accent);color:var(--accent)}
-.fc-spacer{flex:1}
-.fc-title{font-size:.7rem;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
-.fc-bal{display:flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.2rem .5rem;font-weight:600;white-space:nowrap;font-size:.76rem}
-.fc-bal strong{color:var(--accent);font-size:.86rem;font-variant-numeric:tabular-nums}
-.fc-user{font-size:.65rem;color:var(--text3);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
-.fc-logout{font-size:.64rem;color:var(--text3);white-space:nowrap;transition:color .15s}
-.fc-logout:hover{color:var(--accent)}
-#gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
-</style>
-</head>
-<body>
-<div id="fcBar">
-  <button class="fc-back" onclick="location.href='/lobby'">← Lobby</button>
-  <span class="fc-title">${esc(gameName)}</span>
-  <span class="fc-spacer"></span>
-  <div class="fc-bal"><strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
-  <span class="fc-user">${esc(tag)}</span>
-  <a href="/logout" class="fc-logout">Sign out</a>
-</div>
-<iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
-<script>
-(function(){
-  async function refreshBal() {
-    try {
-      const r = await fetch('/api/balance');
-      if (r.ok) { const d = await r.json(); document.getElementById('fcBalNum').textContent = (d.bal||0).toLocaleString(); }
-    } catch(_) {}
-  }
-  setInterval(refreshBal, 8000);
-  document.getElementById('gameFrame').addEventListener('load', refreshBal);
-})();
-</script>
-</body>
-</html>`;
+// Cache the sidebar partial once (re-read if missing).
+let _sidebarTpl = null;
+function loadSidebar() {
+  if (_sidebarTpl != null) return _sidebarTpl;
+  try { _sidebarTpl = fs.readFileSync(path.join(GAMES_HTML_DIR, "partials", "sidebar.html"), "utf8"); }
+  catch { _sidebarTpl = ""; }
+  return _sidebarTpl;
+}
+
+/**
+ * Build the sidebar markup for a page: marks the active item, gates the admin
+ * item to ADMIN_ID, fills user/balance/avatar tokens.
+ */
+function buildSidebar({ active, uid, tag, avatar, bal }) {
+  let s = loadSidebar();
+  const pages = ["lobby", "case-battle", "slots", "misc"];
+  for (const p of pages) s = s.replace(`__ACTIVE_${p}__`, p === active ? "active" : "");
+  const adminNav = (uid === ADMIN_ID)
+    ? `<a href="/admin/panel" class="sb-item admin ${active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
+    : "";
+  s = s.replace("__ADMIN_NAV__", adminNav);
+  s = s.replace(/__TAG__/g, esc(tag ?? "Player"));
+  s = s.replace(/__AVATAR__/g, esc(avatar ?? ""));
+  s = s.replace(/__BALANCE__/g, Number(bal ?? 0).toLocaleString());
+  return s;
 }
 
 // ─── WebServer class ──────────────────────────────────────────────────────────
@@ -350,17 +213,6 @@ export class WebServer {
     this._sessionIpBinding  = Boolean(config.sessionIpBinding);
     this._sessionIpTolerance = Number(config.sessionIpToleranceMs ?? 0); // grace period for flaky IPs
     this._states      = new Map();
-    const gsToken     = config.goldSlotApiToken ?? "";
-    const gsUrl       = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
-    const gsCbUrl     = `${this.baseUrl}/callback`;
-    this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl, gsCbUrl) : null;
-    this.callbackToken = config.goldSlotCallbackToken ?? "";
-    this.gsParent     = config.goldSlotParent ?? "";
-    this._gamesCache  = null;
-    this._gamesCacheTs = 0;
-    this._gameById    = new Map();
-    this._processedTrans = new Map();
-    this._gsUserCache = new Map();
     this._admin       = new AdminPanel(db, config.prefix ?? "&");
 
     // ── Case Battle state ─────────────────────────────────────────────────────
@@ -670,145 +522,6 @@ export class WebServer {
     }, countdownMs + 50);
   }
 
-  // ─── GoldSlot helpers (unchanged) ─────────────────────────────────────────
-
-  async _ensureGsUser(localUid) {
-    if (!this.goldSlot) return null;
-    if (this._gsUserCache.has(localUid)) return this._gsUserCache.get(localUid);
-    const name = `gs_${localUid}`;
-    try {
-      const resp = await this.goldSlot.userCreate(name, this.gsParent || undefined);
-      if (resp.code !== 0) { console.error("[GoldSlot] userCreate failed:", resp); return null; }
-      const userCode = resp.data?.user_code ?? null;
-      if (!userCode) { console.error("[GoldSlot] userCreate returned no user_code:", resp); return null; }
-      const entry = { name, userCode };
-      this._gsUserCache.set(localUid, entry);
-      return entry;
-    } catch(e) { console.error("[GoldSlot] _ensureGsUser:", e); return null; }
-  }
-
-  async _fetchGames() {
-    if (!this.goldSlot) return [];
-    const now = Date.now();
-    if (this._gamesCache && now - this._gamesCacheTs < 10 * 60 * 1000) return this._gamesCache;
-    let grouped = [];
-    try {
-      const resp = await this.goldSlot.getAllGames(1);
-      if (resp.code === 0 && Array.isArray(resp.data) && resp.data.length > 0) {
-        const first = resp.data[0];
-        if (Array.isArray(first?.games)) {
-          for (const prov of resp.data) {
-            const games = Array.isArray(prov.games) ? prov.games : [];
-            const pc    = String(prov.provider ?? prov.code ?? prov.id ?? "UNKNOWN");
-            const pn    = String(prov.name ?? providerName(pc) ?? pc);
-            for (const g of games) this._gameById.set(String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? ""), { ...g, providerCode: pc, providerName: pn });
-            if (games.length) grouped.push({ provider: pc, providerName: pn, games });
-          }
-        } else {
-          const byProv = new Map();
-          for (const g of resp.data) {
-            const pid = g.provider_id ?? g.provider ?? g.provider_code ?? "UNKNOWN";
-            const pc  = String(pid);
-            const pn  = g.provider_name ?? providerName(pid);
-            if (!byProv.has(pc)) byProv.set(pc, { provider: pc, providerName: pn, games: [] });
-            byProv.get(pc).games.push(g);
-            this._gameById.set(String(g.game_code ?? g.game_id ?? g.id ?? g.code ?? ""), { ...g, providerCode: pc, providerName: pn });
-          }
-          grouped = [...byProv.values()];
-        }
-      }
-    } catch(e) { console.error("[GoldSlot] /v4/game/all exception:", e.message); }
-    if (grouped.length > 0) { this._gamesCache = grouped; this._gamesCacheTs = now; }
-    return grouped;
-  }
-
-  _markTrans(guid, entry) {
-    if (!guid) return;
-    this._processedTrans.set(guid, entry);
-    if (this._processedTrans.size > 50000) {
-      const iter = this._processedTrans.keys();
-      for (let i = 0; i < 5000; i++) this._processedTrans.delete(iter.next().value);
-    }
-  }
-
-  _isValidCallbackToken(req) {
-    if (!this.callbackToken) return true;
-    const incoming = (req.headers["callback-token"] ?? req.headers["Callback-Token"] ?? "").trim();
-    return incoming === this.callbackToken;
-  }
-
-  _cbReply(res, result, status, data) {
-    const body = { result, status };
-    if (data !== undefined) body.data = data;
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(body));
-  }
-
-  async _handleCallback(req, res) {
-    if (!this._isValidCallbackToken(req)) { console.warn("[Callback] Rejected — bad token"); return this._cbReply(res, 1, "INVALID_TOKEN"); }
-    let payload;
-    try { payload = JSON.parse(await readBody(req)); } catch { return this._cbReply(res, 1, "INVALID_JSON"); }
-    const { command, data, check } = payload;
-    if (!command || !data) return this._cbReply(res, 1, "MISSING_FIELDS");
-    const gsAccount       = String(data.account ?? "");
-    const localUid        = gsAccount.startsWith("gs_") ? gsAccount.slice(3) : gsAccount;
-    const transGuid       = String(data.trans_guid ?? "");
-    const cancelTransGuid = String(data.cancel_trans_guid ?? data.cancle_trans_guid ?? "");
-    const amount          = Number(data.amount ?? 0);
-    const checks          = String(check ?? "").split(",").map(s => s.trim());
-    let user;
-    try { user = await this.db.getUser(localUid); } catch(e) { console.error("[Callback] DB:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
-    if (checks.includes("21") && !user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-    if (checks.includes("22") && user?.banned) return this._cbReply(res, 1, "USER_INACTIVE");
-    const currentBal = Math.round(Number(user?.bal ?? 0));
-    if (command === "authenticate") { if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND"); return this._cbReply(res, 0, "OK", { account: gsAccount, balance: currentBal }); }
-    if (command === "balance") { if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND"); return this._cbReply(res, 0, "OK", { balance: currentBal }); }
-    if (command === "bet") {
-      if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) return this._cbReply(res, 0, "OK", { balance: currentBal });
-      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      const betAmt = Math.round(amount);
-      if (betAmt > 0 && currentBal < betAmt) return this._cbReply(res, 1, "BALANCE_NOT_ENOUGH");
-      let newBal = currentBal;
-      if (betAmt > 0) {
-        try { await this.db.updateBalance(localUid, -betAmt); const r = await this.db.getUser(localUid); newBal = Math.round(Number(r?.bal ?? currentBal - betAmt)); }
-        catch(e) { console.error("[Callback] DB bet:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
-      }
-      this._markTrans(transGuid, { type: "bet", localUid, amount: betAmt });
-      return this._cbReply(res, 0, "OK", { balance: newBal });
-    }
-    if (command === "win") {
-      if (checks.includes("41") && transGuid && this._processedTrans.has(transGuid)) { const ex = this._processedTrans.get(transGuid); if (ex?.type === "win") return this._cbReply(res, 0, "OK", { balance: currentBal }); }
-      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      const winAmt = Math.round(amount);
-      let newBal = currentBal;
-      if (winAmt > 0) {
-        try { await this.db.updateBalance(localUid, winAmt); const r = await this.db.getUser(localUid); newBal = Math.round(Number(r?.bal ?? currentBal + winAmt)); await this.db.recordGame(localUid, true, winAmt).catch(() => {}); }
-        catch(e) { console.error("[Callback] DB win:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
-      } else { await this.db.recordGame(localUid, false, 0).catch(() => {}); }
-      this._markTrans(transGuid, { type: "win", localUid, amount: winAmt });
-      return this._cbReply(res, 0, "OK", { balance: newBal });
-    }
-    if (command === "cancel") {
-      if (checks.includes("43") && cancelTransGuid && this._processedTrans.has(cancelTransGuid)) return this._cbReply(res, 0, "OK", { balance: currentBal });
-      if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      const originalBet = Math.round(this._processedTrans.get(transGuid)?.amount ?? amount);
-      let newBal = currentBal;
-      if (originalBet > 0) {
-        try { await this.db.updateBalance(localUid, originalBet); const r = await this.db.getUser(localUid); newBal = Math.round(Number(r?.bal ?? currentBal + originalBet)); }
-        catch(e) { console.error("[Callback] DB cancel:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
-      }
-      this._markTrans(cancelTransGuid, { type: "cancel", localUid, amount: originalBet });
-      if (transGuid) this._processedTrans.delete(transGuid);
-      return this._cbReply(res, 0, "OK", { balance: newBal });
-    }
-    if (command === "status") {
-      const entry = this._processedTrans.get(transGuid);
-      if (checks.includes("42") && !entry) return this._cbReply(res, 1, "TRANSACTION_NOT_FOUND");
-      return this._cbReply(res, 0, "OK", { account: gsAccount, trans_guid: transGuid, trans_status: entry ? "OK" : "NOT_FOUND" });
-    }
-    return this._cbReply(res, 1, "UNKNOWN_COMMAND");
-  }
-
   // ─── Admin route helpers ──────────────────────────────────────────────────
 
   _buildAdminLoginUrl() {
@@ -848,11 +561,6 @@ export class WebServer {
     _preloadAssets();
     // Load custom case tiers from DB
     await this.loadCustomTiers().catch(e => console.error("[CB] Custom tiers load:", e));
-    if (GOLDSLOT_ENABLED) {
-      this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm:", e));
-    } else {
-      console.log("[GoldSlot] Disabled — game lobby will show coming soon page.");
-    }
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
@@ -1008,20 +716,6 @@ export class WebServer {
       res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
-    if (p === "/callback") {
-      if (req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, service: "SirGreen Casino callback" })); }
-      if (req.method === "POST") return this._handleCallback(req, res);
-      res.writeHead(405, { Allow: "GET, POST" }); return res.end("Method Not Allowed");
-    }
-
-    if (p === "/api/goldslot/debug" && req.method === "GET") {
-      if (!GOLDSLOT_ENABLED) return this._json(res, 503, { error: "GoldSlot is disabled" });
-      if (!this.goldSlot) return this._json(res, 503, { error: "goldSlotApiToken not configured" });
-      const out = {};
-      try { out.agentInfo = await this.goldSlot.agentInfo(); } catch(e) { out.agentInfo = { error: e.message }; }
-      return this._json(res, 200, out);
-    }
-
     if (p.startsWith("/assets/")) {
       const cached = _assetCache.get(p);
       if (cached) return serveBufferWithRanges(req, res, cached.buf, cached.mime);
@@ -1030,79 +724,22 @@ export class WebServer {
       res.writeHead(404, { "Cache-Control": "no-store" }); return res.end("Not found");
     }
 
-    if (p === "/lobby" && req.method === "GET") {
-      const uid = this._uid(req);
-      if (!uid) return this._redirect(res, "/login");
-      const user    = await this.db.getUser(uid);
-      const cookies = parseCookies(req);
-      const bal     = Number(user?.bal ?? 0);
-      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
-      if (!GOLDSLOT_ENABLED) {
-        const lobbyPath = path.join(GAMES_HTML_DIR, "lobby.html");
-        if (fs.existsSync(lobbyPath)) {
-          const lobbyHtml = fs.readFileSync(lobbyPath, "utf8")
-            .replace("__BALANCE__", String(bal))
-            .replace("__TAG__", esc(tag));
-          return this._html(res, 200, lobbyHtml);
-        }
-        return this._html(res, 200, comingSoonPage(bal, tag));
-      }
-      const gamesByProvider = await this._fetchGames();
-      return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
-    }
-
-    if (p.startsWith("/game/") && req.method === "GET") {
-      const uid = this._uid(req);
-      if (!uid) return this._redirect(res, "/login");
-      if (!GOLDSLOT_ENABLED) return this._redirect(res, "/lobby");
-      const cookies  = parseCookies(req);
-      const tag      = decodeURIComponent(cookies.dtag ?? "Player");
-      // Validate that the path components are non-empty alphanum strings.
-      // gameCode may legitimately contain hyphens/underscores, so we allow those.
-      const rawParts = p.slice("/game/".length).split("/");
-      const rawPid   = decodeURIComponent(rawParts[0] ?? "");
-      const rawGame  = decodeURIComponent(rawParts.slice(1).join("/") ?? rawParts[0] ?? "");
-      if (!/^\d{1,6}$/.test(rawPid)) return this._redirect(res, "/lobby");
-      if (!rawGame || !/^[a-zA-Z0-9_-]{1,64}$/.test(rawGame)) return this._redirect(res, "/lobby");
-      const providerId = Number(rawPid);
-      const gameCode   = rawGame;
-      if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set.", "/lobby", "Back"));
-      await this._fetchGames();
-      const gameMeta    = this._gameById.get(gameCode);
-      const resolvedPid = (!isNaN(providerId) && providerId > 0) ? providerId : Number(gameMeta?.provider_id ?? gameMeta?.providerCode ?? NaN);
-      if (isNaN(resolvedPid) || resolvedPid <= 0) return this._html(res, 400, errPage("⚠️ Error", `Unknown provider for game "${esc(gameCode)}".`, "/lobby", "Back to Lobby"));
-      const gs = await this._ensureGsUser(uid);
-      if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
-      let gameUrl;
-      try {
-        const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, resolvedPid, `${this.baseUrl}/lobby`, 1);
-        const launchUrl = urlResp.data?.game_url ?? urlResp.data?.url ?? null;
-        if (urlResp.code !== 0 || !launchUrl) return this._html(res, 500, errPage("⚠️ Error", `Could not launch game (code ${urlResp.code}).`, "/lobby", "Back to Lobby"));
-        gameUrl = launchUrl;
-      } catch(e) { console.error("[GoldSlot] getGameUrl:", e); return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back")); }
-      const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameCode;
-      const user     = await this.db.getUser(uid);
-      const bal      = Number(user?.bal ?? 0);
-      return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
-    }
+    if (p === "/lobby" && req.method === "GET")
+      return this._renderPage(req, res, "lobby.html", "lobby");
+    if (p === "/slots" && req.method === "GET")
+      return this._renderPage(req, res, "slots.html", "slots");
+    if (p === "/misc" && req.method === "GET")
+      return this._renderPage(req, res, "misc.html", "misc");
 
     // ── Case Battle page ─────────────────────────────────────────────────────
     if ((p === "/case-battle" || p.startsWith("/case-battle/")) && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const cookies = parseCookies(req);
-      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
-      const user    = await this.db.getUser(uid);
-      const bal     = Number(user?.bal ?? 0);
       const battleId = p.startsWith("/case-battle/") ? p.slice("/case-battle/".length) : null;
-      const cbPath = path.join(GAMES_HTML_DIR, "case-battle.html");
-      if (!fs.existsSync(cbPath)) return this._html(res, 503, errPage("Not Ready", "Case Battle is not available yet.", "/lobby", "Back"));
-      const html = fs.readFileSync(cbPath, "utf8")
-        .replace("__BALANCE__", String(bal))
-        .replace("__TAG__", esc(tag))
-        .replace("__UID__", uid)
-        .replace("__BATTLE_ID__", battleId ?? "");
-      return this._html(res, 200, html);
+      return this._renderPage(req, res, "case-battle.html", "case-battle", {
+        "__UID__": uid,
+        "__BATTLE_ID__": battleId ? esc(battleId) : "",
+      });
     }
 
     if (p === "/api/balance" && req.method === "GET") {
@@ -1110,6 +747,35 @@ export class WebServer {
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const user = await this.db.getUser(uid);
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
+    }
+
+    // ── Send-money picker: search users (no balance leak) ─────────────────────
+    if (p === "/api/users/search" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const q = u.searchParams.get("q") || "";
+      let rows = [];
+      try { rows = await this.db.searchUsers(q, 25, uid); } catch (e) { console.error("[users/search]", e); }
+      const users = rows.map(r => ({ id: r._id, tag: r.tag || null, avatar: r.av || null }));
+      return this._json(res, 200, { users });
+    }
+
+    // ── Send money: atomic transfer ───────────────────────────────────────────
+    if (p === "/api/transfer" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      let data;
+      try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const toId = String(data.toId ?? "").trim();
+      const amount = Math.floor(Number(data.amount));
+      if (!/^\d{17,20}$/.test(toId)) return this._json(res, 200, { error: "Invalid recipient" });
+      if (toId === uid) return this._json(res, 200, { error: "Can't send to yourself" });
+      if (!Number.isFinite(amount) || amount <= 0) return this._json(res, 200, { error: "Invalid amount" });
+      let ok = false;
+      try { ok = await this.db.transfer(uid, toId, amount); } catch (e) { console.error("[transfer]", e); }
+      if (!ok) return this._json(res, 200, { error: "Insufficient balance" });
+      const me = await this.db.getUser(uid);
+      return this._json(res, 200, { ok: true, newBal: Number(me?.bal ?? 0) });
     }
 
     // ── Case Battle API ──────────────────────────────────────────────────────
@@ -1311,7 +977,10 @@ export class WebServer {
       const expiry = Date.now() + 10 * 60 * 1000;
       this._states.set(state, { createdAt: Date.now(), expiry });
       const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(this.clientId)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(this.redirectUri)}&response_type=code&state=${encodeURIComponent(state)}`;
-      return this._html(res, 200, loginPage(authUrl));
+      const loginPath = path.join(GAMES_HTML_DIR, "login.html");
+      if (!fs.existsSync(loginPath)) return this._html(res, 500, errPage("⚠️ Error", "Login page missing.", "#", "—"));
+      const html = fs.readFileSync(loginPath, "utf8").replace("__AUTH_URL__", esc(authUrl));
+      return this._html(res, 200, html);
     }
 
     if (p === "/oauth/callback" && req.method === "GET") {
@@ -1341,6 +1010,8 @@ export class WebServer {
       const userId    = me.id;
       const tag       = me.username ?? me.tag ?? userId;
       const avatar    = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      // Cache Fluxer identity so the misc send-money picker shows real names.
+      await this.db.setProfile(userId, { tag, avatar }).catch(() => {});
       const ip        = (req.headers["x-forwarded-for"] ?? req.headers["x-real-ip"] ?? "").split(",")[0].trim() || null;
       const oldSid    = parseCookies(req).sid; // revoke old session to prevent fixation
       const newSid    = crypto.randomBytes(32).toString("hex");
@@ -1391,6 +1062,31 @@ export class WebServer {
     }
     return c.uid;
   }
+  /**
+   * Serve an authed page from games/<file>, injecting the shared sidebar
+   * (active tab + admin gating) and standard tokens. `extra` adds page-specific
+   * replacements. Redirects to /login if no session.
+   */
+  async _renderPage(req, res, file, active, extra = {}) {
+    const uid = this._uid(req);
+    if (!uid) return this._redirect(res, "/login");
+    const fp = path.join(GAMES_HTML_DIR, file);
+    if (!fs.existsSync(fp)) return this._html(res, 503, errPage("Not Ready", "This page is not available yet.", "/lobby", "Back"));
+    const cookies = parseCookies(req);
+    const user = await this.db.getUser(uid);
+    const bal = Number(user?.bal ?? 0);
+    const tag = decodeURIComponent(cookies.dtag ?? user?.tag ?? "Player");
+    const avatar = decodeURIComponent(cookies.dav ?? user?.av ?? "");
+    const sidebar = buildSidebar({ active, uid, tag, avatar, bal });
+    let html = fs.readFileSync(fp, "utf8")
+      .replace("__SIDEBAR__", sidebar)
+      .replace(/__BALANCE__/g, String(bal))
+      .replace(/__TAG__/g, esc(tag))
+      .replace(/__AVATAR__/g, esc(avatar));
+    for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
+    return this._html(res, 200, html);
+  }
+
   _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }
   _json(res, s, o) { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); }
   _redirect(res, l) { res.setHeader("Location", l); res.writeHead(302); res.end(); }

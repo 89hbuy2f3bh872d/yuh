@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Slots — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
+        Slots
+      </h1>
+      <div class="page-sub">Native SirGreen slot machine.</div>
+    </div>
+  </div>
+
+  <div class="soon-hero">
+    <div class="ring">
+      <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
+    </div>
+    <h2>Coming Soon</h2>
+    <p>We're building our own slot machine from scratch — weighted reels, multipliers, and smooth spins. Check back shortly.</p>
+    <a class="btn btn-secondary" href="/lobby">← Back to Lobby</a>
+  </div>
+</main>
+</div>
+<script>
+(function(){function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=document.getElementById('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){})}rb();setInterval(rb,8000);})();
+</script>
+</body>
+</html>
