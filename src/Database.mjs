@@ -217,6 +217,56 @@ export class Database {
       .toArray();
   }
 
+  // ─── Admin permissions ──────────────────────────────────────────────────────
+
+  /**
+   * Admin-only user search for the User List tab. Returns full admin-relevant
+   * fields (balance, perms). Use ONLY behind an admin gate.
+   */
+  async searchUsersAdmin(q, limit = 30) {
+    const lim = clamp(limit, 1, 100);
+    const term = String(q ?? "").trim();
+    let filter;
+    if (!term) {
+      filter = {};
+    } else {
+      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = { $regex: safe, $options: "i" };
+      filter = { $or: [{ _id: rx }, { tag: rx }] };
+    }
+    return this._users
+      .find(filter)
+      .project({ _id: 1, tag: 1, av: 1, bal: 1, perms: 1 })
+      .sort({ bal: -1 })
+      .limit(lim)
+      .toArray();
+  }
+
+  /** Get a user's admin permission array (empty if none). */
+  async getPerms(userId) {
+    const id = this._uid(userId);
+    const u = await this._users.findOne({ _id: id }, { projection: { perms: 1 } });
+    return Array.isArray(u?.perms) ? u.perms : [];
+  }
+
+  /** Overwrite a user's permission array (validated, deduped by caller). */
+  async setPerms(userId, perms) {
+    const id = this._uid(userId);
+    const arr = Array.isArray(perms) ? [...new Set(perms.map(String))] : [];
+    if (arr.length) await this._users.updateOne({ _id: id }, { $set: { perms: arr } }, { upsert: true });
+    else await this._users.updateOne({ _id: id }, { $unset: { perms: "" } });
+    return arr;
+  }
+
+  /** List all users that currently hold at least one admin permission. */
+  async listAdmins() {
+    return this._users
+      .find({ perms: { $exists: true, $ne: [] } })
+      .project({ _id: 1, tag: 1, av: 1, bal: 1, perms: 1 })
+      .limit(200)
+      .toArray();
+  }
+
   /**
    * Atomic two-party transfer using a MongoDB transaction.
    * Only succeeds if sender has sufficient funds AND both documents

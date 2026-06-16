@@ -6,7 +6,35 @@
  * that WebServer already sets — no separate login needed.
  */
 
+// Hard owner — full access, always, can't be revoked.
 const ADMIN_USER_ID = "1512241609448620032";
+const OWNER_ID = ADMIN_USER_ID;
+
+// Grantable permissions. Each maps to admin actions/tabs.
+const PERMS = [
+  { id: "balances", label: "Edit balances", desc: "Add or set any user's FC balance" },
+  { id: "cases",    label: "Manage cases",  desc: "Create and delete case tiers" },
+  { id: "battles",  label: "Manage battles", desc: "View and force-cancel battles" },
+  { id: "users",    label: "Manage users",   desc: "Grant or revoke admin permissions" },
+];
+const PERM_IDS = PERMS.map(p => p.id);
+
+function isOwner(uid) { return String(uid ?? "") === OWNER_ID; }
+function hasPerm(uid, perms, perm) {
+  if (isOwner(uid)) return true;
+  return Array.isArray(perms) && perms.includes(perm);
+}
+/** Which page ids a user may see, given uid + perms. */
+function visiblePages(uid, perms) {
+  if (isOwner(uid)) return PAGES.map(p => p.id);
+  const out = [];
+  for (const pg of PAGES) {
+    if (pg.perm === "owner") continue;                 // stats: owner only
+    if (pg.perm === "userlist") { if (hasPerm(uid, perms, "balances") || hasPerm(uid, perms, "users")) out.push(pg.id); }
+    else if (hasPerm(uid, perms, pg.perm)) out.push(pg.id);
+  }
+  return out;
+}
 
 function esc(s) {
   return String(s ?? "")
@@ -51,14 +79,14 @@ function freshness(ms) {
 // ── Page registry — drives both the sidebar nav and the page sections ──────
 // Each entry's colour becomes that section's identity throughout the UI.
 const PAGES = [
-  { id: "overview", label: "Dashboard", color: "var(--accent)" },
-  { id: "servers", label: "Servers", color: "var(--purple)" },
-  { id: "commands", label: "Commands", color: "var(--orange)" },
-  { id: "users", label: "Top Users", color: "var(--blue)" },
-  { id: "activity", label: "Activity", color: "var(--gold)" },
-  { id: "cases", label: "Case Tiers", color: "var(--teal)" },
-  { id: "balances", label: "Balances", color: "var(--red)" },
-  { id: "battles", label: "Battles", color: "var(--orange)" },
+  { id: "overview", label: "Dashboard", color: "var(--accent)", perm: "owner" },
+  { id: "servers", label: "Servers", color: "var(--purple)", perm: "owner" },
+  { id: "commands", label: "Commands", color: "var(--orange)", perm: "owner" },
+  { id: "users", label: "Top Users", color: "var(--blue)", perm: "owner" },
+  { id: "activity", label: "Activity", color: "var(--gold)", perm: "owner" },
+  { id: "cases", label: "Case Tiers", color: "var(--teal)", perm: "cases" },
+  { id: "battles", label: "Battles", color: "var(--orange)", perm: "battles" },
+  { id: "userlist", label: "User List", color: "var(--red)", perm: "userlist" },
 ];
 
 function shell(body, title) {
@@ -106,6 +134,10 @@ function pageHeader({ eyebrow, title, sub, color }) {
 
 function buildPage(data, prefix) {
   const { globals, commands, guilds, daily, topUsers, buildAt } = data;
+  const allowed = Array.isArray(data.allowed) ? data.allowed : PAGES.map(p => p.id);
+  const owner = !!data.owner;
+  const canBalances = owner || (Array.isArray(data.perms) && data.perms.includes("balances"));
+  const canManageUsers = owner || (Array.isArray(data.perms) && data.perms.includes("users"));
   const refreshedAt = new Date(buildAt).toLocaleTimeString("en-US", {
     hour12: false,
   });
@@ -358,24 +390,34 @@ function buildPage(data, prefix) {
       </div>
     </div>`;
 
-  // ── Balances management ────────────────────────────────────────────────────
-  const pageBalances = `
+  // ── User List (balances + admin permissions) ───────────────────────────────
+  const permCols = PERMS.map(p => `<th title="${esc(p.desc)}">${esc(p.label.replace(/^(Edit|Manage) /, ""))}</th>`).join("");
+  const pageUserList = `
     ${pageHeader({
-      eyebrow: "Balances",
-      title: "User Balance Management",
+      eyebrow: "Users",
+      title: "User List",
       color: "var(--red)",
-      sub: "Search for users and modify their FC balance",
+      sub: "Search users, edit balances, and manage admin permissions",
     })}
     <div style="margin-bottom:1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-      <input id="bal-search" class="input" style="width:280px" placeholder="Search by user ID or min balance…">
+      <input id="ul-search" class="input" style="width:300px" placeholder="Search by username or ID…">
       <button class="btn btn-primary" onclick="adminSearchUsers()">Search</button>
+      <button class="btn btn-secondary" onclick="adminLoadAdmins()">Show current admins</button>
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>User ID</th><th>Balance</th><th>Won</th><th>Lost</th><th>Games</th><th>Actions</th></tr></thead>
-        <tbody id="balTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:2rem">Search to find users</td></tr></tbody>
+        <thead><tr>
+          <th>User</th><th>Balance</th>
+          ${canManageUsers ? permCols : ""}
+          <th>Actions</th>
+        </tr></thead>
+        <tbody id="ulTableBody"><tr><td colspan="${2 + (canManageUsers ? PERMS.length : 0) + 1}" style="text-align:center;color:var(--text-dim);padding:2rem">Search or show current admins</td></tr></tbody>
       </table>
-    </div>`;
+    </div>
+    <div style="margin-top:.8rem;font-size:.7rem;color:var(--text-dim)">
+      ${canManageUsers ? "Toggle a permission to grant/revoke it instantly. The owner always has full access and cannot be changed." : "You can edit balances. Permission management requires the Manage Users permission."}
+    </div>
+    <script>window.__UL_CFG__={canBal:${canBalances},canPerms:${canManageUsers},owner:"${esc(OWNER_ID)}",perms:${JSON.stringify(PERM_IDS)},permLabels:${JSON.stringify(PERMS.map(p => p.label.replace(/^(Edit|Manage) /, "")))}};</script>`;
 
   // ── Active Battles management ──────────────────────────────────────────────
   const pageBattles = `
@@ -399,18 +441,22 @@ function buildPage(data, prefix) {
     users: pageUsers,
     activity: pageActivity,
     cases: pageCases,
-    balances: pageBalances,
+    userlist: pageUserList,
     battles: pageBattles,
   };
 
-  const navHtml = PAGES.map(
+  // Only render tabs/pages the viewer is allowed to see.
+  const shownPages = PAGES.filter(p => allowed.includes(p.id));
+  const firstId = shownPages.length ? shownPages[0].id : "";
+
+  const navHtml = shownPages.map(
     (p, i) => `
     <button class="nav-item${i === 0 ? " active" : ""}" data-page="${p.id}" style="--pc:${p.color}" role="tab" aria-selected="${i === 0}">
       ${esc(p.label)}
     </button>`,
   ).join("");
 
-  const pagesHtml = PAGES.map(
+  const pagesHtml = shownPages.map(
     (p, i) => `
     <section class="page${i === 0 ? " page-active" : ""}" data-page="${p.id}" role="tabpanel" id="page-${p.id}">
       ${pageBodies[p.id]}
@@ -426,10 +472,12 @@ function buildPage(data, prefix) {
   // ── Tab switching ────────────────────────────────────────────────────────
   var navButtons = Array.prototype.slice.call(document.querySelectorAll('.nav-item[data-page]'));
   var pages = Array.prototype.slice.call(document.querySelectorAll('.page[data-page]'));
-  var validIds = ['overview','servers','commands','users','activity','cases','balances','battles'];
+  // Only the tabs actually rendered for this viewer are valid.
+  var validIds = navButtons.map(function(b){ return b.dataset.page; });
+  var DEFAULT_ID = validIds.length ? validIds[0] : '';
 
   function show(id){
-    if (validIds.indexOf(id) === -1) id = 'overview';
+    if (validIds.indexOf(id) === -1) id = DEFAULT_ID;
     pages.forEach(function(p){
       var active = p.dataset.page === id;
       p.classList.toggle('page-active', active);
@@ -441,9 +489,9 @@ function buildPage(data, prefix) {
     });
     try { history.replaceState(null, '', '#' + id); } catch(e) {}
     // Fire loaders for tabs that need fresh data on activation.
-    if (id === 'cases')   { try { window.adminLoadCases();   } catch(e) { console.error(e); } }
-    if (id === 'balances') { try { window.adminSearchUsers(); } catch(e) { console.error(e); } }
-    if (id === 'battles') { try { window.adminLoadBattles(); } catch(e) { console.error(e); } }
+    if (id === 'cases')    { try { window.adminLoadCases();    } catch(e) { console.error(e); } }
+    if (id === 'userlist') { try { window.adminLoadAdmins();   } catch(e) { console.error(e); } }
+    if (id === 'battles')  { try { window.adminLoadBattles();  } catch(e) { console.error(e); } }
   }
 
   navButtons.forEach(function(b){
@@ -461,7 +509,7 @@ function buildPage(data, prefix) {
   });
 
   var initial = (location.hash || '').replace('#', '');
-  show(validIds.indexOf(initial) !== -1 ? initial : 'overview');
+  show(validIds.indexOf(initial) !== -1 ? initial : DEFAULT_ID);
 
   window.addEventListener('hashchange', function(){
     var page = (location.hash || '').replace('#', '');
@@ -603,54 +651,78 @@ function buildPage(data, prefix) {
       .catch(function(e){ alert('Error: ' + e.message); });
   };
 
-  window.adminSearchUsers = function adminSearchUsers(){
-    var searchEl = document.getElementById('bal-search');
-    var search = searchEl ? searchEl.value.trim() : '';
-    fetch('/api/admin/users?search=' + encodeURIComponent(search) + '&limit=30')
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        var users = (d && d.users) || [];
-        var tbody = document.getElementById('balTableBody');
-        if (!tbody) return;
-        if (!users.length) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:1rem">No users found</td></tr>';
-          return;
-        }
-        tbody.innerHTML = users.map(function(u){
-          var safeId = String(u._id).replace(/'/g, "\\\\'");
-          return '<tr>'+
-            '<td class="uid">'+esc(u._id)+'</td>'+
-            '<td class="bal-val">'+fmt(u.bal)+' FC</td>'+
-            '<td style="font-family:var(--font-mono)">'+fmt(u.tw)+'</td>'+
-            '<td style="font-family:var(--font-mono)">'+fmt(u.tl)+'</td>'+
-            '<td>'+fmt(u.gp)+'</td>'+
-            '<td><button class="btn-danger" onclick="adminShowBalModal(\\''+safeId+'\\','+u.bal+')">Edit balance</button></td>'+
-          '</tr>';
+  // ── User List: search + admins, render rows w/ balance + perm toggles ──────
+  function ulCfg(){ return window.__UL_CFG__ || { canBal:false, canPerms:false, owner:'', perms:[], permLabels:[] }; }
+
+  function ulRenderRows(users){
+    var cfg = ulCfg();
+    var tbody = document.getElementById('ulTableBody');
+    if (!tbody) return;
+    var span = 2 + (cfg.canPerms ? cfg.perms.length : 0) + 1;
+    if (!users.length) { tbody.innerHTML = '<tr><td colspan="'+span+'" style="text-align:center;color:var(--text-dim);padding:1rem">No users found</td></tr>'; return; }
+    tbody.innerHTML = users.map(function(u){
+      var id = String(u.id || u._id);
+      var safeId = id.replace(/'/g, "\\\\'");
+      var perms = u.perms || [];
+      var isOwner = id === cfg.owner;
+      var name = u.tag || id;
+      var av = u.avatar || u.av || '';
+      var avCell = (av ? '<img src="'+esc(av)+'" style="width:26px;height:26px;border-radius:50%;vertical-align:middle;margin-right:.5rem" onerror="this.style.display=\\'none\\'">' : '');
+      var userCell = '<td>'+avCell+'<span style="font-weight:600">'+esc(name)+'</span>'+
+                     '<div class="uid" style="font-size:.6rem">'+esc(id)+(isOwner?' &middot; <b style="color:var(--accent)">OWNER</b>':'')+'</div></td>';
+      var balCell = '<td class="bal-val">'+fmt(u.bal)+' FC'+
+        (cfg.canBal ? ' <button class="btn-danger" style="margin-left:.4rem" onclick="adminShowBalModal(\\''+safeId+'\\','+(u.bal||0)+')">Edit</button>' : '')+'</td>';
+      var permCells = '';
+      if (cfg.canPerms){
+        permCells = cfg.perms.map(function(pid){
+          var on = perms.indexOf(pid) !== -1;
+          if (isOwner) return '<td style="text-align:center;color:var(--accent)">✓</td>';
+          return '<td style="text-align:center"><input type="checkbox" '+(on?'checked':'')+' onchange="adminTogglePerm(\\''+safeId+'\\',\\''+pid+'\\',this.checked)" style="accent-color:var(--accent);cursor:pointer"></td>';
         }).join('');
-      })
+      }
+      var adminBadge = (isOwner || perms.length) ? '<span style="color:var(--gold);font-size:.66rem;font-weight:600">'+(isOwner?'Owner':'Admin')+'</span>' : '<span style="color:var(--text-dim);font-size:.66rem">—</span>';
+      return '<tr>'+userCell+balCell+permCells+'<td>'+adminBadge+'</td></tr>';
+    }).join('');
+  }
+
+  window.adminSearchUsers = function adminSearchUsers(){
+    var el = document.getElementById('ul-search');
+    var q = el ? el.value.trim() : '';
+    fetch('/api/admin/users?search=' + encodeURIComponent(q) + '&limit=30')
+      .then(function(r){ return r.json(); })
+      .then(function(d){ ulRenderRows((d && d.users) || []); })
       .catch(function(e){ console.error('adminSearchUsers', e); });
+  };
+
+  window.adminLoadAdmins = function adminLoadAdmins(){
+    fetch('/api/admin/admins')
+      .then(function(r){ return r.json(); })
+      .then(function(d){ ulRenderRows((d && d.users) || []); })
+      .catch(function(e){ console.error('adminLoadAdmins', e); });
+  };
+
+  window.adminTogglePerm = function adminTogglePerm(uid, perm, on){
+    fetch('/api/admin/users/' + encodeURIComponent(uid) + '/perms', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ perm: perm, grant: !!on })
+    })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d && d.error){ alert(d.error); window.adminSearchUsers(); } })
+      .catch(function(e){ alert('Error: ' + e.message); });
   };
 
   window.adminShowBalModal = function adminShowBalModal(uid, currentBal){
     var newBal = prompt('Set balance for '+uid+'\\nCurrent: '+currentBal+' FC\\nEnter new balance or delta (+100, -50):');
     if (newBal === null) return;
     var delta;
-    if (String(newBal).charAt(0) === '+' || String(newBal).charAt(0) === '-') {
-      delta = Number(newBal);
-    } else {
-      delta = Number(newBal) - currentBal;
-    }
+    if (String(newBal).charAt(0) === '+' || String(newBal).charAt(0) === '-') { delta = Number(newBal); }
+    else { delta = Number(newBal) - currentBal; }
     if (isNaN(delta)) { alert('Invalid number.'); return; }
     fetch('/api/admin/users/' + encodeURIComponent(uid) + '/balance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ delta: delta })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delta: delta })
     })
       .then(function(r){ return r.json(); })
-      .then(function(d){
-        alert('Balance updated to ' + d.bal + ' FC');
-        window.adminSearchUsers();
-      })
+      .then(function(d){ alert('Balance updated to ' + d.bal + ' FC'); window.adminSearchUsers(); })
       .catch(function(e){ alert('Error: ' + e.message); });
   };
 
@@ -704,7 +776,7 @@ function buildPage(data, prefix) {
   // Initial load if the page hash already points at a data-driven tab.
   var startHash = (location.hash || '').replace('#', '');
   if (startHash === 'cases')    { try { window.adminLoadCases();   } catch(e) {} }
-  if (startHash === 'balances') { try { window.adminSearchUsers(); } catch(e) {} }
+  if (startHash === 'userlist') { try { window.adminLoadAdmins();  } catch(e) {} }
   if (startHash === 'battles')  { try { window.adminLoadBattles(); } catch(e) {} }
 })();
 </script>`;
@@ -737,32 +809,49 @@ export class AdminPanel {
     this.prefix = prefix;
   }
 
-  /**
-   * Returns true if the given userId is the authorised admin.
-   */
-  isAdmin(userId) {
-    return String(userId ?? "") === ADMIN_USER_ID;
+  static OWNER_ID = OWNER_ID;
+  static PERMS = PERMS;
+  static PERM_IDS = PERM_IDS;
+
+  isOwner(userId) { return isOwner(userId); }
+
+  /** Async admin check: owner OR holds at least one permission. */
+  async isAdmin(userId) {
+    if (isOwner(userId)) return true;
+    try { const perms = await this.db.getPerms(userId); return Array.isArray(perms) && perms.length > 0; }
+    catch { return false; }
+  }
+
+  /** Does this user have a specific permission? Owner always true. */
+  async can(userId, perm) {
+    if (isOwner(userId)) return true;
+    try { const perms = await this.db.getPerms(userId); return hasPerm(userId, perms, perm); }
+    catch { return false; }
   }
 
   /**
-   * Renders the full dashboard HTML.
-   * Caller is responsible for the session check.
+   * Renders the dashboard HTML for `uid`, showing only pages they may access.
+   * Stats queries are skipped for non-owners (they can't see stats tabs).
    */
-  async render() {
-    const [globals, commands, guilds, daily, topUsers] = await Promise.all([
-      this.db.getGlobalTotals(),
-      this.db.getCommandStats(),
-      this.db.getGuilds(),
-      this.db.getDailyStats(14),
-      this.db.getAdminUserStats(20),
-    ]);
+  async render(uid) {
+    const perms = isOwner(uid) ? PERM_IDS : await this.db.getPerms(uid).catch(() => []);
+    const allowed = visiblePages(uid, perms);
+    const owner = isOwner(uid);
+
+    let globals = {}, commands = [], guilds = [], daily = [], topUsers = [];
+    if (owner) {
+      [globals, commands, guilds, daily, topUsers] = await Promise.all([
+        this.db.getGlobalTotals(),
+        this.db.getCommandStats(),
+        this.db.getGuilds(),
+        this.db.getDailyStats(14),
+        this.db.getAdminUserStats(20),
+      ]);
+    }
     return buildPage({
-      globals,
-      commands,
-      guilds,
-      daily,
-      topUsers,
+      globals, commands, guilds, daily, topUsers,
       buildAt: Date.now(),
+      uid, perms, allowed, owner,
     }, this.prefix);
   }
 

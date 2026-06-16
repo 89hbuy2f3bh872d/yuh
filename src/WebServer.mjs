@@ -199,11 +199,11 @@ function loadSidebar() {
  * Build the sidebar markup for a page: marks the active item, gates the admin
  * item to ADMIN_ID, fills user/balance/avatar tokens.
  */
-function buildSidebar({ active, uid, tag, avatar, bal }) {
+function buildSidebar({ active, uid, tag, avatar, bal, showAdmin }) {
   let s = loadSidebar();
   const pages = ["lobby", "case-battle", "slots", "misc"];
   for (const p of pages) s = s.replace(`__ACTIVE_${p}__`, p === active ? "active" : "");
-  const adminNav = (uid === ADMIN_ID)
+  const adminNav = showAdmin
     ? `<a href="/admin/panel" class="sb-item admin ${active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
     : "";
   s = s.replace("__ADMIN_NAV__", adminNav);
@@ -554,14 +554,14 @@ export class WebServer {
       const loginUrl = this._buildAdminLoginUrl();
       return this._html(res, 200, this._admin.loginRequired(loginUrl));
     }
-    // Logged in but not the admin
-    if (!this._admin.isAdmin(uid)) {
+    // Logged in but not an admin (no perms)
+    if (!(await this._admin.isAdmin(uid))) {
       console.warn(`[Admin] Unauthorised access attempt from uid=${uid}`);
       return this._html(res, 403, this._admin.accessDenied(uid));
     }
-    // Authorised — render dashboard
+    // Authorised — render dashboard scoped to this user's permissions
     try {
-      const html = await this._admin.render();
+      const html = await this._admin.render(uid);
       // No-cache so every reload is fresh
       res.writeHead(200, { "Content-Type": "text/html;charset=utf-8", "Cache-Control": "no-store, no-cache" });
       res.end(html);
@@ -606,10 +606,10 @@ export class WebServer {
       res.writeHead(204); return res.end();
     }
 
-    // ── Admin API (strict: only ADMIN_USER_ID) ───────────────────────────────
+    // ── Admin API (gated by per-user permissions) ────────────────────────────
     if (p.startsWith("/api/admin/")) {
       const uid = this._uid(req);
-      if (!uid || !this._admin.isAdmin(uid)) {
+      if (!uid || !(await this._admin.isAdmin(uid))) {
         res.writeHead(403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         return res.end(JSON.stringify({ error: "Forbidden" }));
       }
@@ -617,39 +617,59 @@ export class WebServer {
         ? await readBody(req).catch(() => "{}") : "{}";
       let data;
       try { data = JSON.parse(body); } catch { data = {}; }
+      const deny = () => { res.writeHead(403, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ error: "Missing permission" })); };
 
-      // GET /api/admin/users?search=xxx — search users by ID or tag
+      // GET /api/admin/users?search= — user list (admin-only fields)
       if (p === "/api/admin/users" && req.method === "GET") {
-        const u = new URL(req.url, "http://localhost");
-        const search = u.searchParams.get("search") || "";
-        const limit = Math.max(1, Math.min(100, Number(u.searchParams.get("limit")) || 20));
-        let users;
-        if (search) {
-          // Search by ID prefix or balance
-          const numSearch = Number(search);
-          if (!isNaN(numSearch) && numSearch > 0) {
-            users = await this.db._users.find({ bal: { $gte: numSearch } }).sort({ bal: -1 }).limit(limit).toArray();
-          } else {
-            // Fuzzy match on _id prefix
-            users = await this.db._users.find({ _id: { $regex: search, $options: "i" } }).limit(limit).toArray();
-          }
-        } else {
-          users = await this.db._users.find({}).sort({ bal: -1 }).limit(limit).toArray();
+        if (!(await this._admin.can(uid, "balances")) && !(await this._admin.can(uid, "users"))) return deny();
+        const u2 = new URL(req.url, "http://localhost");
+        const search = u2.searchParams.get("search") || "";
+        const rows = await this.db.searchUsersAdmin(search, 30);
+        return this._json(res, 200, { users: rows.map(r => ({
+          id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null),
+          bal: r.bal ?? 0, perms: Array.isArray(r.perms) ? r.perms : [],
+        })) });
+      }
+
+      // GET /api/admin/admins — users that hold any permission
+      if (p === "/api/admin/admins" && req.method === "GET") {
+        if (!(await this._admin.can(uid, "balances")) && !(await this._admin.can(uid, "users"))) return deny();
+        const rows = await this.db.listAdmins();
+        // Always surface the owner first.
+        const ownerRow = await this.db.getUser(ADMIN_ID).catch(() => null);
+        const list = rows.map(r => ({ id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null), bal: r.bal ?? 0, perms: r.perms || [] }));
+        if (!list.some(x => x.id === ADMIN_ID)) {
+          list.unshift({ id: ADMIN_ID, tag: ownerRow?.tag || "Owner", avatar: ownerRow?.av || fluxerAvatarUrl(ADMIN_ID, null), bal: ownerRow?.bal ?? 0, perms: [] });
         }
-        return this._json(res, 200, { users: users.map(u => ({ _id: u._id, bal: u.bal ?? 0, tw: u.tw ?? 0, tl: u.tl ?? 0, gp: u.gp ?? 0 })) });
+        return this._json(res, 200, { users: list });
+      }
+
+      // POST /api/admin/users/:id/perms — grant/revoke one permission
+      const permMatch = p.match(/^\/api\/admin\/users\/(\d{17,20})\/perms$/);
+      if (permMatch && req.method === "POST") {
+        if (!(await this._admin.can(uid, "users"))) return deny();
+        const targetUid = permMatch[1];
+        if (targetUid === ADMIN_ID) return this._json(res, 200, { error: "Owner permissions can't be changed" });
+        const perm = String(data.perm ?? "");
+        if (!AdminPanel.PERM_IDS.includes(perm)) return this._json(res, 400, { error: "Unknown permission" });
+        const cur = await this.db.getPerms(targetUid);
+        let next = cur.filter(x => AdminPanel.PERM_IDS.includes(x));
+        if (data.grant) { if (!next.includes(perm)) next.push(perm); }
+        else next = next.filter(x => x !== perm);
+        await this.db.setPerms(targetUid, next);
+        return this._json(res, 200, { ok: true, perms: next });
       }
 
       // POST /api/admin/users/:id/balance — set or adjust a user's balance
       const balMatch = p.match(/^\/api\/admin\/users\/(\d+)\/balance$/);
       if (balMatch && (req.method === "POST" || req.method === "PATCH")) {
+        if (!(await this._admin.can(uid, "balances"))) return deny();
         const targetUid = balMatch[1];
         const { delta, set } = data;
         if (typeof set === "number") {
-          // Absolute set — read current, compute delta
           const user = await this.db.getUser(targetUid);
           const current = Number(user?.bal ?? 0);
-          const diff = set - current;
-          await this.db.updateBalance(targetUid, diff);
+          await this.db.updateBalance(targetUid, set - current);
           const updated = await this.db.getUser(targetUid);
           return this._json(res, 200, { bal: Number(updated?.bal ?? 0) });
         } else if (typeof delta === "number") {
@@ -662,11 +682,13 @@ export class WebServer {
 
       // GET /api/admin/cases — list all tiers (built-in + custom)
       if (p === "/api/admin/cases" && req.method === "GET") {
+        if (!(await this._admin.can(uid, "cases"))) return deny();
         return this._json(res, 200, { tiers: this._cbAllTiers() });
       }
 
       // POST /api/admin/cases — add a custom tier
       if (p === "/api/admin/cases" && req.method === "POST") {
+        if (!(await this._admin.can(uid, "cases"))) return deny();
         const { id, label, entry, color, bg, items } = data;
         if (!id || !label || !entry || !Array.isArray(items) || items.length === 0)
           return this._json(res, 400, { error: "id, label, entry, items[] required" });
@@ -686,6 +708,7 @@ export class WebServer {
       // DELETE /api/admin/cases/:id — remove a custom tier
       const delCaseMatch = p.match(/^\/api\/admin\/cases\/(.+)$/);
       if (delCaseMatch && req.method === "DELETE") {
+        if (!(await this._admin.can(uid, "cases"))) return deny();
         const delId = delCaseMatch[1];
         const idx = this._cbCustomTiers.findIndex(t => t.id === delId);
         if (idx < 0) return this._json(res, 404, { error: "Not found or built-in" });
@@ -696,6 +719,7 @@ export class WebServer {
 
       // GET /api/admin/battles — list active battles
       if (p === "/api/admin/battles" && req.method === "GET") {
+        if (!(await this._admin.can(uid, "battles"))) return deny();
         const battles = [...this._cbActive.values()].map(b => ({
           id: b.id, mode: b.mode, phase: b.phase, cost: b.cost, pot: b.pot,
           maxPlayers: b.maxPlayers, speed: b.speed, jackpot: b.jackpot, crazy: b.crazy,
@@ -708,6 +732,7 @@ export class WebServer {
       // DELETE /api/admin/battles/:id — force-cancel a battle (refund all)
       const delBattleMatch = p.match(/^\/api\/admin\/battles\/([a-f0-9]+)$/);
       if (delBattleMatch && req.method === "DELETE") {
+        if (!(await this._admin.can(uid, "battles"))) return deny();
         const bId = delBattleMatch[1];
         const b = this._cbActive.get(bId);
         if (!b) return this._json(res, 404, { error: "Battle not found" });
@@ -1044,7 +1069,8 @@ export class WebServer {
         `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
       ]);
       // Redirect admins straight to the panel after login
-      return this._redirect(res, this._admin.isAdmin(userId) ? "/admin/panel" : "/lobby");
+      const adm = await this._admin.isAdmin(userId).catch(() => false);
+      return this._redirect(res, adm ? "/admin/panel" : "/lobby");
     }
 
     if (p === "/logout") {
@@ -1094,7 +1120,8 @@ export class WebServer {
     const tag = decodeURIComponent(cookies.dtag ?? user?.tag ?? "Player");
     let avatar = decodeURIComponent(cookies.dav ?? user?.av ?? "");
     if (!avatar) avatar = fluxerAvatarUrl(uid, null); // default static avatar
-    const sidebar = buildSidebar({ active, uid, tag, avatar, bal });
+    const showAdmin = await this._admin.isAdmin(uid).catch(() => false);
+    const sidebar = buildSidebar({ active, uid, tag, avatar, bal, showAdmin });
     let html = fs.readFileSync(fp, "utf8")
       .replace("__SIDEBAR__", sidebar)
       .replace(/__BALANCE__/g, String(bal))
