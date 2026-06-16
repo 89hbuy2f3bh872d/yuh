@@ -12,108 +12,6 @@ const PREP_MS_MAX = 7000;
 // Active duels: channelId -> duel state
 const _duels = new Map();
 
-export default {
-  name: "wildwest",
-  aliases: ["duel", "ww"],
-  description: "Challenge someone to a 1v1 duel! `&wildwest @user <bet>`",
-
-  async execute({ message, args, db, embed, prefix }) {
-    const uid = message.author.id;
-    const channelId = message.channel.id;
-
-    // --- DRAW command ---
-    if (args[0]?.toLowerCase() === "draw" || args[0]?.toLowerCase() === "shoot") {
-      const duel = _duels.get(channelId);
-      if (!duel || !duel.ready) {
-        return message.channel.send({ embeds: [
-          embed(COLORS.warn).setDescription("🤠 No active duel in this channel, or it's not time to draw yet — **false start!**")
-        ]});
-      }
-      if (uid !== duel.challenger && uid !== duel.opponent) {
-        return message.channel.send({ embeds: [
-          embed(COLORS.warn).setDescription("⚠️ You're not in this duel.")
-        ]});
-      }
-      if (duel.fired.has(uid)) {
-        return message.channel.send({ embeds: [
-          embed(COLORS.warn).setDescription("🔫 You already fired!")
-        ]});
-      }
-
-      duel.fired.set(uid, Date.now());
-
-      // First shot wins immediately
-      if (duel.fired.size === 1) {
-        return; // wait for second or timeout
-      }
-
-      // Both fired — compare times
-      clearTimeout(duel.timeout);
-      _duels.delete(channelId);
-      await resolveDuel(duel, null, db, embed, message.channel);
-      return;
-    }
-
-    // --- Start duel ---
-    if (_duels.has(channelId)) {
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn).setDescription("⚠️ A duel is already happening in this channel!")
-      ]});
-    }
-
-    const target = message.mentions?.users?.first?.();
-    if (!target || target.bot || target.id === uid) {
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn).setDescription(`⚠️ Usage: \`${prefix}wildwest @user <bet>\`\nMention a real user to challenge.`)
-      ]});
-    }
-
-    const betAmt = parseInt(args[1] ?? args[args.length - 1], 10);
-    if (!betAmt || betAmt < MIN_BET) {
-      return message.channel.send({ embeds: [
-        embed(COLORS.warn).setDescription(`⚠️ Minimum duel bet is **${MIN_BET} FC**.`)
-      ]});
-    }
-
-    const challenger = await db.getUser(uid);
-    if ((challenger.bal ?? 0) < betAmt) {
-      return message.channel.send({ embeds: [
-        embed(COLORS.error).setDescription("❌ You don't have enough FC for that bet.")
-      ]});
-    }
-
-    // Challenge message — opponent must accept with &wildwest accept
-    _duels.set(channelId, {
-      challenger: uid,
-      challengerTag: message.author.username,
-      opponent: target.id,
-      opponentTag: target.username,
-      bet: betAmt,
-      ready: false,
-      fired: new Map(),
-      accepted: false,
-      timeout: setTimeout(() => {
-        if (_duels.has(channelId) && !_duels.get(channelId).accepted) {
-          _duels.delete(channelId);
-          message.channel.send({ embeds: [
-            embed(COLORS.warn).setDescription("🤠 The challenge expired — **no duel**!")
-          ]}).catch(() => {});
-        }
-      }, 45_000),
-    });
-
-    return message.channel.send({ embeds: [
-      embed(COLORS.primary)
-        .setTitle("🤠 Wild West Duel!")
-        .setDescription(
-          `**${message.author.username}** challenges **${target.username}** to a duel!\n` +
-          `Bet: **${betAmt.toLocaleString()} FC** each\n\n` +
-          `<@${target.id}> — type \`${prefix}wildwest accept\` to accept! (45s)"`
-        )
-    ]});
-  },
-};
-
 async function resolveDuel(duel, forfeiter, db, embed, channel) {
   const [[aId, aTime], [bId, bTime]] = [...duel.fired.entries()];
   const winnerId = aTime < bTime ? aId : bId;
@@ -122,12 +20,12 @@ async function resolveDuel(duel, forfeiter, db, embed, channel) {
   const loserTag  = loserId  === duel.challenger ? duel.challengerTag : duel.opponentTag;
 
   const pot    = duel.bet * 2;
-  const rake   = Math.floor(pot * 0.10); // 10% house rake
+  const rake   = Math.floor(pot * 0.10);
   const payout = pot - rake;
   const diff   = Math.abs(aTime - bTime);
 
   await db.updateBalance(loserId,  -duel.bet);
-  await db.updateBalance(winnerId,  duel.bet - rake); // net gain = bet - rake
+  await db.updateBalance(winnerId,  duel.bet - rake);
   await db.recordGame(winnerId, true,  payout);
   await db.recordGame(loserId,  false, duel.bet);
 
@@ -145,14 +43,7 @@ async function resolveDuel(duel, forfeiter, db, embed, channel) {
   ]}).catch(() => {});
 }
 
-// Patch: handle &wildwest accept
-const _origExecute = exports?.default?.execute;
-Object.assign(exports?.default ?? {}, {
-  // We extend execute inline above — accept logic lives here as an augment
-});
-
-// Re-export with accept support patched in
-const cmd = {
+export default {
   name: "wildwest",
   aliases: ["duel", "ww"],
   description: "Challenge someone to a 1v1 duel! `&wildwest @user <bet>`",
@@ -208,7 +99,6 @@ const cmd = {
           _duels.delete(channelId);
 
           if (d.fired.size === 0) {
-            // Nobody drew — everybody gets back minus holster fee
             message.channel.send({ embeds: [
               embed(COLORS.warn).setDescription("🤠 Both cowboys froze! No winner — bets returned minus 5% holster fee.")
             ]}).catch(() => {});
@@ -327,5 +217,3 @@ const cmd = {
     ]});
   },
 };
-
-export default cmd;
