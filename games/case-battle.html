@@ -429,6 +429,9 @@ function renderArena(){
     // keep static — already built with final values
   }
 
+  // Jackpot odds recompute each poll from revealed cases only.
+  if (b.jackpot) updateLiveOdds();
+
   // ===== COUNTDOWN OVERLAY =====
   if (b.phase === 'countdown' && b.startsAt) {
     var rem2 = Math.max(0, Math.ceil((b.startsAt - Date.now()) / 1000));
@@ -568,7 +571,8 @@ function buildPlayerGrid(b, players, caseCount, staggerMs, spinMs, isPlayer, isS
     }
 
     if (p.bot) tag = '<span class="badge badge-bot"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Bot</span>' + tag;
-    if (b.jackpot && typeof p.winChance === 'number') tag += '<span class="badge badge-chance">' + (p.winChance * 100).toFixed(p.winChance >= 0.1 ? 0 : 1) + '%</span>';
+    // Jackpot odds: live badge, recomputed from revealed cases only (no outcome leak).
+    if (b.jackpot) tag += '<span class="badge badge-chance" id="jpodds-' + pid + '">—</span>';
 
     el.innerHTML += '<div class="' + cls + '">' +
       '<div class="player-hdr">' +
@@ -671,6 +675,38 @@ function followRecreate(newId){
   refreshBal();
 }
 
+// Recompute jackpot odds from ONLY the cases revealed so far, so the badge
+// shifts case-by-case and never exposes the final outcome early.
+function updateLiveOdds(){
+  var b = lastData;
+  if (!b || !b.jackpot) return;
+  var players = b.players || [];
+  if (!players.length) return;
+  var caseCount = (b.cases || []).length;
+  var staggerMs = b.caseStaggerMs || 600, spinMs = b.caseSpinMs || 400;
+  var k = 0;
+  if (b.phase === 'done') {
+    k = caseCount;
+  } else if (b.phase === 'opening' && openedAt) {
+    var el = Date.now() - openedAt;
+    for (var i = 0; i < caseCount; i++) { if (i * staggerMs + spinMs <= el) k = i + 1; }
+  }
+  var totals = players.map(function (p) {
+    var rw = p.rewards || [], s = 0;
+    for (var i = 0; i < k; i++) { if (rw[i]) s += rw[i].v || 0; }
+    return s;
+  });
+  var sum = totals.reduce(function (a, c) { return a + c; }, 0);
+  players.forEach(function (p, idx) {
+    var pid = String(p.uid).replace(/[^a-zA-Z0-9]/g, '');
+    var el = document.getElementById('jpodds-' + pid);
+    if (!el) return;
+    if (k === 0 || sum <= 0) { el.textContent = (100 / players.length).toFixed(0) + '%'; return; }
+    var ch = totals[idx] / sum;
+    el.textContent = (ch * 100).toFixed(ch >= 0.1 ? 0 : 1) + '%';
+  });
+}
+
 // CSGO-style player wheel for jackpot: spins through avatars, lands on winner.
 function runJackpotWheel(b){
   var players=b.players||[];
@@ -700,16 +736,19 @@ function runJackpotWheel(b){
     return '<div class="jp-tile"><span style="background:'+col+'22;border-color:'+col+';color:'+col+'">'+ini+'</span>'+
       '<div class="jp-name">'+escapeHtml(nm)+'</div></div>';
   }
+  var TAIL=14; // filler tiles AFTER the winner so it never lands on the last tile
   var html='';
   for(var r=0;r<REEL;r++) html+=tileHtml(pool[Math.floor(Math.random()*pool.length)]);
   html+=tileHtml(winner);
+  for(var tl=0;tl<TAIL;tl++) html+=tileHtml(pool[Math.floor(Math.random()*pool.length)]);
   var strip=$('jpStrip'), wheel=$('jpWheel');
   strip.innerHTML=html;
   strip.style.transition='none';
   strip.style.transform='translateX(0)';
   $('jackpotOverlay').classList.remove('hidden');
   var center=wheel.offsetWidth/2;
-  var jitter=(Math.random()*40-20);
+  // land centered on the winner tile (index REEL); small jitter stays within the tile
+  var jitter=(Math.random()*36-18);
   var targetX=center-(REEL*TILE)-(TILE/2)+jitter;
   void strip.offsetHeight;
   requestAnimationFrame(function(){
