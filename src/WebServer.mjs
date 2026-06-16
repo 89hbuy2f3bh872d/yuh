@@ -17,6 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 const GAMES_ASSETS_DIR = path.resolve(__dirname, "../games/assets");
+const GAMES_HTML_DIR   = path.resolve(__dirname, "../games");
 const FAVICON_PATH     = path.resolve(GAMES_ASSETS_DIR, "favicon.ico");
 
 const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
@@ -712,7 +713,7 @@ export class WebServer {
       const bal     = Number(user?.bal ?? 0);
       const tag     = decodeURIComponent(cookies.dtag ?? "Player");
       if (!GOLDSLOT_ENABLED) {
-        const lobbyPath = path.join(GAMES_ASSETS_DIR, "lobby.html");
+        const lobbyPath = path.join(GAMES_HTML_DIR, "lobby.html");
         if (fs.existsSync(lobbyPath)) {
           const lobbyHtml = fs.readFileSync(lobbyPath, "utf8")
             .replace("__BALANCE__", String(bal))
@@ -769,7 +770,7 @@ export class WebServer {
       const user    = await this.db.getUser(uid);
       const bal     = Number(user?.bal ?? 0);
       const battleId = p.startsWith("/case-battle/") ? p.slice("/case-battle/".length) : null;
-      const cbPath = path.join(GAMES_ASSETS_DIR, "case-battle.html");
+      const cbPath = path.join(GAMES_HTML_DIR, "case-battle.html");
       if (!fs.existsSync(cbPath)) return this._html(res, 503, errPage("Not Ready", "Case Battle is not available yet.", "/lobby", "Back"));
       const html = fs.readFileSync(cbPath, "utf8")
         .replace("__BALANCE__", String(bal))
