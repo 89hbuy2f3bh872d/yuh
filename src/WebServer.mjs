@@ -331,6 +331,136 @@ export class WebServer {
     this._processedTrans = new Map();
     this._gsUserCache = new Map();
     this._admin       = new AdminPanel(db, config.prefix ?? "&");
+
+    // ── Case Battle state ─────────────────────────────────────────────────────
+    // tier -> array of { uid, joinedAt }
+    this._cbQueue = new Map();
+    // battleId -> battle state
+    this._cbActive = new Map();
+    // uid -> battleId  (reverse lookup so a user can't queue twice)
+    this._cbUserBattle = new Map();
+    // Prune stale queue entries every 60 s
+    setInterval(() => {
+      const cut = Date.now() - 5 * 60 * 1000;
+      for (const [tier, q] of this._cbQueue) {
+        const filtered = q.filter(e => e.joinedAt > cut);
+        if (filtered.length === 0) this._cbQueue.delete(tier);
+        else this._cbQueue.set(tier, filtered);
+      }
+    }, 60_000);
+  }
+
+  // ─── Case Battle helpers ─────────────────────────────────────────────────
+
+  /** Case tier definitions — RTP baked into item pool values, 5% house rake on pot */
+  static CB_TIERS = [
+    {
+      id: "bronze", label: "Bronze", entry: 100,
+      color: "#CD7F32", bg: "#1a0e06",
+      items: [
+        { s: "🪙", n: "Copper Coin",   v: 15,  w: 35 },
+        { s: "🪙", n: "Silver Coin",   v: 30,  w: 25 },
+        { s: "🔵", n: "Steel Ball",    v: 50,  w: 20 },
+        { s: "🟡", n: "Gold Flake",    v: 75,  w: 12 },
+        { s: "💎", n: "Ruby Shard",    v: 120, w: 5  },
+        { s: "👑", n: "Bronze Crown",  v: 200, w: 2  },
+        { s: "🔮", n: "Mystery Box",   v: 350, w: 1  },
+      ],
+    },
+    {
+      id: "silver", label: "Silver", entry: 500,
+      color: "#C0C0C0", bg: "#0e0e1a",
+      items: [
+        { s: "🥈", n: "Silver Bar",     v: 75,   w: 30 },
+        { s: "🪙", n: "Gold Coin",      v: 150,  w: 25 },
+        { s: "🔵", n: "Sapphire",       v: 250,  w: 18 },
+        { s: "🟡", n: "Gold Nugget",    v: 400,  w: 12 },
+        { s: "💎", n: "Diamond Chip",   v: 700,  w: 8  },
+        { s: "👑", n: "Silver Crown",   v: 1200, w: 4  },
+        { s: "🏆", n: "Grand Trophy",   v: 2000, w: 2  },
+        { s: "🔮", n: "Void Crystal",   v: 3500, w: 1  },
+      ],
+    },
+    {
+      id: "gold", label: "Gold", entry: 2500,
+      color: "#FFD700", bg: "#1a1400",
+      items: [
+        { s: "🥇", n: "Gold Coin",       v: 400,   w: 28 },
+        { s: "💎", n: "Emerald",         v: 800,   w: 22 },
+        { s: "🟡", n: "Gold Bar",         v: 1500,  w: 18 },
+        { s: "🔵", n: "Sapphire Large",  v: 2500,  w: 12 },
+        { s: "👑", n: "Gold Crown",      v: 4000,  w: 10 },
+        { s: "🏆", n: "Champion Trophy", v: 7000,  w: 5  },
+        { s: "🔮", n: "Astral Orb",      v: 12000, w: 3  },
+        { s: "🌟", n: "Celestial Crown", v: 22000, w: 2  },
+      ],
+    },
+    {
+      id: "diamond", label: "Diamond", entry: 10000,
+      color: "#00D4FF", bg: "#00081a",
+      items: [
+        { s: "💎", n: "Diamond",        v: 2000,  w: 28 },
+        { s: "🌟", n: "Star Shard",     v: 5000,  w: 22 },
+        { s: "👑", n: "Royal Crown",    v: 10000, w: 18 },
+        { s: "🏆", n: "Legend Trophy",  v: 18000, w: 12 },
+        { s: "🔮", n: "Void Gem",       v: 30000, w: 8  },
+        { s: "⚡", n: "Thunder Orb",    v: 50000, w: 5  },
+        { s: "🌌", n: "Galaxy Core",    v: 90000, w: 4  },
+        { s: "💠", n: "Infinity Crown", v: 180000,w: 3  },
+      ],
+    },
+  ];
+
+  _cbTierById(id) {
+    return WebServer.CB_TIERS.find(t => t.id === id) ?? null;
+  }
+
+  _cbPickItem(tier) {
+    const total = tier.items.reduce((s, i) => s + i.w, 0);
+    let r = Math.random() * total;
+    for (const item of tier.items) { r -= item.w; if (r <= 0) return item; }
+    return tier.items[tier.items.length - 1];
+  }
+
+  _cbRtp(tier) {
+    const avg = tier.items.reduce((s, i) => s + i.v * i.w, 0) /
+                tier.items.reduce((s, i) => s + i.w, 0);
+    return Math.round((avg / tier.entry) * 100);
+  }
+
+  _cbResolve(battle) {
+    const tier = this._cbTierById(battle.tier);
+    if (!tier) return;
+    const r1 = _cbPickItem(tier);
+    const r2 = _cbPickItem(tier);
+    battle.p1.reward = r1;
+    battle.p1.value = r1.v;
+    battle.p2.reward = r2;
+    battle.p2.value = r2.v;
+    battle.phase = "done";
+    battle.resolvedAt = Date.now();
+    const rake    = Math.floor(battle.pot * 0.05);
+    battle.rake   = rake;
+    const netWin  = battle.pot - rake; // winner gets this
+    if (battle.p1.value > battle.p2.value) {
+      battle.winner = battle.p1.uid;
+      battle.p1.netWin = netWin;
+      battle.p2.netWin = -battle.entry;
+    } else if (battle.p2.value > battle.p1.value) {
+      battle.winner = battle.p2.uid;
+      battle.p2.netWin = netWin;
+      battle.p1.netWin = -battle.entry;
+    } else {
+      // Tie — split the pot, no rake
+      battle.winner = "tie";
+      battle.p1.netWin = battle.entry;
+      battle.p2.netWin = battle.entry;
+    }
+    // Credit balances
+    this.db.updateBalance(battle.p1.uid, battle.p1.netWin).catch(() => {});
+    this.db.updateBalance(battle.p2.uid, battle.p2.netWin).catch(() => {});
+    this.db.recordGame(battle.p1.uid, battle.p1.netWin > 0, battle.entry).catch(() => {});
+    this.db.recordGame(battle.p2.uid, battle.p2.netWin > 0, battle.entry).catch(() => {});
   }
 
   // ─── GoldSlot helpers (unchanged) ─────────────────────────────────────────
@@ -581,7 +711,16 @@ export class WebServer {
       const cookies = parseCookies(req);
       const bal     = Number(user?.bal ?? 0);
       const tag     = decodeURIComponent(cookies.dtag ?? "Player");
-      if (!GOLDSLOT_ENABLED) return this._html(res, 200, comingSoonPage(bal, tag));
+      if (!GOLDSLOT_ENABLED) {
+        const lobbyPath = path.join(GAMES_ASSETS_DIR, "lobby.html");
+        if (fs.existsSync(lobbyPath)) {
+          const lobbyHtml = fs.readFileSync(lobbyPath, "utf8")
+            .replace("__BALANCE__", String(bal))
+            .replace("__TAG__", esc(tag));
+          return this._html(res, 200, lobbyHtml);
+        }
+        return this._html(res, 200, comingSoonPage(bal, tag));
+      }
       const gamesByProvider = await this._fetchGames();
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
@@ -621,11 +760,136 @@ export class WebServer {
       return this._html(res, 200, gameWrapperPage(bal, tag, gameUrl, gameName));
     }
 
+    // ── Case Battle page ─────────────────────────────────────────────────────
+    if ((p === "/case-battle" || p.startsWith("/case-battle/")) && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._redirect(res, "/login");
+      const cookies = parseCookies(req);
+      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
+      const user    = await this.db.getUser(uid);
+      const bal     = Number(user?.bal ?? 0);
+      const battleId = p.startsWith("/case-battle/") ? p.slice("/case-battle/".length) : null;
+      const cbPath = path.join(GAMES_ASSETS_DIR, "case-battle.html");
+      if (!fs.existsSync(cbPath)) return this._html(res, 503, errPage("Not Ready", "Case Battle is not available yet.", "/lobby", "Back"));
+      const html = fs.readFileSync(cbPath, "utf8")
+        .replace("__BALANCE__", String(bal))
+        .replace("__TAG__", esc(tag))
+        .replace("__BATTLE_ID__", battleId ?? "");
+      return this._html(res, 200, html);
+    }
+
     if (p === "/api/balance" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const user = await this.db.getUser(uid);
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
+    }
+
+    // ── Case Battle API ──────────────────────────────────────────────────────
+    if (p === "/api/case-battle/tiers" && req.method === "GET") {
+      const tiers = WebServer.CB_TIERS.map(t => ({
+        id: t.id, label: t.label, entry: t.entry,
+        color: t.color, bg: t.bg,
+        rtp: this._cbRtp(t),
+        items: t.items.map(i => ({ s: i.s, n: i.n, v: i.v })),
+      }));
+      return this._json(res, 200, { tiers });
+    }
+
+    if (p === "/api/case-battle/queue" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const body = await readBody(req).catch(() => "{}");
+      let data;
+      try { data = JSON.parse(body); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const tier = this._cbTierById(data.tier);
+      if (!tier) return this._json(res, 400, { error: "Invalid tier" });
+
+      // Already in an active battle or queue?
+      if (this._cbUserBattle.has(uid)) {
+        const existing = this._cbUserBattle.get(uid);
+        const battle = this._cbActive.get(existing);
+        if (battle) return this._json(res, 200, { status: "in_battle", battleId: existing });
+        this._cbUserBattle.delete(uid);
+      }
+
+      const deducted = await this.db.atomicDeduct(uid, -tier.entry);
+      if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
+
+      // Try to match with another player in queue
+      if (!this._cbQueue.has(tier.id)) this._cbQueue.set(tier.id, []);
+      const queue = this._cbQueue.get(tier.id);
+      const opponentIdx = queue.findIndex(e => e.uid !== uid);
+      if (opponentIdx >= 0) {
+        const opponent = queue.splice(opponentIdx, 1)[0];
+        const battleId = crypto.randomBytes(8).toString("hex");
+        const battle = {
+          id: battleId,
+          tier: tier.id,
+          entry: tier.entry,
+          pot: tier.entry * 2,
+          phase: "opening",
+          winner: null,
+          createdAt: Date.now(),
+          openedAt: Date.now() + 3000,
+          p1: { uid: opponent.uid, value: 0, reward: null, netWin: 0 },
+          p2: { uid,                value: 0, reward: null, netWin: 0 },
+        };
+        this._cbActive.set(battleId, battle);
+        this._cbUserBattle.set(opponent.uid, battleId);
+        this._cbUserBattle.set(uid, battleId);
+        // Queue the resolution for 3 seconds later
+        setTimeout(() => this._cbResolve(battle), 3050);
+        return this._json(res, 200, { status: "matched", battleId });
+      } else {
+        queue.push({ uid, joinedAt: Date.now() });
+        return this._json(res, 200, { status: "queued", position: queue.length });
+      }
+    }
+
+    if (p === "/api/case-battle/status" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = new URL(req.url, "http://localhost").searchParams.get("battleId");
+      if (!battleId) return this._json(res, 400, { error: "battleId required" });
+      const battle = this._cbActive.get(battleId);
+      if (!battle) return this._json(res, 200, { status: "not_found" });
+
+      // Time-based phase trigger: if openedAt has passed, resolve now
+      if (battle.phase === "opening" && Date.now() >= battle.openedAt) {
+        this._cbResolve(battle);
+      }
+
+      const myPlayer = battle.p1.uid === uid ? battle.p1 : (battle.p2.uid === uid ? battle.p2 : null);
+      const oppPlayer = battle.p1.uid === uid ? battle.p2 : (battle.p2.uid === uid ? battle.p1 : null);
+      const isWinner = battle.winner === uid;
+      const isTie    = battle.winner === "tie";
+
+      return this._json(res, 200, {
+        status: battle.phase,
+        battleId,
+        tier: battle.tier,
+        phase: battle.phase,
+        winner: battle.winner,
+        pot: battle.pot,
+        rake: battle.rake ?? Math.floor(battle.pot * 0.05),
+        openedAt: battle.openedAt,
+        my: myPlayer ? { value: myPlayer.value, reward: myPlayer.reward, netWin: myPlayer.netWin } : null,
+        opp: oppPlayer ? { value: oppPlayer.value, reward: oppPlayer.reward } : null,
+        isWinner,
+        isTie,
+        myBattleId: battleId,
+      });
+    }
+
+    if (p === "/api/case-battle/my" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = this._cbUserBattle.get(uid);
+      if (!battleId) return this._json(res, 200, { status: "idle" });
+      const battle = this._cbActive.get(battleId);
+      if (!battle) { this._cbUserBattle.delete(uid); return this._json(res, 200, { status: "idle" }); }
+      return this._json(res, 200, { status: battle.phase, battleId, tier: battle.tier });
     }
 
     if (p === "/login" && req.method === "GET") {
