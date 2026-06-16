@@ -56,6 +56,9 @@ const PAGES = [
   { id: "commands", label: "Commands", color: "var(--orange)" },
   { id: "users", label: "Top Users", color: "var(--blue)" },
   { id: "activity", label: "Activity", color: "var(--gold)" },
+  { id: "cases", label: "Case Tiers", color: "var(--teal)" },
+  { id: "balances", label: "Balances", color: "var(--red)" },
+  { id: "battles", label: "Battles", color: "var(--orange)" },
 ];
 
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -448,12 +451,80 @@ function buildPage(data, prefix) {
     </div>
     ${fullChartHtml}`;
 
+  // ── Case Tiers management ──────────────────────────────────────────────────
+  const pageCases = `
+    ${pageHeader({
+      eyebrow: "Case Tiers",
+      title: "Case Battle Tiers",
+      color: "var(--teal)",
+      sub: "Manage built-in and custom case tiers",
+    })}
+    <div style="margin-bottom:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn" style="background:var(--accent);color:#070f0a;padding:.45rem 1rem;border-radius:6px;font-weight:700;font-size:.78rem" onclick="adminAddCase()">+ Add custom tier</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Label</th><th>Entry</th><th>Items</th><th>RTP</th><th>Type</th><th>Actions</th></tr></thead>
+        <tbody id="caseTableBody"><tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:2rem">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div style="margin-top:1.5rem;padding:1rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:.5rem">Add / Edit Tier</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;font-size:.72rem">
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.2rem">ID (unique)</label><input id="ct-id" style="width:100%;font-size:.72rem" placeholder="mythic"></div>
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.2rem">Label</label><input id="ct-label" style="width:100%;font-size:.72rem" placeholder="Mythic"></div>
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.2rem">Entry cost (FC)</label><input id="ct-entry" type="number" style="width:100%;font-size:.72rem" placeholder="1000"></div>
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.2rem">Color</label><input id="ct-color" style="width:100%;font-size:.72rem" placeholder="#2ecc71"></div>
+        <div><label style="color:var(--text-dim);display:block;margin-bottom:.2rem">Background</label><input id="ct-bg" style="width:100%;font-size:.72rem" placeholder="#0a1f0a"></div>
+        <div style="display:flex;align-items:flex-end"><button class="btn" style="background:var(--accent);color:#070f0a;padding:.4rem .8rem;border-radius:6px;font-weight:700;font-size:.72rem" onclick="adminSaveCase()">Save tier</button></div>
+      </div>
+      <div style="margin-top:.5rem;font-size:.65rem;color:var(--text-dim)">Items JSON (array of {s, n, v, w}):</div>
+      <textarea id="ct-items" style="width:100%;height:80px;font-size:.65rem;font-family:var(--font-mono);background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem;margin-top:.3rem;resize:vertical" placeholder='[{"s":"💎","n":"Diamond","v":2000,"w":28}]'></textarea>
+    </div>`;
+
+  // ── Balances management ────────────────────────────────────────────────────
+  const pageBalances = `
+    ${pageHeader({
+      eyebrow: "Balances",
+      title: "User Balance Management",
+      color: "var(--red)",
+      sub: "Search for users and modify their FC balance",
+    })}
+    <div style="margin-bottom:1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+      <input id="bal-search" style="font-size:.78rem;padding:.45rem .7rem;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);width:260px" placeholder="Search by user ID or min balance…">
+      <button class="btn" style="background:var(--accent);color:#070f0a;padding:.4rem .9rem;border-radius:6px;font-weight:700;font-size:.78rem" onclick="adminSearchUsers()">Search</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>User ID</th><th>Balance</th><th>Won</th><th>Lost</th><th>Games</th><th>Actions</th></tr></thead>
+        <tbody id="balTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:2rem">Search to find users</td></tr></tbody>
+      </table>
+    </div>`;
+
+  // ── Active Battles management ──────────────────────────────────────────────
+  const pageBattles = `
+    ${pageHeader({
+      eyebrow: "Battles",
+      title: "Active Case Battles",
+      color: "var(--orange)",
+      sub: "View and manage ongoing battles",
+    })}
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Mode</th><th>Phase</th><th>Cost</th><th>Pot</th><th>Players</th><th>Speed</th><th>Flags</th><th>Actions</th></tr></thead>
+        <tbody id="battleTableBody"><tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:2rem">Loading…</td></tr></tbody>
+      </table>
+    </div>`;
+
   const pageBodies = {
     overview: pageOverview,
     servers: pageServers,
     commands: pageCommands,
     users: pageUsers,
     activity: pageActivity,
+    cases: pageCases,
+    balances: pageBalances,
+    battles: pageBattles,
   };
 
   const navHtml = PAGES.map(
@@ -490,6 +561,132 @@ function buildPage(data, prefix) {
   var ids = navButtons.map(function(b){ return b.dataset.page; });
   var initial = (location.hash || '').replace('#', '');
   show(ids.indexOf(initial) !== -1 ? initial : 'overview');
+
+  // ── Admin JS: Case tiers ──
+  function adminLoadCases(){
+    fetch('/api/admin/cases').then(function(r){return r.json()}).then(function(d){
+      var tiers=d.tiers||[];
+      var tbody=document.getElementById('caseTableBody');
+      if(!tiers.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:1rem">No tiers found</td></tr>';return;}
+      tbody.innerHTML=tiers.map(function(t){
+        var avg=Math.round(t.items.reduce(function(s,i){return s+i.v*i.w},0)/t.items.reduce(function(s,i){return s+i.w},0));
+        var rtp=Math.round(avg/t.entry*100);
+        return '<tr>'+
+          '<td style="font-family:var(--font-mono);font-size:.68rem;color:var(--text)">'+esc(t.id)+'</td>'+
+          '<td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+esc(t.color||'#2ecc71')+';margin-right:.4rem;vertical-align:middle"></span>'+esc(t.label)+'</td>'+
+          '<td style="font-family:var(--font-mono)">'+fmt(t.entry)+'</td>'+
+          '<td>'+t.items.length+' items</td>'+
+          '<td>'+rtp+'%</td>'+
+          '<td>'+(t.builtIn?'<span style="color:var(--accent);font-weight:700;font-size:.68rem">Built-in</span>':'<span style="color:var(--gold);font-weight:700;font-size:.68rem">Custom</span>')+'</td>'+
+          '<td>'+(t.builtIn?'—':'<button onclick="adminDeleteCase(\''+esc(t.id)+'\')" style="color:var(--red);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Delete</button>')+'</td>'+
+        '</tr>';
+      }).join('');
+    }).catch(function(e){console.error(e)});
+  }
+  function adminSaveCase(){
+    var id=document.getElementById('ct-id').value.trim();
+    var label=document.getElementById('ct-label').value.trim();
+    var entry=parseInt(document.getElementById('ct-entry').value)||0;
+    var color=document.getElementById('ct-color').value.trim()||'#2ecc71';
+    var bg=document.getElementById('ct-bg').value.trim()||'#0a1f0a';
+    var itemsStr=document.getElementById('ct-items').value.trim();
+    if(!id||!label||!entry){alert('ID, label, and entry cost are required.');return;}
+    var items;try{items=JSON.parse(itemsStr);}catch(e){alert('Items must be valid JSON.');return;}
+    if(!Array.isArray(items)||!items.length){alert('At least one item is required.');return;}
+    fetch('/api/admin/cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,label:label,entry:entry,color:color,bg:bg,items:items})})
+      .then(function(r){return r.json()}).then(function(d){
+        if(d.error)alert(d.error);else{alert('Tier saved!');adminLoadCases();}
+      }).catch(function(e){alert('Error: '+e.message)});
+  }
+  function adminDeleteCase(id){
+    if(!confirm('Delete tier "'+id+'"? This cannot be undone.'))return;
+    fetch('/api/admin/cases/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){
+      if(d.error)alert(d.error);else{alert('Tier deleted.');adminLoadCases();}
+    }).catch(function(e){alert('Error: '+e.message)});
+  }
+
+  // ── Admin JS: User balances ──
+  function adminSearchUsers(){
+    var search=document.getElementById('bal-search').value.trim();
+    fetch('/api/admin/users?search='+encodeURIComponent(search)+'&limit=30').then(function(r){return r.json()}).then(function(d){
+      var users=d.users||[];
+      var tbody=document.getElementById('balTableBody');
+      if(!users.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:1rem">No users found</td></tr>';return;}
+      tbody.innerHTML=users.map(function(u){
+        return '<tr>'+
+          '<td style="font-family:var(--font-mono);font-size:.68rem">'+esc(u._id)+'</td>'+
+          '<td style="font-family:var(--font-mono);color:var(--accent);font-weight:700">'+fmt(u.bal)+' FC</td>'+
+          '<td style="font-family:var(--font-mono)">'+fmt(u.tw)+'</td>'+
+          '<td style="font-family:var(--font-mono)">'+fmt(u.tl)+'</td>'+
+          '<td>'+fmt(u.gp)+'</td>'+
+          '<td><button onclick="adminShowBalModal(\''+esc(u._id)+'\','+u.bal+')" style="color:var(--accent);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Edit balance</button></td>'+
+        '</tr>';
+      }).join('');
+    }).catch(function(e){console.error(e)});
+  }
+  function adminShowBalModal(uid,currentBal){
+    var newBal=prompt('Set balance for '+uid+'\\nCurrent: '+currentBal+' FC\\nEnter new balance or delta (+100, -50):');
+    if(newBal===null)return;
+    var num=Number(newBal);
+    var delta;
+    if(newBal.startsWith('+')||newBal.startsWith('-')){delta=Number(newBal);}
+    else{delta=num-currentBal;}
+    if(isNaN(delta)){alert('Invalid number.');return;}
+    fetch('/api/admin/users/'+uid+'/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:delta})})
+      .then(function(r){return r.json()}).then(function(d){
+        alert('Balance updated to '+d.bal+' FC');adminSearchUsers();
+      }).catch(function(e){alert('Error: '+e.message)});
+  }
+
+  // ── Admin JS: Active battles ──
+  function adminLoadBattles(){
+    fetch('/api/admin/battles').then(function(r){return r.json()}).then(function(d){
+      var battles=d.battles||[];
+      var tbody=document.getElementById('battleTableBody');
+      if(!battles.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:1rem">No active battles</td></tr>';return;}
+      tbody.innerHTML=battles.map(function(b){
+        var flags=[];
+        if(b.speed==='fast')flags.push('⚡');
+        if(b.jackpot)flags.push('👑');
+        if(b.crazy)flags.push('🎲');
+        return '<tr>'+
+          '<td style="font-family:var(--font-mono);font-size:.65rem">'+esc(b.id.slice(0,12))+'…</td>'+
+          '<td>'+esc(b.mode)+'</td>'+
+          '<td><span style="color:'+(b.phase==='pending'?'var(--gold)':'var(--accent)')+';font-weight:700">'+esc(b.phase)+'</span></td>'+
+          '<td style="font-family:var(--font-mono)">'+fmt(b.cost)+'</td>'+
+          '<td style="font-family:var(--font-mono)">'+fmt(b.pot)+'</td>'+
+          '<td>'+b.players.length+'/'+b.maxPlayers+'</td>'+
+          '<td>'+esc(b.speed||'normal')+'</td>'+
+          '<td>'+flags.join(' ')+'</td>'+
+          '<td><button onclick="adminCancelBattle(\''+esc(b.id)+'\')" style="color:var(--red);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Cancel</button></td>'+
+        '</tr>';
+      }).join('');
+    }).catch(function(e){console.error(e)});
+  }
+  function adminCancelBattle(id){
+    if(!confirm('Force-cancel this battle and refund all players?'))return;
+    fetch('/api/admin/battles/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){
+      if(d.error)alert(d.error);else{alert('Battle cancelled & refunded.');adminLoadBattles();}
+    }).catch(function(e){alert('Error: '+e.message)});
+  }
+
+  // Auto-load data for visible pages
+  var observer=new MutationObserver(function(){
+    var active=document.querySelector('.page.page-active');
+    if(!active)return;
+    if(active.dataset.page==='cases')adminLoadCases();
+    if(active.dataset.page==='battles')adminLoadBattles();
+  });
+  observer.observe(document.querySelector('.main'),{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  // Also run on hash change
+  window.addEventListener('hashchange',function(){
+    var page=(location.hash||'').replace('#','');
+    if(page==='cases')adminLoadCases();
+    if(page==='battles')adminLoadBattles();
+  });
+  // Initial load for default page
+  if((location.hash||'').replace('#','')==='cases')adminLoadCases();
+  if((location.hash||'').replace('#','')==='battles')adminLoadBattles();
 })();
 </script>`;
 

@@ -352,11 +352,12 @@ export class WebServer {
 
   // ─── Case Battle helpers ─────────────────────────────────────────────────
 
-  /** Case tier definitions */
-  static CB_TIERS = [
+  /** Case tier definitions — built-in tiers. Custom tiers can be added via
+   *  the admin panel and are loaded from MongoDB on connect (see loadCustomTiers). */
+  static CB_BUILTIN_TIERS = [
     {
       id: "bronze", label: "Bronze", entry: 100,
-      color: "#CD7F32", bg: "#1a0e06",
+      color: "#CD7F32", bg: "#1a0e06", builtIn: true,
       items: [
         { s: "🪙", n: "Copper Coin",   v: 15,  w: 35 },
         { s: "🪙", n: "Silver Coin",   v: 30,  w: 25 },
@@ -368,8 +369,21 @@ export class WebServer {
       ],
     },
     {
+      id: "iron", label: "Iron", entry: 250,
+      color: "#A8A8B0", bg: "#0e0e1a", builtIn: true,
+      items: [
+        { s: "⚙️", n: "Iron Gear",    v: 40,  w: 32 },
+        { s: "🪨", n: "Iron Ore",     v: 80,  w: 25 },
+        { s: "🔩", n: "Steel Bolt",   v: 130, w: 18 },
+        { s: "🛠️", n: "Tool Kit",     v: 200, w: 12 },
+        { s: "⚔️", n: "Iron Sword",   v: 300, w: 8  },
+        { s: "🛡️", n: "Iron Shield",  v: 500, w: 3  },
+        { s: "👑", n: "Iron Helm",    v: 800, w: 2  },
+      ],
+    },
+    {
       id: "silver", label: "Silver", entry: 500,
-      color: "#C0C0C0", bg: "#0e0e1a",
+      color: "#C0C0C0", bg: "#0e0e1a", builtIn: true,
       items: [
         { s: "🥈", n: "Silver Bar",    v: 75,   w: 30 },
         { s: "🪙", n: "Gold Coin",      v: 150,  w: 25 },
@@ -382,8 +396,36 @@ export class WebServer {
       ],
     },
     {
+      id: "platinum", label: "Platinum", entry: 1000,
+      color: "#E5E4E2", bg: "#0a0a14", builtIn: true,
+      items: [
+        { s: "⬜", n: "Platinum Bar",   v: 180,  w: 28 },
+        { s: "💠", n: "Platinum Chip",  v: 400,  w: 24 },
+        { s: "🟣", n: "Amethyst",       v: 700,  w: 18 },
+        { s: "🔵", n: "Platinum Ring",  v: 1100, w: 12 },
+        { s: "🟡", n: "Gold Chain",     v: 1800, w: 10 },
+        { s: "👑", n: "Platinum Crown", v: 3000, w: 5  },
+        { s: "🔮", n: "Ethereal Pearl", v: 5500, w: 2  },
+        { s: "✨", n: "Mythic Token",   v: 9000, w: 1  },
+      ],
+    },
+    {
+      id: "emerald", label: "Emerald", entry: 1500,
+      color: "#50C878", bg: "#02180a", builtIn: true,
+      items: [
+        { s: "🟢", n: "Emerald Chip",  v: 250,  w: 28 },
+        { s: "💚", n: "Heart Emerald", v: 500,  w: 22 },
+        { s: "🟩", n: "Emerald Bar",   v: 900,  w: 18 },
+        { s: "🟢", n: "Emerald Ring",  v: 1500, w: 12 },
+        { s: "🌿", n: "Forest Crown",  v: 2500, w: 10 },
+        { s: "🏺", n: "Ancient Vase",  v: 4500, w: 6  },
+        { s: "🦚", n: "Phoenix Feather",v:8000, w: 3  },
+        { s: "🌳", n: "World Tree Sap",v: 15000,w: 1  },
+      ],
+    },
+    {
       id: "gold", label: "Gold", entry: 2500,
-      color: "#FFD700", bg: "#1a1400",
+      color: "#FFD700", bg: "#1a1400", builtIn: true,
       items: [
         { s: "🥇", n: "Gold Coin",        v: 400,   w: 28 },
         { s: "💎", n: "Emerald",          v: 800,   w: 22 },
@@ -396,8 +438,22 @@ export class WebServer {
       ],
     },
     {
+      id: "ruby", label: "Ruby", entry: 5000,
+      color: "#E0115F", bg: "#1a0010", builtIn: true,
+      items: [
+        { s: "❤️", n: "Ruby Heart",      v: 700,   w: 26 },
+        { s: "🔴", n: "Ruby Bar",        v: 1500,  w: 22 },
+        { s: "💖", n: "Love Gem",        v: 2800,  w: 18 },
+        { s: "🌹", n: "Eternal Rose",    v: 4500,  w: 12 },
+        { s: "👑", n: "Ruby Crown",      v: 7500,  w: 10 },
+        { s: "💝", n: "Royal Heart",     v: 13000, w: 6  },
+        { s: "🌺", n: "Crimson Bloom",   v: 22000, w: 4  },
+        { s: "❤️‍🔥", n: "Heart of Fire", v: 40000, w: 2  },
+      ],
+    },
+    {
       id: "diamond", label: "Diamond", entry: 10000,
-      color: "#00D4FF", bg: "#00081a",
+      color: "#00D4FF", bg: "#00081a", builtIn: true,
       items: [
         { s: "💎", n: "Diamond",         v: 2000,  w: 28 },
         { s: "🌟", n: "Star Shard",        v: 5000,  w: 22 },
@@ -409,10 +465,54 @@ export class WebServer {
         { s: "💠", n: "Infinity Crown",   v: 180000,w: 3  },
       ],
     },
+    {
+      id: "obsidian", label: "Obsidian", entry: 25000,
+      color: "#1B1B3A", bg: "#000005", builtIn: true,
+      items: [
+        { s: "🖤", n: "Obsidian Shard",   v: 4000,  w: 26 },
+        { s: "🟣", n: "Void Pearl",       v: 9000,  w: 22 },
+        { s: "⚫", n: "Dark Matter",      v: 18000, w: 18 },
+        { s: "🌑", n: "Eclipse Stone",    v: 30000, w: 12 },
+        { s: "👁️", n: "All-Seeing Eye",  v: 50000, w: 10 },
+        { s: "🦇", n: "Shadow Wings",     v: 85000, w: 6  },
+        { s: "🌚", n: "Black Hole",       v: 150000,w: 4  },
+        { s: "👹", n: "Demon Heart",      v: 280000,w: 2  },
+      ],
+    },
+    {
+      id: "mythic", label: "Mythic", entry: 100000,
+      color: "#FF6B9D", bg: "#1a0010", builtIn: true,
+      items: [
+        { s: "🌸", n: "Sakura Bloom",     v: 20000, w: 24 },
+        { s: "🎴", n: "Legend Card",      v: 45000, w: 22 },
+        { s: "🏯", n: "Castle Tower",     v: 80000, w: 18 },
+        { s: "🐉", n: "Dragon Scale",     v: 130000,w: 14 },
+        { s: "🦄", n: "Unicorn Horn",     v: 220000,w: 10 },
+        { s: "👑", n: "Divine Crown",     v: 380000,w: 6  },
+        { s: "🌌", n: "Universe Shard",   v: 600000,w: 4  },
+        { s: "✨", n: "God Slayer",       v: 1000000,w: 2  },
+      ],
+    },
   ];
 
+  // Custom tiers loaded from DB (see loadCustomTiers).
+  _cbCustomTiers = [];
+
+  async loadCustomTiers() {
+    if (!this.db || !this.db._users) return;
+    try {
+      // Custom tiers stored as a singleton document in a dedicated collection
+      this._cbCustomTiers = (await this.db.getCustomTiers?.()) || [];
+    } catch (e) { /* collection may not exist yet */ }
+  }
+
+  /** Combined tier list (built-in + custom) */
+  _cbAllTiers() {
+    return [...WebServer.CB_BUILTIN_TIERS, ...this._cbCustomTiers];
+  }
+
   _cbTierById(id) {
-    return WebServer.CB_TIERS.find(t => t.id === id) ?? null;
+    return this._cbAllTiers().find(t => t.id === id) ?? null;
   }
 
   _cbPickItem(tier) {
@@ -451,8 +551,8 @@ export class WebServer {
     // to ADD. Losers need no balance change (already paid).
     // p.netWin stores the DISPLAY value (total profit/loss including entry).
     if (mode === "shared") {
-      battle.winnerUid = "tie";
-      const rake = Math.floor(battle.pot * 0.05);
+      battle.winnerUid = "shared";
+      const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
       const share = Math.floor((battle.pot - rake) / players.length);
       players.forEach(p => {
         p.netWin = share - p.cost;               // display: e.g. +90 or -100
@@ -460,10 +560,10 @@ export class WebServer {
         this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
       });
     } else {
-      // Regular: highest total item value wins the pot (minus rake)
+      // Regular: highest total item value wins the pot (minus rake, or 0 if jackpot)
       const maxValue = Math.max(...players.map(p => p.totalValue));
       const winners = players.filter(p => p.totalValue === maxValue);
-      const rake = Math.floor(battle.pot * 0.05);
+      const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
 
       if (winners.length === 1) {
         battle.winnerUid = winners[0].uid;
@@ -479,7 +579,7 @@ export class WebServer {
           this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
         });
       } else {
-        // Tie for highest — split pot, no rake
+        // Tie for highest — split pot, no additional rake
         battle.winnerUid = "tie";
         const share = Math.floor((battle.pot - rake) / winners.length);
         players.forEach(p => {
@@ -509,16 +609,19 @@ export class WebServer {
   }
 
   _cbStartBattle(battle) {
+    const isFast = battle.speed === "fast";
+    const countdownMs = isFast ? 1500 : 3000;
+    const spinMs = isFast ? 1500 : 3000;
     battle.phase = "countdown";
-    battle.startsAt = Date.now() + 3000;
-    // 3s countdown → 3s opening phase (spinning animation) → resolve
+    battle.startsAt = Date.now() + countdownMs;
+    // countdown → opening phase (spinning animation) → resolve
     setTimeout(() => {
       const b = this._cbActive.get(battle.id);
       if (!b) return;
       b.phase = "opening";
       b.openedAt = Date.now();
-      setTimeout(() => this._cbResolve(b), 3000);
-    }, 3050);
+      setTimeout(() => this._cbResolve(b), spinMs);
+    }, countdownMs + 50);
   }
 
   // ─── GoldSlot helpers (unchanged) ─────────────────────────────────────────
@@ -697,6 +800,8 @@ export class WebServer {
 
   async start() {
     _preloadAssets();
+    // Load custom case tiers from DB
+    await this.loadCustomTiers().catch(e => console.error("[CB] Custom tiers load:", e));
     if (GOLDSLOT_ENABLED) {
       this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm:", e));
     } else {
@@ -729,6 +834,123 @@ export class WebServer {
     if (p === "/favicon.ico") {
       if (fs.existsSync(FAVICON_PATH)) return serveFileWithRanges(req, res, FAVICON_PATH, "image/x-icon");
       res.writeHead(204); return res.end();
+    }
+
+    // ── Admin API (strict: only ADMIN_USER_ID) ───────────────────────────────
+    if (p.startsWith("/api/admin/")) {
+      const uid = this._uid(req);
+      if (!uid || !this._admin.isAdmin(uid)) {
+        res.writeHead(403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify({ error: "Forbidden" }));
+      }
+      const body = req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE"
+        ? await readBody(req).catch(() => "{}") : "{}";
+      let data;
+      try { data = JSON.parse(body); } catch { data = {}; }
+
+      // GET /api/admin/users?search=xxx — search users by ID or tag
+      if (p === "/api/admin/users" && req.method === "GET") {
+        const u = new URL(req.url, "http://localhost");
+        const search = u.searchParams.get("search") || "";
+        const limit = Math.max(1, Math.min(100, Number(u.searchParams.get("limit")) || 20));
+        let users;
+        if (search) {
+          // Search by ID prefix or balance
+          const numSearch = Number(search);
+          if (!isNaN(numSearch) && numSearch > 0) {
+            users = await this.db._users.find({ bal: { $gte: numSearch } }).sort({ bal: -1 }).limit(limit).toArray();
+          } else {
+            // Fuzzy match on _id prefix
+            users = await this.db._users.find({ _id: { $regex: search, $options: "i" } }).limit(limit).toArray();
+          }
+        } else {
+          users = await this.db._users.find({}).sort({ bal: -1 }).limit(limit).toArray();
+        }
+        return this._json(res, 200, { users: users.map(u => ({ _id: u._id, bal: u.bal ?? 0, tw: u.tw ?? 0, tl: u.tl ?? 0, gp: u.gp ?? 0 })) });
+      }
+
+      // POST /api/admin/users/:id/balance — set or adjust a user's balance
+      const balMatch = p.match(/^\/api\/admin\/users\/(\d+)\/balance$/);
+      if (balMatch && (req.method === "POST" || req.method === "PATCH")) {
+        const targetUid = balMatch[1];
+        const { delta, set } = data;
+        if (typeof set === "number") {
+          // Absolute set — read current, compute delta
+          const user = await this.db.getUser(targetUid);
+          const current = Number(user?.bal ?? 0);
+          const diff = set - current;
+          await this.db.updateBalance(targetUid, diff);
+          const updated = await this.db.getUser(targetUid);
+          return this._json(res, 200, { bal: Number(updated?.bal ?? 0) });
+        } else if (typeof delta === "number") {
+          await this.db.updateBalance(targetUid, delta);
+          const updated = await this.db.getUser(targetUid);
+          return this._json(res, 200, { bal: Number(updated?.bal ?? 0) });
+        }
+        return this._json(res, 400, { error: "Provide delta or set" });
+      }
+
+      // GET /api/admin/cases — list all tiers (built-in + custom)
+      if (p === "/api/admin/cases" && req.method === "GET") {
+        return this._json(res, 200, { tiers: this._cbAllTiers() });
+      }
+
+      // POST /api/admin/cases — add a custom tier
+      if (p === "/api/admin/cases" && req.method === "POST") {
+        const { id, label, entry, color, bg, items } = data;
+        if (!id || !label || !entry || !Array.isArray(items) || items.length === 0)
+          return this._json(res, 400, { error: "id, label, entry, items[] required" });
+        if (this._cbTierById(id))
+          return this._json(res, 400, { error: "Tier ID already exists" });
+        const tier = {
+          id: String(id), label: String(label), entry: Number(entry),
+          color: String(color || "#2ecc71"), bg: String(bg || "#0a1f0a"),
+          builtIn: false,
+          items: items.map(i => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })),
+        };
+        this._cbCustomTiers.push(tier);
+        await this.db.saveCustomTiers(this._cbCustomTiers).catch(() => {});
+        return this._json(res, 200, { tier });
+      }
+
+      // DELETE /api/admin/cases/:id — remove a custom tier
+      const delCaseMatch = p.match(/^\/api\/admin\/cases\/(.+)$/);
+      if (delCaseMatch && req.method === "DELETE") {
+        const delId = delCaseMatch[1];
+        const idx = this._cbCustomTiers.findIndex(t => t.id === delId);
+        if (idx < 0) return this._json(res, 404, { error: "Not found or built-in" });
+        this._cbCustomTiers.splice(idx, 1);
+        await this.db.saveCustomTiers(this._cbCustomTiers).catch(() => {});
+        return this._json(res, 200, { ok: true });
+      }
+
+      // GET /api/admin/battles — list active battles
+      if (p === "/api/admin/battles" && req.method === "GET") {
+        const battles = [...this._cbActive.values()].map(b => ({
+          id: b.id, mode: b.mode, phase: b.phase, cost: b.cost, pot: b.pot,
+          maxPlayers: b.maxPlayers, speed: b.speed, jackpot: b.jackpot, crazy: b.crazy,
+          players: b.players.map(p => ({ uid: p.uid, tag: p.tag })),
+          createdAt: b.createdAt, winnerUid: b.winnerUid,
+        }));
+        return this._json(res, 200, { battles });
+      }
+
+      // DELETE /api/admin/battles/:id — force-cancel a battle (refund all)
+      const delBattleMatch = p.match(/^\/api\/admin\/battles\/([a-f0-9]+)$/);
+      if (delBattleMatch && req.method === "DELETE") {
+        const bId = delBattleMatch[1];
+        const b = this._cbActive.get(bId);
+        if (!b) return this._json(res, 404, { error: "Battle not found" });
+        // Refund all players
+        for (const p of b.players) {
+          await this.db.updateBalance(p.uid, p.cost).catch(() => {});
+          this._cbUserBattle.delete(p.uid);
+        }
+        this._cbActive.delete(bId);
+        return this._json(res, 200, { ok: true });
+      }
+
+      return this._json(res, 404, { error: "Not found" });
     }
 
     // ── Admin panel ───────────────────────────────────────────────────────────
@@ -848,9 +1070,9 @@ export class WebServer {
 
     // GET /api/case-battle/tiers — all case tier definitions
     if (p === "/api/case-battle/tiers" && req.method === "GET") {
-      const tiers = WebServer.CB_TIERS.map(t => ({
+      const tiers = this._cbAllTiers().map(t => ({
         id: t.id, label: t.label, entry: t.entry,
-        color: t.color, bg: t.bg,
+        color: t.color, bg: t.bg, builtIn: !!t.builtIn,
         rtp: Math.round(t.items.reduce((s, i) => s + i.v * i.w, 0) /
                         t.items.reduce((s, i) => s + i.w, 0) / t.entry * 100),
         items: t.items.map(i => ({ s: i.s, n: i.n, v: i.v })),
@@ -876,10 +1098,14 @@ export class WebServer {
             cost: b.cost,
             pot: b.pot,
             maxPlayers: b.maxPlayers,
+            speed: b.speed || "normal",
+            jackpot: !!b.jackpot,
+            crazy: !!b.crazy,
             players,
             creatorUid: b.creatorUid,
             phase: b.phase,
             createdAt: b.createdAt,
+            watcherCount: b.watchers ? b.watchers.size : 0,
           };
         })
         .sort((a, b) => a.createdAt - b.createdAt);
@@ -894,13 +1120,19 @@ export class WebServer {
       const tag = decodeURIComponent(cookies.dtag || uid);
       let data;
       try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
-      const { cases, mode, maxPlayers } = data;
+      const { cases, mode, maxPlayers, speed, jackpot, crazy } = data;
 
       if (!Array.isArray(cases) || cases.length === 0)
         return this._json(res, 400, { error: "At least one case is required" });
       if (!["regular", "shared"].includes(mode))
         return this._json(res, 400, { error: "Invalid mode" });
       const mp = Math.max(2, Math.min(8, Number(maxPlayers) || 2));
+      // speed: "normal" | "fast" (faster reveal)
+      const sp = speed === "fast" ? "fast" : "normal";
+      // Jackpot mode: +50% to pot for winner (admin feature)
+      const jp = !!jackpot;
+      // Crazy mode: random multi-item reveal (admin feature)
+      const cr = !!crazy;
 
       // Validate cases and compute entry cost
       const validatedCases = [];
@@ -928,11 +1160,15 @@ export class WebServer {
         cases: validatedCases,
         cost: entryCost,
         pot: entryCost * mp,
+        speed: sp,
+        jackpot: jp,
+        crazy: cr,
         phase: "pending",
         players: [{ uid, tag, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
         createdAt: Date.now(),
         resolvedAt: 0,
         winnerUid: null,
+        watchers: new Set(),
       };
       this._cbActive.set(battleId, battle);
       this._cbUserBattle.set(uid, battleId);
@@ -969,13 +1205,29 @@ export class WebServer {
       return this._json(res, 200, { battleId });
     }
 
+    // POST /api/case-battle/:id/watch — register as a watcher
+    if (p.startsWith("/api/case-battle/") && p.endsWith("/watch") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = p.slice("/api/case-battle/".length, -"/watch".length);
+      const battle = this._cbActive.get(battleId);
+      if (!battle) return this._json(res, 200, { error: "Battle not found" });
+      // Don't let players in the battle register as watchers
+      if (!battle.players.some(p => p.uid === uid)) {
+        if (!battle.watchers) battle.watchers = new Set();
+        battle.watchers.add(uid);
+      }
+      return this._json(res, 200, { battleId });
+    }
+
     // GET /api/case-battle/:id — get battle state (also used for watching)
-    if (p.startsWith("/api/case-battle/") && !p.includes("/join") && !p.includes("/create") && req.method === "GET") {
+    if (p.startsWith("/api/case-battle/") && !p.includes("/join") && !p.includes("/create") && !p.includes("/watch") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const battleId = p.slice("/api/case-battle/".length);
       const battle = this._cbActive.get(battleId);
       if (!battle) return this._json(res, 200, { notFound: true });
+      const isPlayer = battle.players.some(p => p.uid === uid);
 
       return this._json(res, 200, {
         id: battle.id,
@@ -984,11 +1236,15 @@ export class WebServer {
         cost: battle.cost,
         pot: battle.pot,
         maxPlayers: battle.maxPlayers,
+        speed: battle.speed || "normal",
+        jackpot: !!battle.jackpot,
+        crazy: !!battle.crazy,
         creatorUid: battle.creatorUid,
         phase: battle.phase,
         startsAt: battle.startsAt || null,
         winnerUid: battle.winnerUid,
         resolvedAt: battle.resolvedAt || null,
+        isPlayer,
         players: battle.players.map(p => ({
           uid: p.uid,
           tag: p.tag || p.uid,

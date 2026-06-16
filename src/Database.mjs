@@ -379,4 +379,23 @@ export class Database {
         await this._users.updateOne({ _id: u._id }, { $unset: unset });
     }
   }
+
+  // ─── Custom case tiers (for admin panel) ──────────────────────────────────
+
+  async getCustomTiers() {
+    if (!this._db) return [];
+    const col = this._db.collection("cb_tiers");
+    const doc = await col.findOne({ _id: "custom_tiers" });
+    return doc?.tiers ?? [];
+  }
+
+  async saveCustomTiers(tiers) {
+    if (!this._db) return;
+    const col = this._db.collection("cb_tiers");
+    await col.updateOne(
+      { _id: "custom_tiers" },
+      { $set: { tiers } },
+      { upsert: true },
+    );
+  }
 }
