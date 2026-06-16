@@ -36,7 +36,7 @@ async function hasVoted(serverId, userId, apiKey) {
     // The API returns { voters: [...], page, total }.
     // Each voter object typically has `id` or `userId`.
     const voters = Array.isArray(data?.voters) ? data.voters : [];
-    const voted  = voters.some(v => String(v?.id ?? v?.userId ?? v) === String(userId));
+    const voted  = voters.some(v => String(v?.fluxerId ?? v?.id ?? v?.userId ?? v) === String(userId));
 
     _voteCache.set(userId, { voted, cachedAt: now });
     return voted;
