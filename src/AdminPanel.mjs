@@ -63,17 +63,16 @@ const PAGES = [
 
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">`;
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">`;
 
 const CSS = `
 :root{
-  --bg:#070f0a; --bg-deep:#050b07;
-  --surface:#0c1f10; --surface-2:#0a1a0d;
-  --border:#1c3a22; --border-soft:#14281a;
-  --text-bright:#eafff0; --text:#b8dcb8; --text-dim:#5a8a6e; --text-faint:#2a4a2a;
-  --accent:#2ecc71; --accent-bright:#45e08a;
-  --gold:#f1c40f; --purple:#b060f0; --blue:#60c0f0; --orange:#f08020; --red:#e05050; --teal:#40c0a0;
-  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --bg:#0a0f0c; --bg-deep:#070b07;
+  --surface:#111a15; --surface-2:#162019;
+  --border:#1e3028; --border-soft:#162019;
+  --text-bright:#e0efe4; --text:#b8dcb8; --text-dim:#5a8a6e; --text-faint:#2a4a2a;
+  --accent:#2ecc71; --accent-bright:#3ee084;
+  --gold:#f0c040; --purple:#b060f0; --blue:#60c0f0; --orange:#f08020; --red:#e05050; --teal:#40c0a0;
   --font-body:'Inter',system-ui,sans-serif;
   --font-mono:'JetBrains Mono',ui-monospace,monospace;
 }
@@ -91,7 +90,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-bright);outl
 .sidebar{background:var(--bg-deep);border-right:1px solid var(--border-soft);padding:1.3rem 1rem;display:flex;flex-direction:column;gap:.2rem;position:sticky;top:0;height:100vh;overflow-y:auto}
 .logo{display:flex;align-items:center;gap:.55rem;padding:.3rem .4rem 1.1rem;border-bottom:1px solid var(--border-soft);margin-bottom:.6rem}
 .logo-icon{font-size:1.5rem;line-height:1}
-.logo-text{font-family:var(--font-display);font-size:1rem;font-weight:800;color:var(--accent-bright);letter-spacing:-.01em}
+.logo-text{font-family:var(--font-body);font-size:1rem;font-weight:900;color:var(--accent-bright);letter-spacing:-.01em}
 .logo-sub{font-size:.58rem;color:var(--text-faint);letter-spacing:.1em;text-transform:uppercase;margin-top:.1rem}
 
 .chip{width:18px;height:18px;border-radius:50%;border:2px dashed rgba(255,255,255,.38);background:var(--cc);flex-shrink:0;position:relative;transition:box-shadow .15s}
@@ -117,7 +116,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-bright);outl
 /* Header */
 .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem;gap:1rem}
 .page-eyebrow{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--pc,var(--accent));margin-bottom:.3rem}
-.page-title{font-family:var(--font-display);font-size:1.4rem;font-weight:800;color:var(--text-bright);letter-spacing:-.01em}
+.page-title{font-family:var(--font-body);font-size:1.4rem;font-weight:800;color:var(--text-bright);letter-spacing:-.01em}
 .page-sub{font-size:.74rem;color:var(--text-dim);margin-top:.3rem}
 .badge{display:inline-flex;align-items:center;gap:.35rem;background:var(--surface);border:1px solid #2ecc7133;border-radius:99px;padding:.22rem .6rem;font-size:.62rem;font-weight:700;color:var(--accent);white-space:nowrap}
 .badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite}
@@ -128,7 +127,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-bright);outl
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:.95rem 1.05rem;position:relative;overflow:hidden}
 .kpi::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--kc,var(--accent)),transparent);opacity:.75}
 .kpi-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.4rem}
-.kpi-value{font-family:var(--font-display);font-size:1.55rem;font-weight:800;color:var(--text-bright);letter-spacing:-.02em;line-height:1}
+.kpi-value{font-family:var(--font-body);font-size:1.55rem;font-weight:800;color:var(--text-bright);letter-spacing:-.02em;line-height:1}
 .kpi-sub{font-size:.62rem;color:var(--text-dim);margin-top:.35rem}
 
 /* Section */
@@ -160,7 +159,7 @@ tr:hover td{background:#0a1f0e66}
 .cmd-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.7rem .9rem;display:flex;flex-direction:column;gap:.5rem}
 .cmd-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .cmd-name{font-size:.74rem;font-weight:700;color:var(--text-bright);font-family:var(--font-mono)}
-.cmd-count{font-family:var(--font-display);font-size:.95rem;font-weight:800;color:var(--orange)}
+.cmd-count{font-family:var(--font-body);font-size:.95rem;font-weight:800;color:var(--orange)}
 .cmd-bar{width:100%;background:var(--border-soft);border-radius:99px;height:4px;overflow:hidden}
 .cmd-bar-inner{height:100%;background:linear-gradient(90deg,#a8500f,var(--orange));border-radius:99px;min-width:2px}
 
@@ -188,7 +187,7 @@ tr:hover td{background:#0a1f0e66}
 .denied{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:var(--font-body)}
 .denied-card{background:#0e0507;border:2px solid #7a1a2a44;border-radius:14px;padding:2.5rem 2rem;max-width:380px;text-align:center;box-shadow:0 0 40px #ff000011}
 .denied-icon{font-size:3rem;margin-bottom:.5rem}
-.denied-title{font-family:var(--font-display);font-size:1.25rem;font-weight:800;color:var(--red);margin-bottom:.5rem}
+.denied-title{font-family:var(--font-body);font-size:1.25rem;font-weight:800;color:var(--red);margin-bottom:.5rem}
 .denied-msg{font-size:.78rem;color:#a87878;line-height:1.6;margin-bottom:1rem}
 .denied-id{font-family:var(--font-mono);font-size:.65rem;color:#7a4a4a;background:#1a0808;padding:.25rem .6rem;border-radius:5px;display:inline-block}
 
@@ -221,7 +220,7 @@ function loginRequiredPage(loginUrl) {
     <div class="denied-icon">🎰</div>
     <div class="denied-title" style="color:var(--accent)">Admin Login</div>
     <div class="denied-msg">You must be logged in with an authorised Fluxer account to access the admin panel.</div>
-    <a href="${esc(loginUrl)}" style="display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:800;font-family:var(--font-display);padding:.7rem 1.4rem;border-radius:8px;font-size:.85rem;margin-top:.3rem">🔑 Login with Fluxer</a>
+    <a href="${esc(loginUrl)}" style="display:inline-flex;align-items:center;gap:.5rem;background:var(--accent);color:#0a0f0c;font-weight:800;font-family:var(--font-body);padding:.7rem 1.4rem;border-radius:8px;font-size:.85rem;margin-top:.3rem">🔑 Login with Fluxer</a>
   </div>
 </div>`,
     "Admin — Login",

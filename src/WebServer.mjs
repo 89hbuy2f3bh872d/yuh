@@ -172,50 +172,82 @@ function serveFileWithRanges(req, res, fp, mime = getMime(fp), cc = "public, max
 // ─── HTML templates ───────────────────────────────────────────────────────────
 
 const SHARED_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0f0c;--surface:#111a15;--surface2:#162019;--surface3:#1c2820;--border:#1e3028;--accent:#2ecc71;--accent2:#27ae60;--text:#e0efe4;--text2:#8aab96;--text3:#4a6e5a;--gold:#f0c040;--radius:10px}
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
-body{background:#060e06;color:#e2ffe2;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
-.nav{position:sticky;top:0;z-index:100;background:rgba(6,14,6,.92);backdrop-filter:blur(12px);border-bottom:1px solid #2ecc7122;display:flex;align-items:center;gap:.8rem;padding:.5rem 1.2rem;min-height:48px}
-.nav-logo{font-weight:900;color:#2ecc71;font-size:.95rem;white-space:nowrap}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);background:rgba(10,15,12,.85);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;padding:.6rem 1.5rem;min-height:52px}
+.nav-logo{font-weight:900;font-size:1rem;color:var(--accent);letter-spacing:-.02em;white-space:nowrap}
+.nav-logo span{color:var(--text);font-weight:600}
 .nav-spacer{flex:1}
-.nav-bal{font-size:.75rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
-.nav-bal strong{color:#2ecc71}
-.nav-logout{font-size:.65rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122}
-.nav-logout:hover{color:#2ecc71}
-.wrap{padding:1.2rem;max-width:1100px;margin:0 auto}
-.section-title{font-size:.85rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#2ecc71;text-shadow:0 0 10px #2ecc7155;margin-bottom:1.1rem}
-.provider-title{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4a9a4a;margin:1.4rem 0 .55rem}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
-.game-card{background:#0a1f0a;border:1px solid #2ecc7122;border-radius:11px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s}
-.game-card:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 8px 28px #2ecc7133;border-color:#2ecc7166}
-.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem;overflow:hidden}
+.nav-bal{font-size:.78rem;font-weight:700;color:var(--text2);white-space:nowrap}
+.nav-bal strong{color:var(--accent);font-weight:800}
+.nav-link{font-size:.72rem;font-weight:600;color:var(--text3);padding:.35rem .7rem;border-radius:6px;transition:all .15s}
+.nav-link:hover{background:var(--surface);color:var(--text)}
+
+/* Wrap */
+.wrap{padding:1.5rem;max-width:1100px;margin:0 auto}
+
+/* Lobby */
+.section-title{font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:1.1rem;display:flex;align-items:center;gap:.45rem}
+.section-title::before{content:"";display:block;width:3px;height:13px;background:var(--accent);border-radius:2px}
+.provider-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin:1.5rem 0 .5rem;padding-bottom:.3rem;border-bottom:1px solid var(--border)}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem}
+.game-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s}
+.game-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4);border-color:#2ecc7133}
+.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,var(--surface2),var(--surface));display:flex;align-items:center;justify-content:center;font-size:2.5rem;overflow:hidden;position:relative}
 .game-thumb img{width:100%;height:100%;object-fit:cover}
-.game-info{padding:.4rem .5rem .5rem}
-.game-name{font-size:.68rem;font-weight:700;color:#c8f5c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.game-meta{font-size:.58rem;color:#4a9a4a;margin-top:.1rem}
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
-.login-card{background:linear-gradient(160deg,#0e230e,#071507);border:2px solid #2ecc7133;border-radius:18px;padding:2.2rem 1.8rem;max-width:360px;width:100%;text-align:center;box-shadow:0 0 50px #2ecc7111}
-.login-logo{font-size:2.8rem;margin-bottom:.3rem}
-.login-title{font-size:1.7rem;font-weight:900;color:#2ecc71;text-shadow:0 0 16px #2ecc71bb;margin-bottom:.2rem}
-.login-sub{font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;color:#4a9a4a;margin-bottom:1.2rem}
-.login-desc{font-size:.84rem;color:#a8d5a8;display:block;margin-bottom:1.2rem;line-height:1.6}
-.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-size:.9rem;font-weight:900;padding:.75rem 1.6rem;border-radius:9px;box-shadow:0 4px 18px #2ecc7144;transition:all .18s;width:100%}
-.login-btn:hover{box-shadow:0 6px 26px #2ecc7166;transform:translateY(-1px)}
-.login-footer{margin-top:1rem;font-size:.64rem;color:#2a4a2a;line-height:1.7}
-.err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
-.err-card{background:#0e230e;border:2px solid #2ecc7133;border-radius:14px;padding:1.8rem;max-width:380px;width:100%;text-align:center;box-shadow:0 0 36px #2ecc7111}
-.err-card h1{color:#2ecc71;font-size:1.3rem;margin-bottom:.7rem}
-.err-card p{color:#a8d5a8;margin-bottom:.7rem;line-height:1.6}
-.err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;padding:.65rem 1.3rem;border-radius:8px;margin-top:.5rem;cursor:pointer;font-size:.84rem;transition:all .18s}
-.err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px #2ecc7155}
-.loading{text-align:center;padding:3rem;color:#4a9a4a;font-size:.85rem}
-.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:1rem}
+.game-info{padding:.45rem .55rem .55rem}
+.game-name{font-size:.7rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.game-meta{font-size:.58rem;color:var(--text3);margin-top:.1rem}
+
+/* Login */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 30%,#0f291a 0%,var(--bg) 60%)}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem 2rem;max-width:380px;width:100%;text-align:center;box-shadow:0 0 80px #2ecc7108;position:relative;overflow:hidden}
+.login-card::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,#2ecc7108 0%,transparent 60%);pointer-events:none}
+.login-logo{font-size:3rem;margin-bottom:.5rem}
+.login-title{font-size:1.8rem;font-weight:900;color:var(--accent);letter-spacing:-.02em;margin-bottom:.2rem}
+.login-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);margin-bottom:1.5rem}
+.login-desc{font-size:.88rem;color:var(--text2);display:block;margin-bottom:1.5rem;line-height:1.6}
+.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:var(--accent);color:#0a0f0c;font-size:.88rem;font-weight:800;padding:.75rem 1.6rem;border-radius:8px;box-shadow:0 4px 18px #2ecc7144;transition:all .15s;width:100%}
+.login-btn:hover{background:#3ee084;box-shadow:0 6px 26px #2ecc7166;transform:translateY(-1px)}
+.login-footer{margin-top:1.2rem;font-size:.64rem;color:var(--text3);line-height:1.7}
+
+/* Error */
+.err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 30%,#0f291a 0%,var(--bg) 60%)}
+.err-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;max-width:400px;width:100%;text-align:center}
+.err-card h1{color:var(--accent);font-size:1.3rem;font-weight:800;margin-bottom:.7rem}
+.err-card p{color:var(--text2);margin-bottom:1rem;line-height:1.6;font-size:.88rem}
+.err-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#0a0f0c;font-weight:800;padding:.65rem 1.3rem;border-radius:8px;font-size:.82rem;transition:all .15s}
+.err-btn:hover{background:#3ee084;transform:translateY(-1px)}
+
+/* Coming soon */
+.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:.8rem}
 .coming-soon-icon{font-size:3.5rem}
-.coming-soon-title{font-size:1.4rem;font-weight:900;color:#2ecc71}
-.coming-soon-sub{font-size:.84rem;color:#4a9a4a;max-width:38ch;line-height:1.7}
+.coming-soon-title{font-size:1.4rem;font-weight:900;color:var(--accent)}
+.coming-soon-sub{font-size:.85rem;color:var(--text2);max-width:42ch;line-height:1.6}
+
+/* Game wrapper top bar */
+#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(10,15,12,.92);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none;font-family:'Inter',system-ui,sans-serif;color:var(--text)}
+.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .65rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:all .15s}
+.fc-back:hover{border-color:var(--accent);color:var(--accent)}
+.fc-spacer{flex:1}
+.fc-title{font-size:.72rem;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fc-bal{display:flex;align-items:center;gap:.28rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
+.fc-bal strong{color:var(--accent);font-size:.88rem}
+.fc-user{font-size:.67rem;color:var(--text3);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.fc-logout{font-size:.65rem;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;transition:color .15s}
+.fc-logout:hover{color:var(--accent)}
+#gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
+
+/* Responsive */
+@media(max-width:640px){.login-card{padding:1.8rem 1.3rem}.err-card{padding:1.5rem}.nav{padding:.5rem 1rem}.games-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
 `;
 
 function shell(head, body) {
@@ -225,7 +257,7 @@ function shell(head, body) {
 function lobbyPage(bal, tag, gamesByProvider) {
   let sections = "";
   if (!gamesByProvider || gamesByProvider.length === 0) {
-    sections = `<p style="color:#4a9a4a;font-size:.82rem">No games available right now.</p>`;
+    sections = `<p style="color:var(--text3);font-size:.85rem">No games available right now.</p>`;
   } else {
     for (const { provider, providerName: pn, games } of gamesByProvider) {
       const cards = games.map(g => {
@@ -239,15 +271,15 @@ function lobbyPage(bal, tag, gamesByProvider) {
       sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
   }
-  return shell("", `<nav class="nav"><div class="nav-logo">🎰 SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span><a href="/logout" class="nav-logout">logout</a></nav><div class="wrap"><div class="section-title">🎮 Game Lobby</div>${sections}</div>`);
+  return shell("", `<nav class="nav"><div class="nav-logo">Sir<span>Green</span></div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.72rem;color:var(--text3)">${esc(tag)}</span><a href="/case-battle" class="nav-link">⚔️ Battles</a><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="section-title">🎮 Game Lobby</div>${sections}</div>`);
 }
 
 function comingSoonPage(bal, tag) {
-  return shell("", `<nav class="nav"><div class="nav-logo">🎰 SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span><a href="/logout" class="nav-logout">logout</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on their way.</div></div></div>`);
+  return shell("", `<nav class="nav"><div class="nav-logo">Sir<span>Green</span></div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.72rem;color:var(--text3)">${esc(tag)}</span><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on the way.</div></div></div>`);
 }
 
 function loginPage(authUrl) {
-  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen Casino</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:#2ecc71">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">&#128994;&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
+  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:var(--accent)">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">🟢&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
 }
 function errPage(title, msg, href, label) {
   return shell("", `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`);
@@ -260,22 +292,25 @@ function gameWrapperPage(bal, tag, gameUrl, gameName) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>${esc(gameName)} — SirGreen Casino</title>
+<title>${esc(gameName)} — SirGreen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden;background:#040d04;font-family:'Segoe UI',system-ui,sans-serif;color:#e2ffe2;-webkit-font-smoothing:antialiased}
+:root{--bg:#0a0f0c;--surface:#111a15;--border:#1e3028;--accent:#2ecc71;--text:#e0efe4;--text2:#8aab96;--text3:#4a6e5a}
+html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
 a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;text-decoration:none}
-#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.38rem .75rem;background:rgba(4,13,4,.97);backdrop-filter:blur(12px);border-bottom:2px solid #2ecc7133;font-size:.76rem;min-height:42px;user-select:none}
-.fc-back{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;padding:.22rem .6rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:border-color .18s,color .18s}
-.fc-back:hover{border-color:#2ecc71;color:#2ecc71}
+#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(10,15,12,.92);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none}
+.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .65rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:all .15s}
+.fc-back:hover{border-color:var(--accent);color:var(--accent)}
 .fc-spacer{flex:1}
-.fc-title{font-size:.72rem;color:#c8f5c8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
-.fc-bal{display:flex;align-items:center;gap:.28rem;background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
-.fc-bal strong{color:#2ecc71;font-size:.88rem}
-.fc-user{font-size:.67rem;color:#4a8a4a;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
-.fc-logout{font-size:.64rem;color:#3a6b3a;border-bottom:1px solid #2ecc7122;white-space:nowrap}
-.fc-logout:hover{color:#2ecc71}
-#gameFrame{position:fixed;top:42px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 42px);border:none;display:block;background:#040d04}
+.fc-title{font-size:.72rem;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fc-bal{display:flex;align-items:center;gap:.28rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
+.fc-bal strong{color:var(--accent);font-size:.88rem}
+.fc-user{font-size:.67rem;color:var(--text3);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.fc-logout{font-size:.65rem;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;transition:color .15s}
+.fc-logout:hover{color:var(--accent)}
+#gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
 </style>
 </head>
 <body>
@@ -285,7 +320,7 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
   <span class="fc-spacer"></span>
   <div class="fc-bal">💰&nbsp;<strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
   <span class="fc-user">${esc(tag)}</span>
-  <a href="/logout" class="fc-logout">logout</a>
+  <a href="/logout" class="fc-logout">Sign out</a>
 </div>
 <iframe id="gameFrame" src="${esc(gameUrl)}" allow="autoplay; fullscreen" allowfullscreen></iframe>
 <script>
