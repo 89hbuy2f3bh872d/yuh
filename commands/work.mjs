@@ -1,13 +1,9 @@
 import { COLORS } from "../src/theme.mjs";
 
-const COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown between work claims
-const MIN_EARN    = 80;
-const MAX_EARN    = 220;
-const FL_LIST_URL = "https://fluxerlist.com/api/v1";
-const VOTE_TTL_MS = 5 * 60 * 1000;  // cache FluxerList vote check for 5 min
-
-// In-memory vote cache: uid -> { voted: bool, cachedAt: ms }
-const _voteCache = new Map();
+const COOLDOWN_MS  = 30 * 60 * 1000; // 30 min cooldown between work claims
+const MIN_EARN     = 80;
+const MAX_EARN     = 220;
+const FL_LIST_URL  = "https://fluxerlist.com/api/v1";
 
 // In-flight guards — coalesce concurrent calls for the same user
 const _inflight = new Map();
@@ -17,11 +13,6 @@ const _inflight = new Map();
  * Results are cached per-UID for VOTE_TTL_MS to avoid hammering the API.
  */
 async function hasVoted(serverId, userId, apiKey) {
-  const now    = Date.now();
-  const cached = _voteCache.get(userId);
-
-  if (cached && now - cached.cachedAt < VOTE_TTL_MS) return cached.voted;
-
   try {
     const url = `${FL_LIST_URL}/servers/${serverId}/voters`;
     const { default: fetch } = await import("undici").catch(() => ({ default: globalThis.fetch }));
@@ -34,28 +25,14 @@ async function hasVoted(serverId, userId, apiKey) {
     const data = await r.json();
 
     // The API returns { voters: [...], page, total }.
-    // Each voter object typically has `id` or `userId`.
+    // Each voter object has a `fluxerId` field containing their Discord user ID.
     const voters = Array.isArray(data?.voters) ? data.voters : [];
-    const voted  = voters.some(v => String(v?.fluxerId ?? v?.id ?? v?.userId ?? v) === String(userId));
-
-    _voteCache.set(userId, { voted, cachedAt: now });
-    return voted;
+    return voters.some(v => String(v?.fluxerId ?? v?.id ?? v) === String(userId));
   } catch (e) {
     console.error("[FluxerList] vote check failed:", e?.message);
-    // Fail open: if the API is unreachable, don't block legitimate voters
-    // who have a cached entry from a previous successful call.
-    if (cached) return cached.voted;
     return false;
   }
 }
-
-// Prune stale cache entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [uid, entry] of _voteCache) {
-    if (now - entry.cachedAt > VOTE_TTL_MS) _voteCache.delete(uid);
-  }
-}, 10 * 60 * 1000);
 
 const JOBS = [
   { emoji: "🧹", text: "swept the casino floor" },
