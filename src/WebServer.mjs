@@ -19,6 +19,22 @@ const FLUXER_AUTH_URL  = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL    = "https://api.fluxer.app/v1/users/@me";
 
+// Fluxer CDN (matches @fluxerjs/core cdn util).
+const FLUXER_CDN        = "https://fluxerusercontent.com";
+const FLUXER_STATIC_CDN = "https://fluxerstatic.com";
+
+/** Build a usable avatar URL for a Fluxer user. Animated hashes (a_) → gif.
+ *  Falls back to the default static avatar when the user has no custom one. */
+function fluxerAvatarUrl(userId, avatarHash, size = 64) {
+  if (!avatarHash) {
+    let idx = 0;
+    try { idx = Number(BigInt(userId) % 6n); } catch { idx = 0; }
+    return `${FLUXER_STATIC_CDN}/avatars/${idx}.png`;
+  }
+  const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
+  return `${FLUXER_CDN}/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
+}
+
 const MIME = {
   ".html":"text/html; charset=utf-8",".js":"application/javascript; charset=utf-8",
   ".mjs":"application/javascript; charset=utf-8",".css":"text/css; charset=utf-8",
@@ -756,7 +772,7 @@ export class WebServer {
       const q = u.searchParams.get("q") || "";
       let rows = [];
       try { rows = await this.db.searchUsers(q, 25, uid); } catch (e) { console.error("[users/search]", e); }
-      const users = rows.map(r => ({ id: r._id, tag: r.tag || null, avatar: r.av || null }));
+      const users = rows.map(r => ({ id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null) }));
       return this._json(res, 200, { users });
     }
 
@@ -1008,8 +1024,8 @@ export class WebServer {
       try { me = JSON.parse(await nodeFetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${tokenData.access_token}` } })); }
       catch { return this._html(res, 500, errPage("⚠️ Error", "Could not fetch Fluxer profile.", "/login", "Retry")); }
       const userId    = me.id;
-      const tag       = me.username ?? me.tag ?? userId;
-      const avatar    = me.avatar ? `https://cdn.fluxer.app/avatars/${userId}/${me.avatar}.png?size=64` : "";
+      const tag       = me.global_name ?? me.displayName ?? me.username ?? me.tag ?? userId;
+      const avatar    = fluxerAvatarUrl(userId, me.avatar);
       // Cache Fluxer identity so the misc send-money picker shows real names.
       await this.db.setProfile(userId, { tag, avatar }).catch(() => {});
       const ip        = (req.headers["x-forwarded-for"] ?? req.headers["x-real-ip"] ?? "").split(",")[0].trim() || null;
@@ -1076,7 +1092,8 @@ export class WebServer {
     const user = await this.db.getUser(uid);
     const bal = Number(user?.bal ?? 0);
     const tag = decodeURIComponent(cookies.dtag ?? user?.tag ?? "Player");
-    const avatar = decodeURIComponent(cookies.dav ?? user?.av ?? "");
+    let avatar = decodeURIComponent(cookies.dav ?? user?.av ?? "");
+    if (!avatar) avatar = fluxerAvatarUrl(uid, null); // default static avatar
     const sidebar = buildSidebar({ active, uid, tag, avatar, bal });
     let html = fs.readFileSync(fp, "utf8")
       .replace("__SIDEBAR__", sidebar)
