@@ -92,6 +92,10 @@
 .checkbox-row.gold{border-color:#eab30822}.checkbox-row.gold .label-text{color:var(--gold)}.checkbox-row.gold .label-text svg{color:var(--gold)}
 .checkbox-row.purple{border-color:#a855f722}.checkbox-row.purple .label-text{color:var(--purple)}.checkbox-row.purple .label-text svg{color:var(--purple)}
 .checkbox-row.fast{border-color:#22c55e22}.checkbox-row.fast .label-text{color:var(--accent)}.checkbox-row.fast .label-text svg{color:var(--accent)}
+.checkbox-row.active{background:var(--surface-2)}
+.checkbox-row.fast.active{border-color:var(--accent);box-shadow:0 0 0 1px #22c55e33 inset}
+.checkbox-row.gold.active{border-color:var(--gold);box-shadow:0 0 0 1px #eab30833 inset}
+.checkbox-row.purple.active{border-color:var(--purple);box-shadow:0 0 0 1px #a855f733 inset}
 
 /* Arena */
 .arena{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;position:relative;overflow:hidden}
@@ -168,6 +172,35 @@
 .result-sub{font-size:.82rem;color:var(--text-2);line-height:1.5;margin-bottom:.9rem}
 .result-net{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;margin-bottom:1.1rem}
 .result-actions{display:flex;gap:.5rem;justify-content:center}
+
+/* CSGO frame — avatars + badges */
+.player-av{width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid var(--border-2);background:var(--surface-3)}
+.player-av.ph{display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--text-2);text-transform:uppercase}
+.badge-bot{background:#1a0a28;color:var(--purple);border:1px solid #a855f733}
+.badge-chance{background:#1a1400;color:var(--gold);border:1px solid #eab30833;font-variant-numeric:tabular-nums}
+
+/* reel wrap with faint avatar watermark while opening */
+.reel-wrap{position:relative}
+.reel-av-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .4s;z-index:5}
+.reel-wrap.opening .reel-av-overlay{opacity:.10}
+.reel-av-overlay .player-av{width:96px;height:96px;border-width:0;filter:grayscale(.2)}
+.reel-av-overlay .player-av.ph{font-size:2.4rem}
+
+/* Jackpot wheel overlay */
+.jp-head{font-size:.9rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:.4rem;margin-bottom:.4rem}
+.jp-head svg{width:16px;height:16px}
+.jp-wheel{position:relative;width:min(680px,92vw);height:140px;overflow:hidden;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.5)}
+.jp-marker{position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;background:var(--gold);z-index:10;box-shadow:0 0 14px var(--gold)}
+.jp-marker::before,.jp-marker::after{content:'';position:absolute;left:50%;transform:translateX(-50%);border:7px solid transparent}
+.jp-marker::before{top:-1px;border-top-color:var(--gold)}
+.jp-marker::after{bottom:-1px;border-bottom-color:var(--gold)}
+.jp-strip{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;will-change:transform}
+.jp-tile{width:80px;height:100%;margin:0 4px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.35rem}
+.jp-tile img,.jp-tile span{width:62px;height:62px;border-radius:50%;object-fit:cover;border:2px solid var(--border-2);background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;color:var(--text-2)}
+.jp-name{font-size:.58rem;color:var(--text-2);font-weight:600;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Recreate accept indicator */
+.recreate-info{margin-top:.7rem;font-size:.74rem;color:var(--text-2);font-weight:600;font-variant-numeric:tabular-nums}
 
 @media(max-width:780px){
   .create-grid{grid-template-columns:1fr}

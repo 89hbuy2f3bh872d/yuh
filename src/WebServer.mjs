@@ -420,6 +420,13 @@ export class WebServer {
     return tier.items[tier.items.length - 1];
   }
 
+  _cbMakeBot(cost) {
+    const names = ["Frosty", "NSGDX", "Viper", "Echo", "Rogue", "Blitz", "Nova", "Karma", "Specter", "Jinx", "Onyx", "Dash"];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const id = "BOT:" + crypto.randomBytes(4).toString("hex");
+    return { uid: id, tag: "BOT " + name, bot: true, avatar: "", cost, rewards: [], totalValue: 0, netWin: 0 };
+  }
+
   _cbOpenCases(cases) {
     // cases: [{tier, cost}]
     return cases.map(c => {
@@ -432,10 +439,12 @@ export class WebServer {
 
   _cbResolve(battle) {
     if (battle.phase === "done") return;
-    const { mode, cases } = battle;
+    const { cases } = battle;
     const players = battle.players;
+    // Mode precedence: jackpot > crazy > shared > regular.
+    const mode = battle.jackpot ? "jackpot" : (battle.crazy ? "crazy" : battle.mode);
 
-    // Each player opens all cases
+    // Each player opens all cases.
     players.forEach(p => {
       const opened = this._cbOpenCases(cases);
       p.rewards = opened.map(o => o.reward);
@@ -443,44 +452,53 @@ export class WebServer {
       p.cost = cases.reduce((s, c) => s + (c.cost || 0), 0);
     });
 
-    // Determine winner(s) and credit balances.
-    if (mode === "shared") {
-      battle.winnerUid = "shared";
-      const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
-      const share = Math.floor((battle.pot - rake) / players.length);
-      players.forEach(p => {
-        p.netWin = share - p.cost;
-        this.db.updateBalance(p.uid, share).catch(() => {});
-        this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
-      });
-    } else {
-      const maxValue = Math.max(...players.map(p => p.totalValue));
-      const winners = players.filter(p => p.totalValue === maxValue);
-      const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
+    // Credit only real players (bots are house-funded; their balance never moves).
+    const credit = (p, amt) => { if (!p.bot && amt) this.db.updateBalance(p.uid, amt).catch(() => {}); };
+    const record = (p) => { if (!p.bot) this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {}); };
 
+    if (mode === "jackpot") {
+      // Weighted wheel: P(win) ∝ total opened value. Bigger pull → higher odds.
+      const weights = players.map(p => Math.max(1, p.totalValue));
+      const total = weights.reduce((s, w) => s + w, 0);
+      players.forEach((p, i) => { p.winChance = weights[i] / total; });
+      let r = Math.random() * total, widx = 0;
+      for (let i = 0; i < players.length; i++) { r -= weights[i]; if (r <= 0) { widx = i; break; } }
+      const winner = players[widx];
+      battle.winnerUid = winner.uid;
+      battle.jackpotWinnerIdx = widx;
+      const payout = battle.pot; // jackpot: no rake, winner takes all
+      players.forEach(p => {
+        p.netWin = (p === winner) ? payout - p.cost : -p.cost;
+        if (p === winner) credit(p, payout);
+        record(p);
+      });
+    } else if (mode === "shared") {
+      battle.winnerUid = "shared";
+      const rake = Math.floor(battle.pot * 0.05);
+      const share = Math.floor((battle.pot - rake) / players.length);
+      players.forEach(p => { p.netWin = share - p.cost; credit(p, share); record(p); });
+    } else {
+      // regular = highest total wins; crazy = lowest total wins.
+      const vals = players.map(p => p.totalValue);
+      const target = mode === "crazy" ? Math.min(...vals) : Math.max(...vals);
+      const winners = players.filter(p => p.totalValue === target);
+      const rake = Math.floor(battle.pot * 0.05);
       if (winners.length === 1) {
         battle.winnerUid = winners[0].uid;
-        const winnerPayout = battle.pot - rake;
+        const payout = battle.pot - rake;
         players.forEach(p => {
-          if (p === winners[0]) {
-            p.netWin = winnerPayout - p.cost;
-            this.db.updateBalance(p.uid, winnerPayout).catch(() => {});
-          } else {
-            p.netWin = -p.cost;
-          }
-          this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
+          p.netWin = (p === winners[0]) ? payout - p.cost : -p.cost;
+          if (p === winners[0]) credit(p, payout);
+          record(p);
         });
       } else {
         battle.winnerUid = "tie";
         const share = Math.floor((battle.pot - rake) / winners.length);
         players.forEach(p => {
-          if (winners.includes(p)) {
-            p.netWin = share - p.cost;
-            this.db.updateBalance(p.uid, share).catch(() => {});
-          } else {
-            p.netWin = -p.cost;
-          }
-          this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
+          const win = winners.includes(p);
+          p.netWin = win ? share - p.cost : -p.cost;
+          if (win) credit(p, share);
+          record(p);
         });
       }
     }
@@ -504,9 +522,11 @@ export class WebServer {
     const countdownMs = isFast ? 1500 : 3000;
     const caseCount = battle.cases.length;
     // Each case: spin (fixed) then a stagger gap before the next starts.
-    // Fixed spin so the reel always has a satisfying scroll regardless of case count.
-    const spinMs = isFast ? 900 : 1600;
-    const staggerMs = isFast ? 350 : 550;
+    // Normal is slower for a more satisfying reveal; fast stays snappy.
+    const spinMs = isFast ? 900 : 2600;
+    const staggerMs = isFast ? 350 : 750;
+    // Extra hold after cases for jackpot wheel spin (client animates ~2.5s).
+    battle.jackpotWheelMs = battle.jackpot ? 2800 : 0;
 
     battle.phase = "countdown";
     battle.startsAt = Date.now() + countdownMs;
@@ -527,7 +547,7 @@ export class WebServer {
       this._cbResolve(b);
       b.phase = "opening";
       b._resolvedButAnimating = true;
-      const animRemaining = staggerMs * caseCount + spinMs + 500;
+      const animRemaining = staggerMs * caseCount + spinMs + 500 + (b.jackpotWheelMs || 0);
       setTimeout(() => {
         const b2 = this._cbActive.get(battle.id);
         if (b2 && b2._resolvedButAnimating) {
@@ -703,6 +723,26 @@ export class WebServer {
         this._cbCustomTiers.push(tier);
         await this.db.saveCustomTiers(this._cbCustomTiers).catch(() => {});
         return this._json(res, 200, { tier });
+      }
+
+      // PUT /api/admin/cases/:id — overwrite an existing custom tier (built-in not editable)
+      const putCaseMatch = p.match(/^\/api\/admin\/cases\/(.+)$/);
+      if (putCaseMatch && req.method === "PUT") {
+        if (!(await this._admin.can(uid, "cases"))) return deny();
+        const cid = decodeURIComponent(putCaseMatch[1]);
+        const idx = this._cbCustomTiers.findIndex(t => t.id === cid);
+        if (idx < 0) return this._json(res, 404, { error: "Not found (built-in tiers can't be edited)" });
+        const { label, entry, color, bg, items } = data;
+        if (!label || !entry || !Array.isArray(items) || items.length === 0)
+          return this._json(res, 400, { error: "label, entry, items[] required" });
+        this._cbCustomTiers[idx] = {
+          id: cid, label: String(label), entry: Number(entry),
+          color: String(color || "#2ecc71"), bg: String(bg || "#0a1f0a"),
+          builtIn: false,
+          items: items.map(i => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })),
+        };
+        await this.db.saveCustomTiers(this._cbCustomTiers).catch(() => {});
+        return this._json(res, 200, { tier: this._cbCustomTiers[idx] });
       }
 
       // DELETE /api/admin/cases/:id — remove a custom tier
@@ -904,6 +944,9 @@ export class WebServer {
       const deducted = await this.db.atomicDeduct(uid, -entryCost);
       if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
 
+      const user = await this.db.getUser(uid).catch(() => null);
+      const avatar = user?.av || fluxerAvatarUrl(uid, null);
+
       const battleId = crypto.randomBytes(8).toString("hex");
       const battle = {
         id: battleId,
@@ -917,11 +960,13 @@ export class WebServer {
         jackpot: jp,
         crazy: cr,
         phase: "pending",
-        players: [{ uid, tag, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
+        players: [{ uid, tag, avatar, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
         createdAt: Date.now(),
         resolvedAt: 0,
         winnerUid: null,
         watchers: new Set(),
+        recreateAccepts: new Set(),
+        recreateBattleId: null,
       };
       this._cbActive.set(battleId, battle);
       this._cbUserBattle.set(uid, battleId);
@@ -947,7 +992,9 @@ export class WebServer {
       const deducted = await this.db.atomicDeduct(uid, -battle.cost);
       if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
 
-      battle.players.push({ uid, tag, cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
+      const ju = await this.db.getUser(uid).catch(() => null);
+      const javatar = ju?.av || fluxerAvatarUrl(uid, null);
+      battle.players.push({ uid, tag, avatar: javatar, cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
       this._cbUserBattle.set(uid, battleId);
 
       // If now full, start the battle
@@ -956,6 +1003,81 @@ export class WebServer {
       }
 
       return this._json(res, 200, { battleId });
+    }
+
+    // POST /api/case-battle/:id/bot — creator adds one bot to a free slot (house-funded)
+    if (p.startsWith("/api/case-battle/") && p.endsWith("/bot") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = p.slice("/api/case-battle/".length, -"/bot".length);
+      const battle = this._cbActive.get(battleId);
+      if (!battle) return this._json(res, 200, { error: "Battle not found" });
+      if (battle.creatorUid !== uid) return this._json(res, 200, { error: "Only the creator can add bots" });
+      if (battle.phase !== "pending") return this._json(res, 200, { error: "Battle already started" });
+      if (battle.players.length >= battle.maxPlayers) return this._json(res, 200, { error: "Battle is full" });
+
+      const bot = this._cbMakeBot(battle.cost);
+      battle.players.push(bot);
+      if (battle.players.length >= battle.maxPlayers) this._cbStartBattle(battle);
+      return this._json(res, 200, { battleId });
+    }
+
+    // POST /api/case-battle/:id/recreate — real player accepts a rematch
+    if (p.startsWith("/api/case-battle/") && p.endsWith("/recreate") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = p.slice("/api/case-battle/".length, -"/recreate".length);
+      const battle = this._cbActive.get(battleId);
+      if (!battle) return this._json(res, 200, { error: "Battle not found" });
+      if (battle.phase !== "done") return this._json(res, 200, { error: "Battle not finished" });
+      const realPlayers = battle.players.filter(pl => !pl.bot);
+      if (!realPlayers.some(pl => pl.uid === uid)) return this._json(res, 200, { error: "You weren't in this battle" });
+      // If already recreated, just point the caller there.
+      if (battle.recreateBattleId) return this._json(res, 200, { battleId: battle.recreateBattleId });
+
+      // Must afford to accept.
+      const me = await this.db.getUser(uid).catch(() => null);
+      if ((me?.bal ?? 0) < battle.cost) return this._json(res, 200, { error: "Insufficient balance" });
+      if (!battle.recreateAccepts) battle.recreateAccepts = new Set();
+      battle.recreateAccepts.add(uid);
+
+      // All real players accepted? Verify each can afford, then build the rematch.
+      const allAccepted = realPlayers.every(pl => battle.recreateAccepts.has(pl.uid));
+      if (!allAccepted) return this._json(res, 200, { accepted: battle.recreateAccepts.size, needed: realPlayers.length });
+
+      // Re-check affordability + deduct for every real player.
+      const charged = [];
+      for (const pl of realPlayers) {
+        const d = await this.db.atomicDeduct(pl.uid, -battle.cost);
+        if (!d) { // refund any already charged, abort
+          for (const c of charged) await this.db.updateBalance(c, battle.cost).catch(() => {});
+          battle.recreateAccepts.delete(pl.uid);
+          return this._json(res, 200, { error: `${pl.tag || pl.uid} can no longer afford it` });
+        }
+        charged.push(pl.uid);
+      }
+
+      const newId = crypto.randomBytes(8).toString("hex");
+      const players = [];
+      for (const pl of realPlayers) {
+        const u2 = await this.db.getUser(pl.uid).catch(() => null);
+        players.push({ uid: pl.uid, tag: pl.tag, avatar: u2?.av || fluxerAvatarUrl(pl.uid, null), cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
+        this._cbUserBattle.set(pl.uid, newId);
+      }
+      const botCount = battle.players.filter(pl => pl.bot).length;
+      for (let i = 0; i < botCount; i++) players.push(this._cbMakeBot(battle.cost));
+
+      const nb = {
+        id: newId, creatorUid: battle.creatorUid, mode: battle.mode, maxPlayers: battle.maxPlayers,
+        cases: battle.cases.map(c => ({ ...c })), cost: battle.cost, pot: battle.cost * battle.maxPlayers,
+        speed: battle.speed, jackpot: battle.jackpot, crazy: battle.crazy,
+        phase: "pending", players, createdAt: Date.now(), resolvedAt: 0, winnerUid: null,
+        watchers: new Set(), recreateAccepts: new Set(), recreateBattleId: null,
+      };
+      this._cbActive.set(newId, nb);
+      battle.recreateBattleId = newId;
+      if (nb.players.length >= nb.maxPlayers) this._cbStartBattle(nb);
+      return this._json(res, 200, { battleId: newId });
     }
 
     // POST /api/case-battle/:id/watch — register as a watcher
@@ -974,13 +1096,14 @@ export class WebServer {
     }
 
     // GET /api/case-battle/:id — get battle state (also used for watching)
-    if (p.startsWith("/api/case-battle/") && !p.includes("/join") && !p.includes("/create") && !p.includes("/watch") && req.method === "GET") {
+    if (p.startsWith("/api/case-battle/") && !p.includes("/join") && !p.includes("/create") && !p.includes("/watch") && !p.includes("/bot") && !p.includes("/recreate") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
       const battleId = p.slice("/api/case-battle/".length);
       const battle = this._cbActive.get(battleId);
       if (!battle) return this._json(res, 200, { notFound: true });
       const isPlayer = battle.players.some(p => p.uid === uid);
+      const realPlayers = battle.players.filter(pl => !pl.bot);
 
       return this._json(res, 200, {
         id: battle.id,
@@ -998,16 +1121,26 @@ export class WebServer {
         openedAt: battle.openedAt || null,
         caseStaggerMs: battle.caseStaggerMs || 600,
         caseSpinMs: battle.caseSpinMs || 400,
+        jackpotWheelMs: battle.jackpotWheelMs || 0,
+        jackpotWinnerIdx: typeof battle.jackpotWinnerIdx === "number" ? battle.jackpotWinnerIdx : null,
         winnerUid: battle.winnerUid,
         resolvedAt: battle.resolvedAt || null,
         isPlayer,
+        recreate: {
+          accepted: battle.recreateAccepts ? [...battle.recreateAccepts] : [],
+          needed: realPlayers.length,
+          newBattleId: battle.recreateBattleId || null,
+        },
         players: battle.players.map(p => ({
           uid: p.uid,
           tag: p.tag || p.uid,
+          avatar: p.avatar || (p.bot ? "" : fluxerAvatarUrl(p.uid, null)),
+          bot: !!p.bot,
           cost: p.cost,
           rewards: p.rewards || [],
           totalValue: p.totalValue || 0,
           netWin: p.netWin || 0,
+          winChance: typeof p.winChance === "number" ? p.winChance : null,
         })),
       });
     }

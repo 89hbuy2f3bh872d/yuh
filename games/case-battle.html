@@ -87,9 +87,9 @@ __SIDEBAR__
         <span class="step-hint">2 to 8 players</span>
       </div>
       <div class="field-label">Mode settings</div>
-      <div class="checkbox-row fast" onclick="document.getElementById('cb-speed').click()">
-        <input type="checkbox" id="cb-speed" onchange="setSpeed(this.checked)">
-        <label for="cb-speed">
+      <div class="checkbox-row fast" id="row-speed" onclick="toggleSetting('speed')">
+        <input type="checkbox" id="cb-speed" tabindex="-1">
+        <label>
           <div class="label-text">
             <svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>
             Fast open
@@ -97,24 +97,24 @@ __SIDEBAR__
           <div class="hint">Shorter countdown & spin</div>
         </label>
       </div>
-      <div class="checkbox-row gold" onclick="document.getElementById('cb-jackpot').click()">
-        <input type="checkbox" id="cb-jackpot" onchange="setJackpot(this.checked)">
-        <label for="cb-jackpot">
+      <div class="checkbox-row gold" id="row-jackpot" onclick="toggleSetting('jackpot')">
+        <input type="checkbox" id="cb-jackpot" tabindex="-1">
+        <label>
           <div class="label-text">
             <svg class="icon" viewBox="0 0 24 24"><path d="M2 20h20M5 20l3-12h8l3 12M9 4h6l1 4H8l1-4zM12 11v5"/></svg>
             Jackpot
           </div>
-          <div class="hint">Winner takes 100% of pot</div>
+          <div class="hint">Winner takes 100% — odds scale with your pull</div>
         </label>
       </div>
-      <div class="checkbox-row purple" onclick="document.getElementById('cb-crazy').click()">
-        <input type="checkbox" id="cb-crazy" onchange="setCrazy(this.checked)">
-        <label for="cb-crazy">
+      <div class="checkbox-row purple" id="row-crazy" onclick="toggleSetting('crazy')">
+        <input type="checkbox" id="cb-crazy" tabindex="-1">
+        <label>
           <div class="label-text">
             <svg class="icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>
             Crazy mode
           </div>
-          <div class="hint">Cases open out of order</div>
+          <div class="hint">Lowest total wins everything</div>
         </label>
       </div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;padding:.7rem;font-size:.85rem;margin-top:1.4rem" onclick="createBattle()">
@@ -176,11 +176,20 @@ __SIDEBAR__
     <div id="resultNet" class="result-net"></div>
     <div class="result-actions">
       <button class="btn btn-ghost" onclick="backToList()">Back to battles</button>
-      <button class="btn btn-primary" onclick="backToList()">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/></svg>
-        Play again
+      <button class="btn btn-primary" id="recreateBtn" onclick="recreateBattle()">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        Recreate
       </button>
     </div>
+    <div id="recreateInfo" class="recreate-info hidden"></div>
+  </div>
+</div>
+
+<div id="jackpotOverlay" class="overlay hidden">
+  <div class="jp-head"><svg class="icon" viewBox="0 0 24 24"><path d="M2 20h20M5 20l3-12h8l3 12M9 4h6l1 4H8l1-4z"/></svg> Jackpot spin — winner takes the pot</div>
+  <div class="jp-wheel" id="jpWheel">
+    <div class="jp-marker"></div>
+    <div class="jp-strip" id="jpStrip"></div>
   </div>
 </div>
 
@@ -203,7 +212,13 @@ function fmt(n){return Number(n||0).toLocaleString();}
 function $(id){return document.getElementById(id);}
 function showView(id){['view-list','view-create','view-arena'].forEach(function(v){$(v).classList.add('hidden')});$(id).classList.remove('hidden');}
 function showList(){stopBattlePoll();currentBattle=null;openedAt=0;showView('view-list');loadBattles();startListPoll();}
-function showCreate(){stopListPoll();showView('view-create');renderCaseTiers();}
+function showCreate(){
+  stopListPoll();
+  caseQty={};                       // reset stale selection from previous battle
+  TIERS.forEach(function(t){caseQty[t.id]=0;});
+  showView('view-create');
+  renderCaseTiers();
+}
 function showArena(){stopListPoll();showView('view-arena');}
 function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)}).catch(function(){});}
 refreshBal();setInterval(refreshBal,8000);
@@ -243,9 +258,11 @@ function updateCost(){
 }
 function setMode(m){mode=m;$('mode-regular').classList.toggle('active',m==='regular');$('mode-shared').classList.toggle('active',m==='shared');}
 function adjustPlayers(d){playerCount=Math.max(2,Math.min(8,playerCount+d));$('playerCount').textContent=playerCount;updateCost();}
-function setSpeed(v){battleSettings.speed=v}
-function setJackpot(v){battleSettings.jackpot=v}
-function setCrazy(v){battleSettings.crazy=v}
+function toggleSetting(key){
+  battleSettings[key]=!battleSettings[key];
+  var cb=$('cb-'+key); if(cb) cb.checked=battleSettings[key];
+  var row=$('row-'+key); if(row) row.classList.toggle('active',battleSettings[key]);
+}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 
 function createBattle(){
@@ -363,7 +380,8 @@ function renderArena(){
   var now = Date.now();
 
   // ===== HEADER =====
-  $('arenaTitle').textContent = (isShared ? 'Shared' : 'Regular') + ' · ' + players.length + '/' + b.maxPlayers;
+  var modeName = b.jackpot ? 'Jackpot' : (b.crazy ? 'Crazy' : (isShared ? 'Shared' : 'Regular'));
+  $('arenaTitle').textContent = modeName + ' · ' + players.length + '/' + b.maxPlayers;
   var rake = b.jackpot ? 0 : Math.floor(b.pot * 0.05);
   var metaParts = ['Entry ' + fmt(b.cost) + ' FC', 'Pot ' + fmt(b.pot) + ' FC'];
   if (b.jackpot) metaParts.push('Jackpot (no rake)');
@@ -381,7 +399,11 @@ function renderArena(){
   var statusEl = $('arenaStatus');
   if (b.phase === 'pending') {
     var waiting = b.maxPlayers - players.length;
-    statusEl.innerHTML = '<span class="live-dot"></span><span>Waiting for ' + waiting + ' more player' + (waiting !== 1 ? 's' : '') + '…</span>';
+    var botBtn = '';
+    if (b.creatorUid === MY_UID && players.length < b.maxPlayers) {
+      botBtn = '<button class="btn btn-ghost btn-sm" style="margin-left:.6rem" onclick="addBot()"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Add bot</button>';
+    }
+    statusEl.innerHTML = '<span class="live-dot"></span><span>Waiting for ' + waiting + ' more player' + (waiting !== 1 ? 's' : '') + '…</span>' + botBtn;
   } else if (b.phase === 'countdown') {
     var sec = b.startsAt ? Math.max(0, Math.ceil((b.startsAt - now) / 1000)) : 3;
     statusEl.innerHTML = '<span class="live-dot"></span><span>Starting in ' + sec + 's</span>';
@@ -414,11 +436,29 @@ function renderArena(){
     else { $('countdownOverlay').classList.add('hidden'); }
   } else { $('countdownOverlay').classList.add('hidden'); }
 
+  // ===== RECREATE (follow new battle / live accept count) =====
+  if (b.recreate) {
+    if (b.recreate.newBattleId && !currentBattle.followed) {
+      currentBattle.followed = true;
+      followRecreate(b.recreate.newBattleId);
+      return;
+    }
+    if (currentBattle.recreateWaiting) {
+      var ri = $('recreateInfo');
+      if (ri) { ri.classList.remove('hidden'); ri.textContent = b.recreate.accepted.length + '/' + b.recreate.needed + ' accepted — waiting…'; }
+    }
+  }
+
   // ===== RESULT OVERLAY =====
   if (b.phase === 'done' && !currentBattle.resultShown) {
     currentBattle.resultShown = true;
-    // Wait for spin+reveal animations to finish before showing result
-    setTimeout(function () { showResult(); }, 1200);
+    var revealMs = caseCount * staggerMs + spinMs + 400;
+    if (b.jackpot && players.length) {
+      setTimeout(function () { runJackpotWheel(b); }, Math.max(900, revealMs));
+    } else {
+      // Wait for spin+reveal animations to finish before showing result
+      setTimeout(function () { showResult(); }, Math.max(1200, revealMs));
+    }
   }
 }
 
@@ -449,16 +489,7 @@ function buildPlayerGrid(b, players, caseCount, staggerMs, spinMs, isPlayer, isS
     var rewards = p.rewards || [];
     var opening = b.phase === 'opening';
 
-    // crazy mode: deterministic per-player reveal order
-    var order = [];
-    for (var oi = 0; oi < caseCount; oi++) order.push(oi);
-    if (b.crazy) {
-      var seed = 0;
-      for (var k = 0; k < p.uid.length; k++) seed = ((seed << 5) - seed + p.uid.charCodeAt(k)) | 0;
-      var rnd = function () { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-      for (var s2 = order.length - 1; s2 > 0; s2--) { var jj = Math.floor(rnd() * (s2 + 1)); var t2 = order[s2]; order[s2] = order[jj]; order[jj] = t2; }
-    }
-
+    // cases always open in order (crazy no longer means random order)
     var casesHTML = '<div class="case-row">';
     var totalVal = 0;
     var pid = p.uid.replace(/[^a-zA-Z0-9]/g, '');
@@ -466,8 +497,7 @@ function buildPlayerGrid(b, players, caseCount, staggerMs, spinMs, isPlayer, isS
     (b.cases || []).forEach(function (c, ci) {
       var item = rewards[ci];
       var tierData = tierMap[c.tier] || { color: '#22c55e33', label: c.tier, items: [{ s: '🎁' }] };
-      var orderIdx = order.indexOf(ci);
-      var delayMs = orderIdx * staggerMs; // when this case begins its spin, relative to openedAt
+      var delayMs = ci * staggerMs; // when this case begins its spin, relative to openedAt
       if (item) totalVal += item.v || 0;
 
       var slotCls = 'case';
@@ -535,10 +565,23 @@ function buildPlayerGrid(b, players, caseCount, staggerMs, spinMs, isPlayer, isS
       netHTML = '<div class="case-totals"><div class="lbl">Net</div><div class="val ' + cls2 + '">' + sgn + fmt(nw) + ' FC</div></div>';
     }
 
+    // avatar (CSGO frame) — fluxer pfp, fallback to initial
+    var avSrc = p.avatar || '';
+    var initial = escapeHtml(String(p.tag || p.uid || '?').replace(/^BOT\s+/, '').slice(0, 1).toUpperCase());
+    var avHtml = avSrc
+      ? '<img class="player-av" src="' + escapeHtml(avSrc) + '" alt="" onerror="this.outerHTML=&quot;<div class=\\&quot;player-av ph\\&quot;>' + initial + '</div>&quot;">'
+      : '<div class="player-av ph">' + initial + '</div>';
+    if (p.bot) tag = '<span class="badge badge-bot"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Bot</span>' + tag;
+    if (b.jackpot && typeof p.winChance === 'number') tag += '<span class="badge badge-chance">' + (p.winChance * 100).toFixed(p.winChance >= 0.1 ? 0 : 1) + '%</span>';
+
+    var reelWrap = '<div class="reel-wrap' + (opening ? ' opening' : '') + '">' + casesHTML +
+      '<div class="reel-av-overlay" aria-hidden="true">' + avHtml + '</div></div>';
+
     el.innerHTML += '<div class="' + cls + '">' +
-      '<div class="player-hdr"><div class="player-tag">' + escapeHtml(p.tag || p.uid) + '</div>' + tag +
+      '<div class="player-hdr">' + avHtml +
+        '<div class="player-tag">' + escapeHtml(String(p.tag || p.uid).replace(/^BOT\s+/, '')) + '</div>' + tag +
         '<div class="player-cost">' + fmt(p.cost || b.cost) + ' FC</div></div>' +
-      casesHTML + totalsHTML + netHTML + '</div>';
+      reelWrap + totalsHTML + netHTML + '</div>';
   });
 
   // Now DOM is in place — fire all the spin transitions
@@ -565,8 +608,9 @@ function showResult() {
   } else if (won) {
     iconCls = 'win';
     titleCls = 'win';
-    titleText = b.jackpot ? 'Jackpot win!' : 'Victory';
-    subText = 'You had the highest total value.';
+    titleText = b.jackpot ? 'Jackpot win!' : (b.crazy ? 'Crazy win!' : 'Victory');
+    subText = b.jackpot ? 'The wheel landed on you — you take the whole pot.'
+      : (b.crazy ? 'You had the lowest total — least profit wins.' : 'You had the highest total value.');
   } else if (tied) {
     iconCls = 'tie';
     titleCls = 'tie';
@@ -576,7 +620,8 @@ function showResult() {
     iconCls = 'lose';
     titleCls = 'lose';
     titleText = 'Defeat';
-    subText = 'Better luck next time.';
+    subText = b.crazy ? 'You pulled too much — lowest total wins.'
+      : (b.jackpot ? 'The wheel landed on someone else.' : 'Better luck next time.');
   }
   netColor = nw > 0 ? 'var(--accent)' : (nw < 0 ? 'var(--red)' : 'var(--gold)');
 
@@ -594,8 +639,87 @@ function showResult() {
   $('resultSub').textContent = subText;
   $('resultNet').style.color = netColor;
   $('resultNet').textContent = sign + fmt(nw) + ' FC';
+
+  // recreate button only for players in the battle
+  var rb = $('recreateBtn');
+  if (rb) { rb.style.display = b.isPlayer ? '' : 'none'; rb.disabled = false; }
+  var ri = $('recreateInfo'); if (ri) { ri.classList.add('hidden'); ri.textContent = ''; }
+
   $('resultOverlay').classList.remove('hidden');
   refreshBal();
+}
+
+function addBot(){
+  if(!currentBattle)return;
+  fetch('/api/case-battle/'+currentBattle.id+'/bot',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json()}).then(function(d){ if(d.error)alert(d.error); }).catch(function(){});
+}
+
+function recreateBattle(){
+  if(!currentBattle)return;
+  var rb=$('recreateBtn'); if(rb) rb.disabled=true;
+  fetch('/api/case-battle/'+currentBattle.id+'/recreate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json()}).then(function(d){
+      var ri=$('recreateInfo');
+      if(d.error){ if(rb)rb.disabled=false; if(ri){ri.classList.remove('hidden');ri.textContent=d.error;} return; }
+      if(d.battleId){ followRecreate(d.battleId); return; }
+      currentBattle.recreateWaiting=true;
+      if(ri){ ri.classList.remove('hidden'); ri.textContent=(d.accepted||1)+'/'+(d.needed||1)+' accepted — waiting…'; }
+    }).catch(function(){ if(rb)rb.disabled=false; });
+}
+
+function followRecreate(newId){
+  $('resultOverlay').classList.add('hidden');
+  $('jackpotOverlay').classList.add('hidden');
+  stopBattlePoll();
+  currentBattle={id:newId};
+  openedAt=0;lastData=null;
+  showArena();startBattlePoll();
+  refreshBal();
+}
+
+// CSGO-style player wheel for jackpot: spins through avatars, lands on winner.
+function runJackpotWheel(b){
+  var players=b.players||[];
+  if(!players.length){ showResult(); return; }
+  var widx = typeof b.jackpotWinnerIdx==='number' ? b.jackpotWinnerIdx : 0;
+  var winner=players[widx]||players[0];
+  // weighted pool: each player appears ~ proportional to win chance
+  var pool=[];
+  players.forEach(function(p){
+    var ch = typeof p.winChance==='number' ? p.winChance : (1/players.length);
+    var n=Math.max(1,Math.round(ch*40));
+    for(var i=0;i<n;i++)pool.push(p);
+  });
+  for(var s=pool.length-1;s>0;s--){var j=Math.floor(Math.random()*(s+1));var t=pool[s];pool[s]=pool[j];pool[j]=t;}
+  var REEL=48;
+  var TILE=88; // .jp-tile width(80)+margin(8)
+  function tileHtml(p){
+    var src=p.avatar||'';
+    var ini=escapeHtml(String(p.tag||'?').replace(/^BOT\s+/,'').slice(0,1).toUpperCase());
+    var inner=src?'<img src="'+escapeHtml(src)+'" alt="" onerror="this.outerHTML=&quot;<span>'+ini+'</span>&quot;">':'<span>'+ini+'</span>';
+    return '<div class="jp-tile">'+inner+'<div class="jp-name">'+escapeHtml(String(p.tag||'').replace(/^BOT\s+/,''))+'</div></div>';
+  }
+  var html='';
+  for(var r=0;r<REEL;r++) html+=tileHtml(pool[Math.floor(Math.random()*pool.length)]);
+  html+=tileHtml(winner);
+  var strip=$('jpStrip'), wheel=$('jpWheel');
+  strip.innerHTML=html;
+  strip.style.transition='none';
+  strip.style.transform='translateX(0)';
+  $('jackpotOverlay').classList.remove('hidden');
+  var center=wheel.offsetWidth/2;
+  var jitter=(Math.random()*40-20);
+  var targetX=center-(REEL*TILE)-(TILE/2)+jitter;
+  void strip.offsetHeight;
+  requestAnimationFrame(function(){
+    strip.style.transition='transform 4.2s cubic-bezier(.08,.6,.18,1)';
+    strip.style.transform='translateX('+targetX+'px)';
+  });
+  setTimeout(function(){
+    $('jackpotOverlay').classList.add('hidden');
+    showResult();
+  },4700);
 }
 
 function backToList() {

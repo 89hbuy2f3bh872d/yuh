@@ -385,7 +385,7 @@ function buildPage(data, prefix) {
       <button class="btn btn-secondary" onclick="adminAddItemRow()" style="margin-top:.5rem"><span style="font-size:1rem;line-height:1">+</span> Add item</button>
 
       <div style="margin-top:1.1rem;display:flex;gap:.5rem">
-        <button class="btn btn-primary" onclick="adminSaveCase()">Save tier</button>
+        <button class="btn btn-primary" id="ct-save-btn" onclick="adminSaveCase()">Save tier</button>
         <button class="btn btn-ghost" onclick="adminAddCase()">Clear</button>
       </div>
     </div>`;
@@ -522,6 +522,7 @@ function buildPage(data, prefix) {
   window.adminLoadCases = function adminLoadCases(){
     fetch('/api/admin/cases').then(function(r){return r.json()}).then(function(d){
       var tiers = (d && d.tiers) || [];
+      window._adminTiers = tiers;
       var tbody = document.getElementById('caseTableBody');
       if (!tbody) return;
       if (!tiers.length) {
@@ -536,9 +537,11 @@ function buildPage(data, prefix) {
         var typeCell = t.builtIn
           ? '<span style="color:var(--accent);font-weight:600;font-size:.7rem">Built-in</span>'
           : '<span style="color:var(--gold);font-weight:600;font-size:.7rem">Custom</span>';
+        var safeId = String(t.id).replace(/'/g,"\\\\'");
         var actionCell = t.builtIn
           ? '<span style="color:var(--text-dim)">&mdash;</span>'
-          : '<button class="btn-danger" onclick="adminDeleteCase(\\''+String(t.id).replace(/'/g,"\\\\'")+'\\')">Delete</button>';
+          : '<div style="display:flex;gap:.4rem"><button class="btn btn-ghost" style="padding:.25rem .6rem;font-size:.7rem" onclick="adminEditCase(\\''+safeId+'\\')">Edit</button>'+
+            '<button class="btn-danger" onclick="adminDeleteCase(\\''+safeId+'\\')">Delete</button></div>';
         return '<tr>'+
           '<td style="font-family:var(--font-mono);font-size:.7rem;color:var(--text)">'+esc(t.id)+'</td>'+
           '<td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+esc(t.color||'#22c55e')+';margin-right:.5rem;vertical-align:middle"></span>'+esc(t.label)+'</td>'+
@@ -596,14 +599,36 @@ function buildPage(data, prefix) {
   window.adminAddCase = function adminAddCase(){
     var idEl = document.getElementById('ct-id');
     if (!idEl) return;
+    window._adminEditId = null;
     idEl.value = '';
+    idEl.disabled = false;
     document.getElementById('ct-label').value = '';
     document.getElementById('ct-entry').value = '';
     document.getElementById('ct-color').value = '#22c55e';
     document.getElementById('ct-rows').innerHTML = '';
+    var sb = document.getElementById('ct-save-btn'); if (sb) sb.textContent = 'Save tier';
     adminAddItemRow();
     adminCalcRtp();
     idEl.focus();
+  };
+
+  // Load an existing custom tier into the form for editing.
+  window.adminEditCase = function adminEditCase(id){
+    var tier = (window._adminTiers || []).filter(function(t){ return String(t.id) === String(id); })[0];
+    if (!tier) { alert('Tier not found.'); return; }
+    if (tier.builtIn) { alert('Built-in tiers cannot be edited.'); return; }
+    window._adminEditId = String(tier.id);
+    document.getElementById('ct-id').value = tier.id;
+    document.getElementById('ct-id').disabled = true;
+    document.getElementById('ct-label').value = tier.label || '';
+    document.getElementById('ct-entry').value = tier.entry || '';
+    document.getElementById('ct-color').value = tier.color || '#22c55e';
+    document.getElementById('ct-rows').innerHTML = '';
+    (tier.items || []).forEach(function(it){ adminAddItemRow(it.s, it.n, it.v, it.w); });
+    if (!(tier.items || []).length) adminAddItemRow();
+    var sb = document.getElementById('ct-save-btn'); if (sb) sb.textContent = 'Update tier';
+    adminCalcRtp();
+    document.getElementById('ct-label').scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   window.adminSaveCase = function adminSaveCase(){
@@ -624,15 +649,18 @@ function buildPage(data, prefix) {
       items.push({ s:s, n:n, v:v, w:w });
     }
     if (!items.length) { alert('Add at least one item.'); return; }
-    fetch('/api/admin/cases', {
-      method: 'POST',
+    var editId = window._adminEditId;
+    var url = editId ? ('/api/admin/cases/' + encodeURIComponent(editId)) : '/api/admin/cases';
+    var method = editId ? 'PUT' : 'POST';
+    fetch(url, {
+      method: method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id:id, label:label, entry:entry, color:color, bg:'#0a1f0a', items:items })
     })
       .then(function(r){ return r.json(); })
       .then(function(d){
         if (d && d.error) { alert(d.error); return; }
-        alert('Tier saved!');
+        alert(editId ? 'Tier updated!' : 'Tier saved!');
         window.adminAddCase();
         window.adminLoadCases();
       })
