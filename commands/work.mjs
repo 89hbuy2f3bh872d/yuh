@@ -13,7 +13,7 @@ const _voteCache = new Map();
 const _inflight = new Map();
 
 /**
- * Check whether a Discord userId has voted for the bot on FluxerList.
+ * Check whether a Discord userId has voted for the server on FluxerList.
  * Results are cached per-UID for VOTE_TTL_MS to avoid hammering the API.
  */
 async function hasVoted(serverId, userId, apiKey) {
@@ -23,7 +23,7 @@ async function hasVoted(serverId, userId, apiKey) {
   if (cached && now - cached.cachedAt < VOTE_TTL_MS) return cached.voted;
 
   try {
-    const url = `${FL_LIST_URL}/servers/${botId}/voters`;
+    const url = `${FL_LIST_URL}/servers/${serverId}/voters`;
     const { default: fetch } = await import("undici").catch(() => ({ default: globalThis.fetch }));
     const fn = typeof fetch === "function" ? fetch : (u, o) => import("undici").then(m => m.default(u, o));
     const r = await fn(url, {
