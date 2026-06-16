@@ -566,6 +566,7 @@ function buildPage(data, prefix) {
     fetch('/api/admin/cases').then(function(r){return r.json()}).then(function(d){
       var tiers=d.tiers||[];
       var tbody=document.getElementById('caseTableBody');
+      if(!tbody)return;
       if(!tiers.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:1rem">No tiers found</td></tr>';return;}
       tbody.innerHTML=tiers.map(function(t){
         var avg=Math.round(t.items.reduce(function(s,i){return s+i.v*i.w},0)/t.items.reduce(function(s,i){return s+i.w},0));
@@ -577,10 +578,19 @@ function buildPage(data, prefix) {
           '<td>'+t.items.length+' items</td>'+
           '<td>'+rtp+'%</td>'+
           '<td>'+(t.builtIn?'<span style="color:var(--accent);font-weight:700;font-size:.68rem">Built-in</span>':'<span style="color:var(--gold);font-weight:700;font-size:.68rem">Custom</span>')+'</td>'+
-          '<td>'+(t.builtIn?'—':'<button onclick="adminDeleteCase(\''+esc(t.id)+'\')" style="color:var(--red);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Delete</button>')+'</td>'+
+          '<td>'+(t.builtIn?'&mdash;':'<button onclick="adminDeleteCase(\''+esc(t.id)+'\')" style="color:var(--red);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Delete</button>')+'</td>'+
         '</tr>';
       }).join('');
     }).catch(function(e){console.error(e)});
+  }
+  function adminAddCase(){
+    document.getElementById('ct-id').value='';
+    document.getElementById('ct-label').value='';
+    document.getElementById('ct-entry').value='';
+    document.getElementById('ct-color').value='#2ecc71';
+    document.getElementById('ct-bg').value='#0a1f0a';
+    document.getElementById('ct-items').value='';
+    document.getElementById('ct-id').focus();
   }
   function adminSaveCase(){
     var id=document.getElementById('ct-id').value.trim();
@@ -610,6 +620,7 @@ function buildPage(data, prefix) {
     fetch('/api/admin/users?search='+encodeURIComponent(search)+'&limit=30').then(function(r){return r.json()}).then(function(d){
       var users=d.users||[];
       var tbody=document.getElementById('balTableBody');
+      if(!tbody)return;
       if(!users.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:1rem">No users found</td></tr>';return;}
       tbody.innerHTML=users.map(function(u){
         return '<tr>'+
@@ -642,21 +653,22 @@ function buildPage(data, prefix) {
     fetch('/api/admin/battles').then(function(r){return r.json()}).then(function(d){
       var battles=d.battles||[];
       var tbody=document.getElementById('battleTableBody');
+      if(!tbody)return;
       if(!battles.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:1rem">No active battles</td></tr>';return;}
       tbody.innerHTML=battles.map(function(b){
         var flags=[];
-        if(b.speed==='fast')flags.push('⚡');
-        if(b.jackpot)flags.push('👑');
-        if(b.crazy)flags.push('🎲');
+        if(b.speed==='fast')flags.push('Fast');
+        if(b.jackpot)flags.push('Jackpot');
+        if(b.crazy)flags.push('Crazy');
         return '<tr>'+
-          '<td style="font-family:var(--font-mono);font-size:.65rem">'+esc(b.id.slice(0,12))+'…</td>'+
+          '<td style="font-family:var(--font-mono);font-size:.65rem">'+esc(b.id.slice(0,12))+'&hellip;</td>'+
           '<td>'+esc(b.mode)+'</td>'+
           '<td><span style="color:'+(b.phase==='pending'?'var(--gold)':'var(--accent)')+';font-weight:700">'+esc(b.phase)+'</span></td>'+
           '<td style="font-family:var(--font-mono)">'+fmt(b.cost)+'</td>'+
           '<td style="font-family:var(--font-mono)">'+fmt(b.pot)+'</td>'+
           '<td>'+b.players.length+'/'+b.maxPlayers+'</td>'+
           '<td>'+esc(b.speed||'normal')+'</td>'+
-          '<td>'+flags.join(' ')+'</td>'+
+          '<td>'+flags.join(', ')+'</td>'+
           '<td><button onclick="adminCancelBattle(\''+esc(b.id)+'\')" style="color:var(--red);font-weight:700;font-size:.68rem;cursor:pointer;background:none;border:none;padding:.2rem .4rem;border-radius:4px">Cancel</button></td>'+
         '</tr>';
       }).join('');
