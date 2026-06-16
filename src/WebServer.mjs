@@ -174,80 +174,75 @@ function serveFileWithRanges(req, res, fp, mime = getMime(fp), cc = "public, max
 const SHARED_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0a0f0c;--surface:#111a15;--surface2:#162019;--surface3:#1c2820;--border:#1e3028;--accent:#2ecc71;--accent2:#27ae60;--text:#e0efe4;--text2:#8aab96;--text3:#4a6e5a;--gold:#f0c040;--radius:10px}
+:root{--bg:#09090b;--surface:#111113;--surface2:#18181b;--surface3:#1f1f23;--border:#27272a;--border2:#3f3f46;--accent:#22c55e;--accent-hover:#16a34a;--text:#fafafa;--text2:#a1a1aa;--text3:#71717a;--text4:#3f3f46;--gold:#eab308;--red:#ef4444;--blue:#3b82f6;--purple:#a855f7;--radius:8px;--radius-lg:12px}
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}::-webkit-scrollbar-thumb:hover{background:var(--border2)}
 
-/* Nav */
-.nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);background:rgba(10,15,12,.85);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;padding:.6rem 1.5rem;min-height:52px}
-.nav-logo{font-weight:900;font-size:1rem;color:var(--accent);letter-spacing:-.02em;white-space:nowrap}
-.nav-logo span{color:var(--text);font-weight:600}
+.nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);background:rgba(9,9,11,.8);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;padding:.55rem 1.5rem;min-height:50px}
+.nav-logo{display:flex;align-items:center;gap:.45rem;font-weight:800;font-size:.92rem;color:var(--text);letter-spacing:-.01em;white-space:nowrap}
+.nav-logo .mark{width:22px;height:22px;border-radius:5px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:900;font-size:.7rem}
+.nav-logo b{color:var(--accent)}
 .nav-spacer{flex:1}
-.nav-bal{font-size:.78rem;font-weight:700;color:var(--text2);white-space:nowrap}
-.nav-bal strong{color:var(--accent);font-weight:800}
-.nav-link{font-size:.72rem;font-weight:600;color:var(--text3);padding:.35rem .7rem;border-radius:6px;transition:all .15s}
+.nav-bal{display:flex;align-items:center;gap:.35rem;font-size:.76rem;font-weight:600;color:var(--text2);white-space:nowrap;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:.25rem .65rem .25rem .5rem}
+.nav-bal b{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.nav-tag{font-size:.68rem;color:var(--text3);font-weight:500}
+.nav-link{font-size:.7rem;font-weight:600;color:var(--text3);padding:.3rem .65rem;border-radius:6px;transition:all .15s;display:inline-flex;align-items:center;gap:.3rem}
 .nav-link:hover{background:var(--surface);color:var(--text)}
 
-/* Wrap */
 .wrap{padding:1.5rem;max-width:1100px;margin:0 auto}
 
-/* Lobby */
-.section-title{font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:1.1rem;display:flex;align-items:center;gap:.45rem}
-.section-title::before{content:"";display:block;width:3px;height:13px;background:var(--accent);border-radius:2px}
-.provider-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin:1.5rem 0 .5rem;padding-bottom:.3rem;border-bottom:1px solid var(--border)}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem}
-.game-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s}
-.game-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.4);border-color:#2ecc7133}
-.game-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,var(--surface2),var(--surface));display:flex;align-items:center;justify-content:center;font-size:2.5rem;overflow:hidden;position:relative}
+.section-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:1.1rem;display:flex;align-items:center;gap:.45rem}
+.section-title::before{content:"";display:block;width:3px;height:12px;background:var(--accent);border-radius:2px}
+.provider-title{font-size:.66rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:1.5rem 0 .5rem;padding-bottom:.35rem;border-bottom:1px solid var(--border)}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.6rem}
+.game-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:all .15s}
+.game-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.game-thumb{width:100%;aspect-ratio:4/3;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:2.2rem;overflow:hidden;position:relative}
 .game-thumb img{width:100%;height:100%;object-fit:cover}
-.game-info{padding:.45rem .55rem .55rem}
-.game-name{font-size:.7rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.game-meta{font-size:.58rem;color:var(--text3);margin-top:.1rem}
+.game-info{padding:.4rem .55rem .55rem}
+.game-name{font-size:.7rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.game-meta{font-size:.56rem;color:var(--text3);margin-top:.1rem}
 
-/* Login */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 30%,#0f291a 0%,var(--bg) 60%)}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem 2rem;max-width:380px;width:100%;text-align:center;box-shadow:0 0 80px #2ecc7108;position:relative;overflow:hidden}
-.login-card::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,#2ecc7108 0%,transparent 60%);pointer-events:none}
-.login-logo{font-size:3rem;margin-bottom:.5rem}
-.login-title{font-size:1.8rem;font-weight:900;color:var(--accent);letter-spacing:-.02em;margin-bottom:.2rem}
-.login-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);margin-bottom:1.5rem}
-.login-desc{font-size:.88rem;color:var(--text2);display:block;margin-bottom:1.5rem;line-height:1.6}
-.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:var(--accent);color:#0a0f0c;font-size:.88rem;font-weight:800;padding:.75rem 1.6rem;border-radius:8px;box-shadow:0 4px 18px #2ecc7144;transition:all .15s;width:100%}
-.login-btn:hover{background:#3ee084;box-shadow:0 6px 26px #2ecc7166;transform:translateY(-1px)}
-.login-footer{margin-top:1.2rem;font-size:.64rem;color:var(--text3);line-height:1.7}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 0%,#0a1f0a 0%,var(--bg) 60%)}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2.5rem 2rem;max-width:380px;width:100%;text-align:center;position:relative}
+.login-card::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:60%;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+.login-logo{font-size:2.5rem;margin-bottom:.5rem}
+.login-title{font-size:1.6rem;font-weight:900;color:var(--text);letter-spacing:-.02em;margin-bottom:.15rem}
+.login-title b{color:var(--accent)}
+.login-sub{font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;color:var(--text3);margin-bottom:1.5rem}
+.login-desc{font-size:.85rem;color:var(--text2);display:block;margin-bottom:1.4rem;line-height:1.55}
+.login-btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;background:var(--accent);color:var(--bg);font-size:.85rem;font-weight:700;padding:.7rem 1.5rem;border-radius:var(--radius);transition:all .15s;width:100%}
+.login-btn:hover{background:var(--accent-hover)}
+.login-footer{margin-top:1.2rem;font-size:.62rem;color:var(--text4);line-height:1.6}
 
-/* Error */
-.err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 30%,#0f291a 0%,var(--bg) 60%)}
-.err-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;max-width:400px;width:100%;text-align:center}
-.err-card h1{color:var(--accent);font-size:1.3rem;font-weight:800;margin-bottom:.7rem}
-.err-card p{color:var(--text2);margin-bottom:1rem;line-height:1.6;font-size:.88rem}
-.err-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#0a0f0c;font-weight:800;padding:.65rem 1.3rem;border-radius:8px;font-size:.82rem;transition:all .15s}
-.err-btn:hover{background:#3ee084;transform:translateY(-1px)}
+.err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:radial-gradient(ellipse at 50% 0%,#0a1f0a 0%,var(--bg) 60%)}
+.err-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2rem;max-width:400px;width:100%;text-align:center}
+.err-card h1{color:var(--accent);font-size:1.2rem;font-weight:800;margin-bottom:.6rem}
+.err-card p{color:var(--text2);margin-bottom:1rem;line-height:1.5;font-size:.85rem}
+.err-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:var(--bg);font-weight:700;padding:.6rem 1.2rem;border-radius:var(--radius);font-size:.82rem;transition:all .15s}
+.err-btn:hover{background:var(--accent-hover)}
 
-/* Coming soon */
-.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:.8rem}
-.coming-soon-icon{font-size:3.5rem}
-.coming-soon-title{font-size:1.4rem;font-weight:900;color:var(--accent)}
-.coming-soon-sub{font-size:.85rem;color:var(--text2);max-width:42ch;line-height:1.6}
+.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:.7rem}
+.coming-soon-icon{font-size:3rem}
+.coming-soon-title{font-size:1.3rem;font-weight:900;color:var(--text)}
+.coming-soon-sub{font-size:.82rem;color:var(--text2);max-width:42ch;line-height:1.55}
 
-/* Game wrapper top bar */
-#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(10,15,12,.92);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none;font-family:'Inter',system-ui,sans-serif;color:var(--text)}
-.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .65rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:all .15s}
+#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(9,9,11,.92);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none;font-family:'Inter',system-ui,sans-serif;color:var(--text)}
+.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .6rem;border-radius:6px;font-size:.7rem;font-weight:600;white-space:nowrap;transition:all .15s}
 .fc-back:hover{border-color:var(--accent);color:var(--accent)}
 .fc-spacer{flex:1}
-.fc-title{font-size:.72rem;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
-.fc-bal{display:flex;align-items:center;gap:.28rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
-.fc-bal strong{color:var(--accent);font-size:.88rem}
-.fc-user{font-size:.67rem;color:var(--text3);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
-.fc-logout{font-size:.65rem;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;transition:color .15s}
+.fc-title{font-size:.7rem;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fc-bal{display:flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.2rem .5rem;font-weight:600;white-space:nowrap;font-size:.76rem}
+.fc-bal strong{color:var(--accent);font-size:.86rem;font-variant-numeric:tabular-nums}
+.fc-user{font-size:.65rem;color:var(--text3);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+.fc-logout{font-size:.64rem;color:var(--text3);white-space:nowrap;transition:color .15s}
 .fc-logout:hover{color:var(--accent)}
 #gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
 
-/* Responsive */
-@media(max-width:640px){.login-card{padding:1.8rem 1.3rem}.err-card{padding:1.5rem}.nav{padding:.5rem 1rem}.games-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
+@media(max-width:640px){.login-card{padding:1.8rem 1.3rem}.err-card{padding:1.5rem}.nav{padding:.5rem 1rem}.games-grid{grid-template-columns:repeat(auto-fill,minmax(135px,1fr))}}
 `;
 
 function shell(head, body) {
@@ -271,15 +266,15 @@ function lobbyPage(bal, tag, gamesByProvider) {
       sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
   }
-  return shell("", `<nav class="nav"><div class="nav-logo">Sir<span>Green</span></div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.72rem;color:var(--text3)">${esc(tag)}</span><a href="/case-battle" class="nav-link">⚔️ Battles</a><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="section-title">🎮 Game Lobby</div>${sections}</div>`);
+  return shell("", `<nav class="nav"><div class="nav-logo"><span class="mark">G</span><span>Sir<b>Green</b></span></div><div class="nav-spacer"></div><div class="nav-bal"><b>${Number(bal).toLocaleString()}</b>&nbsp;FC</div><span class="nav-tag">${esc(tag)}</span><a href="/case-battle" class="nav-link"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6 3 3-6 6-3-3z"/></svg>Battles</a><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="section-title">Game Lobby</div>${sections}</div>`);
 }
 
 function comingSoonPage(bal, tag) {
-  return shell("", `<nav class="nav"><div class="nav-logo">Sir<span>Green</span></div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.72rem;color:var(--text3)">${esc(tag)}</span><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on the way.</div></div></div>`);
+  return shell("", `<nav class="nav"><div class="nav-logo"><span class="mark">G</span><span>Sir<b>Green</b></span></div><div class="nav-spacer"></div><div class="nav-bal"><b>${Number(bal).toLocaleString()}</b>&nbsp;FC</div><span class="nav-tag">${esc(tag)}</span><a href="/logout" class="nav-link">Sign out</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on the way.</div></div></div>`);
 }
 
 function loginPage(authUrl) {
-  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">SirGreen</div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:var(--accent)">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">🟢&nbsp; Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
+  return shell("", `<div class="login-wrap"><div class="login-card"><div class="login-logo">🎰</div><div class="login-title">Sir<b>Green</b></div><div class="login-sub">Powered by FluxCoins</div><span class="login-desc">Login with your <strong style="color:var(--accent)">Fluxer</strong> account to play with your FluxCoin balance.</span><a class="login-btn" href="${esc(authUrl)}">Login with Fluxer</a><div class="login-footer">Global FluxCoin economy across all Fluxer servers.<br>Play responsibly.</div></div></div>`);
 }
 function errPage(title, msg, href, label) {
   return shell("", `<div class="err-wrap"><div class="err-card"><h1>${esc(title)}</h1><p>${esc(msg)}</p><a class="err-btn" href="${esc(href ?? "/login")}">${esc(label ?? "Back")}</a></div></div>`);
@@ -297,18 +292,18 @@ function gameWrapperPage(bal, tag, gameUrl, gameName) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0a0f0c;--surface:#111a15;--border:#1e3028;--accent:#2ecc71;--text:#e0efe4;--text2:#8aab96;--text3:#4a6e5a}
-html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
+:root{--bg:#09090b;--surface:#111113;--surface2:#18181b;--border:#27272a;--border2:#3f3f46;--accent:#22c55e;--accent-hover:#16a34a;--text:#fafafa;--text2:#a1a1aa;--text3:#71717a}
+html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
 a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;text-decoration:none}
-#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(10,15,12,.92);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none}
-.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .65rem;border-radius:6px;font-size:.7rem;font-weight:700;white-space:nowrap;transition:all .15s}
+#fcBar{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.4rem .75rem;background:rgba(9,9,11,.92);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--border);font-size:.76rem;min-height:44px;user-select:none}
+.fc-back{background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:.25rem .6rem;border-radius:6px;font-size:.7rem;font-weight:600;white-space:nowrap;transition:all .15s}
 .fc-back:hover{border-color:var(--accent);color:var(--accent)}
 .fc-spacer{flex:1}
-.fc-title{font-size:.72rem;color:var(--text2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
-.fc-bal{display:flex;align-items:center;gap:.28rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.22rem .55rem;font-weight:700;white-space:nowrap}
-.fc-bal strong{color:var(--accent);font-size:.88rem}
-.fc-user{font-size:.67rem;color:var(--text3);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
-.fc-logout{font-size:.65rem;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;transition:color .15s}
+.fc-title{font-size:.7rem;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fc-bal{display:flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.2rem .5rem;font-weight:600;white-space:nowrap;font-size:.76rem}
+.fc-bal strong{color:var(--accent);font-size:.86rem;font-variant-numeric:tabular-nums}
+.fc-user{font-size:.65rem;color:var(--text3);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+.fc-logout{font-size:.64rem;color:var(--text3);white-space:nowrap;transition:color .15s}
 .fc-logout:hover{color:var(--accent)}
 #gameFrame{position:fixed;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:none;display:block;background:var(--bg)}
 </style>
@@ -318,7 +313,7 @@ a,button{color:inherit;cursor:pointer;background:none;border:none;font:inherit;t
   <button class="fc-back" onclick="location.href='/lobby'">← Lobby</button>
   <span class="fc-title">${esc(gameName)}</span>
   <span class="fc-spacer"></span>
-  <div class="fc-bal">💰&nbsp;<strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
+  <div class="fc-bal"><strong id="fcBalNum">${safeBal.toLocaleString()}</strong>&nbsp;FC</div>
   <span class="fc-user">${esc(tag)}</span>
   <a href="/logout" class="fc-logout">Sign out</a>
 </div>
@@ -581,21 +576,16 @@ export class WebServer {
     });
 
     // Determine winner(s) and credit balances.
-    // IMPORTANT: entry fee was ALREADY deducted via atomicDeduct when
-    // creating/joining the battle. We only call updateBalance for amounts
-    // to ADD. Losers need no balance change (already paid).
-    // p.netWin stores the DISPLAY value (total profit/loss including entry).
     if (mode === "shared") {
       battle.winnerUid = "shared";
       const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
       const share = Math.floor((battle.pot - rake) / players.length);
       players.forEach(p => {
-        p.netWin = share - p.cost;               // display: e.g. +90 or -100
-        this.db.updateBalance(p.uid, share).catch(() => {});  // add share back
+        p.netWin = share - p.cost;
+        this.db.updateBalance(p.uid, share).catch(() => {});
         this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
       });
     } else {
-      // Regular: highest total item value wins the pot (minus rake, or 0 if jackpot)
       const maxValue = Math.max(...players.map(p => p.totalValue));
       const winners = players.filter(p => p.totalValue === maxValue);
       const rake = battle.jackpot ? 0 : Math.floor(battle.pot * 0.05);
@@ -605,16 +595,14 @@ export class WebServer {
         const winnerPayout = battle.pot - rake;
         players.forEach(p => {
           if (p === winners[0]) {
-            p.netWin = winnerPayout - p.cost;     // display: e.g. +90
+            p.netWin = winnerPayout - p.cost;
             this.db.updateBalance(p.uid, winnerPayout).catch(() => {});
           } else {
-            p.netWin = -p.cost;                   // display: e.g. -100
-            // Loser: already deducted, no balance change needed
+            p.netWin = -p.cost;
           }
           this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
         });
       } else {
-        // Tie for highest — split pot, no additional rake
         battle.winnerUid = "tie";
         const share = Math.floor((battle.pot - rake) / winners.length);
         players.forEach(p => {
@@ -631,31 +619,56 @@ export class WebServer {
 
     battle.phase = "done";
     battle.resolvedAt = Date.now();
-    // Auto-cleanup: remove from active battles after 60s
+    // Auto-cleanup: remove from active battles after 90s
     setTimeout(() => {
       const b = this._cbActive.get(battle.id);
-      if (b && b.phase === "done" && Date.now() - b.resolvedAt > 50000) {
+      if (b && b.phase === "done" && Date.now() - b.resolvedAt > 80000) {
         this._cbActive.delete(battle.id);
         for (const p of b.players) {
           if (this._cbUserBattle.get(p.uid) === battle.id) this._cbUserBattle.delete(p.uid);
         }
       }
-    }, 60_000);
+    }, 90_000);
   }
 
   _cbStartBattle(battle) {
     const isFast = battle.speed === "fast";
     const countdownMs = isFast ? 1500 : 3000;
-    const spinMs = isFast ? 1500 : 3000;
+    // Total animation time: 3s normal, 2s fast — long enough for sequential reveals
+    const totalAnimMs = isFast ? 2000 : 3500;
+    const caseCount = battle.cases.length;
+    // Per-case stagger: divide animation time across cases
+    // Each case gets: stagger (delay before spin starts) + spinTime (spinning animation)
+    const staggerMs = Math.max(300, Math.floor(totalAnimMs / (caseCount + 1)));
+    const spinMs = Math.max(500, Math.floor(staggerMs * 0.6));
+
     battle.phase = "countdown";
     battle.startsAt = Date.now() + countdownMs;
-    // countdown → opening phase (spinning animation) → resolve
+    battle.caseStaggerMs = staggerMs;
+    battle.caseSpinMs = spinMs;
+
+    // countdown → opening phase → resolve after full animation
+    const resolveAfter = countdownMs + 50 + staggerMs * caseCount + spinMs + 500;
     setTimeout(() => {
       const b = this._cbActive.get(battle.id);
       if (!b) return;
       b.phase = "opening";
       b.openedAt = Date.now();
-      setTimeout(() => this._cbResolve(b), spinMs);
+      b.caseStaggerMs = staggerMs;
+      b.caseSpinMs = spinMs;
+      // Resolve rewards immediately so frontend can poll them
+      this._cbResolve(b);
+      // But keep phase as "opening" for animation, switch to "done" after animation completes
+      b.phase = "opening";
+      b._resolvedButAnimating = true;
+      const animRemaining = staggerMs * caseCount + spinMs + 500;
+      setTimeout(() => {
+        const b2 = this._cbActive.get(battle.id);
+        if (b2 && b2._resolvedButAnimating) {
+          b2.phase = "done";
+          b2.resolvedAt = Date.now();
+        }
+      }, animRemaining);
     }, countdownMs + 50);
   }
 
@@ -1277,6 +1290,9 @@ export class WebServer {
         creatorUid: battle.creatorUid,
         phase: battle.phase,
         startsAt: battle.startsAt || null,
+        openedAt: battle.openedAt || null,
+        caseStaggerMs: battle.caseStaggerMs || 600,
+        caseSpinMs: battle.caseSpinMs || 400,
         winnerUid: battle.winnerUid,
         resolvedAt: battle.resolvedAt || null,
         isPlayer,
