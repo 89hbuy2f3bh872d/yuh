@@ -334,26 +334,25 @@ export class WebServer {
     this._admin       = new AdminPanel(db, config.prefix ?? "&");
 
     // ── Case Battle state ─────────────────────────────────────────────────────
-    // tier -> array of { uid, joinedAt }
-    this._cbQueue = new Map();
     // battleId -> battle state
-    this._cbActive = new Map();
-    // uid -> battleId  (reverse lookup so a user can't queue twice)
+    this._cbActive  = new Map();
+    // uid -> battleId  (prevents joining twice)
     this._cbUserBattle = new Map();
-    // Prune stale queue entries every 60 s
+    // uid -> tag (fetched lazily, cached)
+    this._cbTagCache = new Map();
+    // Prune stale battles every 90 s
     setInterval(() => {
-      const cut = Date.now() - 5 * 60 * 1000;
-      for (const [tier, q] of this._cbQueue) {
-        const filtered = q.filter(e => e.joinedAt > cut);
-        if (filtered.length === 0) this._cbQueue.delete(tier);
-        else this._cbQueue.set(tier, filtered);
+      const cut = Date.now() - 90 * 1000;
+      for (const [id, b] of this._cbActive) {
+        if (b.phase === "done" && b.resolvedAt < cut) this._cbActive.delete(id);
+        else if (b.phase === "pending" && b.createdAt < cut) this._cbActive.delete(id);
       }
-    }, 60_000);
+    }, 90_000);
   }
 
   // ─── Case Battle helpers ─────────────────────────────────────────────────
 
-  /** Case tier definitions — RTP baked into item pool values, 5% house rake on pot */
+  /** Case tier definitions */
   static CB_TIERS = [
     {
       id: "bronze", label: "Bronze", entry: 100,
@@ -372,42 +371,42 @@ export class WebServer {
       id: "silver", label: "Silver", entry: 500,
       color: "#C0C0C0", bg: "#0e0e1a",
       items: [
-        { s: "🥈", n: "Silver Bar",     v: 75,   w: 30 },
+        { s: "🥈", n: "Silver Bar",    v: 75,   w: 30 },
         { s: "🪙", n: "Gold Coin",      v: 150,  w: 25 },
         { s: "🔵", n: "Sapphire",       v: 250,  w: 18 },
-        { s: "🟡", n: "Gold Nugget",    v: 400,  w: 12 },
-        { s: "💎", n: "Diamond Chip",   v: 700,  w: 8  },
-        { s: "👑", n: "Silver Crown",   v: 1200, w: 4  },
-        { s: "🏆", n: "Grand Trophy",   v: 2000, w: 2  },
-        { s: "🔮", n: "Void Crystal",   v: 3500, w: 1  },
+        { s: "🟡", n: "Gold Nugget",   v: 400,  w: 12 },
+        { s: "💎", n: "Diamond Chip",  v: 700,  w: 8  },
+        { s: "👑", n: "Silver Crown",  v: 1200, w: 4  },
+        { s: "🏆", n: "Grand Trophy",  v: 2000, w: 2  },
+        { s: "🔮", n: "Void Crystal",  v: 3500, w: 1  },
       ],
     },
     {
       id: "gold", label: "Gold", entry: 2500,
       color: "#FFD700", bg: "#1a1400",
       items: [
-        { s: "🥇", n: "Gold Coin",       v: 400,   w: 28 },
-        { s: "💎", n: "Emerald",         v: 800,   w: 22 },
+        { s: "🥇", n: "Gold Coin",        v: 400,   w: 28 },
+        { s: "💎", n: "Emerald",          v: 800,   w: 22 },
         { s: "🟡", n: "Gold Bar",         v: 1500,  w: 18 },
-        { s: "🔵", n: "Sapphire Large",  v: 2500,  w: 12 },
-        { s: "👑", n: "Gold Crown",      v: 4000,  w: 10 },
-        { s: "🏆", n: "Champion Trophy", v: 7000,  w: 5  },
-        { s: "🔮", n: "Astral Orb",      v: 12000, w: 3  },
-        { s: "🌟", n: "Celestial Crown", v: 22000, w: 2  },
+        { s: "🔵", n: "Sapphire Large",   v: 2500,  w: 12 },
+        { s: "👑", n: "Gold Crown",       v: 4000,  w: 10 },
+        { s: "🏆", n: "Champion Trophy",  v: 7000,  w: 5  },
+        { s: "🔮", n: "Astral Orb",        v: 12000, w: 3  },
+        { s: "🌟", n: "Celestial Crown",   v: 22000, w: 2  },
       ],
     },
     {
       id: "diamond", label: "Diamond", entry: 10000,
       color: "#00D4FF", bg: "#00081a",
       items: [
-        { s: "💎", n: "Diamond",        v: 2000,  w: 28 },
-        { s: "🌟", n: "Star Shard",     v: 5000,  w: 22 },
-        { s: "👑", n: "Royal Crown",    v: 10000, w: 18 },
-        { s: "🏆", n: "Legend Trophy",  v: 18000, w: 12 },
-        { s: "🔮", n: "Void Gem",       v: 30000, w: 8  },
-        { s: "⚡", n: "Thunder Orb",    v: 50000, w: 5  },
-        { s: "🌌", n: "Galaxy Core",    v: 90000, w: 4  },
-        { s: "💠", n: "Infinity Crown", v: 180000,w: 3  },
+        { s: "💎", n: "Diamond",         v: 2000,  w: 28 },
+        { s: "🌟", n: "Star Shard",        v: 5000,  w: 22 },
+        { s: "👑", n: "Royal Crown",      v: 10000, w: 18 },
+        { s: "🏆", n: "Legend Trophy",   v: 18000, w: 12 },
+        { s: "🔮", n: "Void Gem",         v: 30000, w: 8  },
+        { s: "⚡", n: "Thunder Orb",      v: 50000, w: 5  },
+        { s: "🌌", n: "Galaxy Core",      v: 90000, w: 4  },
+        { s: "💠", n: "Infinity Crown",   v: 180000,w: 3  },
       ],
     },
   ];
@@ -423,45 +422,88 @@ export class WebServer {
     return tier.items[tier.items.length - 1];
   }
 
-  _cbRtp(tier) {
-    const avg = tier.items.reduce((s, i) => s + i.v * i.w, 0) /
-                tier.items.reduce((s, i) => s + i.w, 0);
-    return Math.round((avg / tier.entry) * 100);
+  _cbOpenCases(cases) {
+    // cases: [{tier, cost}]
+    return cases.map(c => {
+      const tier = this._cbTierById(c.tier);
+      if (!tier) return { tier: c.tier, cost: c.cost, reward: null, value: 0 };
+      const item = this._cbPickItem(tier);
+      return { tier: c.tier, cost: c.cost, reward: item, value: item.v };
+    });
   }
 
   _cbResolve(battle) {
-    const tier = this._cbTierById(battle.tier);
-    if (!tier) return;
-    const r1 = _cbPickItem(tier);
-    const r2 = _cbPickItem(tier);
-    battle.p1.reward = r1;
-    battle.p1.value = r1.v;
-    battle.p2.reward = r2;
-    battle.p2.value = r2.v;
+    if (battle.phase === "done") return;
+    const { mode, cases } = battle;
+    const players = battle.players;
+
+    // Each player opens all cases
+    players.forEach(p => {
+      const opened = this._cbOpenCases(cases);
+      p.rewards = opened.map(o => o.reward);
+      p.totalValue = opened.reduce((s, o) => s + (o.value || 0), 0);
+      p.cost = cases.reduce((s, c) => s + (c.cost || 0), 0);
+    });
+
+    // Determine winner(s)
+    if (mode === "shared") {
+      // Pot split equally
+      battle.winnerUid = "tie";
+      const rake = Math.floor(battle.pot * 0.05);
+      const share = Math.floor((battle.pot - rake) / players.length);
+      players.forEach(p => {
+        p.netWin = share - p.cost;
+        this.db.updateBalance(p.uid, p.netWin).catch(() => {});
+        this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
+      });
+    } else {
+      // Regular: highest single item wins everything (minus rake)
+      const maxValue = Math.max(...players.map(p => p.totalValue));
+      const winners = players.filter(p => p.totalValue === maxValue);
+      const rake = Math.floor(battle.pot * 0.05);
+      const winnerShare = Math.floor((battle.pot - rake) / winners.length);
+
+      if (winners.length === 1) {
+        battle.winnerUid = winners[0].uid;
+        players.forEach(p => {
+          if (p === winners[0]) {
+            p.netWin = winnerShare - p.cost;
+          } else {
+            p.netWin = -p.cost;
+          }
+          this.db.updateBalance(p.uid, p.netWin).catch(() => {});
+          this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
+        });
+      } else {
+        // Tie for highest — split pot, no rake
+        battle.winnerUid = "tie";
+        const share = Math.floor(battle.pot / winners.length);
+        players.forEach(p => {
+          if (winners.includes(p)) {
+            p.netWin = share - p.cost;
+          } else {
+            p.netWin = -p.cost;
+          }
+          this.db.updateBalance(p.uid, p.netWin).catch(() => {});
+          this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
+        });
+      }
+    }
+
     battle.phase = "done";
     battle.resolvedAt = Date.now();
-    const rake    = Math.floor(battle.pot * 0.05);
-    battle.rake   = rake;
-    const netWin  = battle.pot - rake; // winner gets this
-    if (battle.p1.value > battle.p2.value) {
-      battle.winner = battle.p1.uid;
-      battle.p1.netWin = netWin;
-      battle.p2.netWin = -battle.entry;
-    } else if (battle.p2.value > battle.p1.value) {
-      battle.winner = battle.p2.uid;
-      battle.p2.netWin = netWin;
-      battle.p1.netWin = -battle.entry;
-    } else {
-      // Tie — split the pot, no rake
-      battle.winner = "tie";
-      battle.p1.netWin = battle.entry;
-      battle.p2.netWin = battle.entry;
-    }
-    // Credit balances
-    this.db.updateBalance(battle.p1.uid, battle.p1.netWin).catch(() => {});
-    this.db.updateBalance(battle.p2.uid, battle.p2.netWin).catch(() => {});
-    this.db.recordGame(battle.p1.uid, battle.p1.netWin > 0, battle.entry).catch(() => {});
-    this.db.recordGame(battle.p2.uid, battle.p2.netWin > 0, battle.entry).catch(() => {});
+  }
+
+  _cbStartBattle(battle) {
+    battle.phase = "countdown";
+    battle.startsAt = Date.now() + 3000;
+    // 3s countdown → opening → resolve immediately after
+    setTimeout(() => {
+      const b = this._cbActive.get(battle.id);
+      if (!b) return;
+      b.phase = "opening";
+      setTimeout(() => this._cbResolve(b), 100);
+    }, 3050);
   }
 
   // ─── GoldSlot helpers (unchanged) ─────────────────────────────────────────
@@ -787,110 +829,159 @@ export class WebServer {
     }
 
     // ── Case Battle API ──────────────────────────────────────────────────────
+
+    // GET /api/case-battle/tiers — all case tier definitions
     if (p === "/api/case-battle/tiers" && req.method === "GET") {
       const tiers = WebServer.CB_TIERS.map(t => ({
         id: t.id, label: t.label, entry: t.entry,
         color: t.color, bg: t.bg,
-        rtp: this._cbRtp(t),
+        rtp: Math.round(t.items.reduce((s, i) => s + i.v * i.w, 0) /
+                        t.items.reduce((s, i) => s + i.w, 0) / t.entry * 100),
         items: t.items.map(i => ({ s: i.s, n: i.n, v: i.v })),
       }));
       return this._json(res, 200, { tiers });
     }
 
-    if (p === "/api/case-battle/queue" && req.method === "POST") {
+    // GET /api/case-battle/list — open battles (pending phase)
+    if (p === "/api/case-battle/list" && req.method === "GET") {
+      const uid = this._uid(req);
+      const battles = [...this._cbActive.values()]
+        .filter(b => b.phase !== "done")
+        .map(b => {
+          const players = b.players.map(p => ({
+            uid: p.uid,
+            tag: p.tag || p.uid,
+            isCreator: p.uid === b.creatorUid,
+          }));
+          return {
+            id: b.id,
+            mode: b.mode,
+            cases: b.cases,
+            cost: b.cost,
+            pot: b.pot,
+            maxPlayers: b.maxPlayers,
+            players,
+            creatorUid: b.creatorUid,
+            phase: b.phase,
+            createdAt: b.createdAt,
+          };
+        })
+        .sort((a, b) => a.createdAt - b.createdAt);
+      return this._json(res, 200, { battles });
+    }
+
+    // POST /api/case-battle/create — create a new battle
+    if (p === "/api/case-battle/create" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      const body = await readBody(req).catch(() => "{}");
+      const cookies = parseCookies(req);
+      const tag = decodeURIComponent(cookies.dtag || uid);
       let data;
-      try { data = JSON.parse(body); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
-      const tier = this._cbTierById(data.tier);
-      if (!tier) return this._json(res, 400, { error: "Invalid tier" });
+      try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const { cases, mode, maxPlayers } = data;
 
-      // Already in an active battle or queue?
-      if (this._cbUserBattle.has(uid)) {
-        const existing = this._cbUserBattle.get(uid);
-        const battle = this._cbActive.get(existing);
-        if (battle) return this._json(res, 200, { status: "in_battle", battleId: existing });
-        this._cbUserBattle.delete(uid);
+      if (!Array.isArray(cases) || cases.length === 0)
+        return this._json(res, 400, { error: "At least one case is required" });
+      if (!["regular", "shared"].includes(mode))
+        return this._json(res, 400, { error: "Invalid mode" });
+      const mp = Math.max(2, Math.min(8, Number(maxPlayers) || 2));
+
+      // Validate cases and compute entry cost
+      const validatedCases = [];
+      let entryCost = 0;
+      for (const c of cases) {
+        const tier = this._cbTierById(c.tier);
+        if (!tier) return this._json(res, 400, { error: `Invalid tier: ${c.tier}` });
+        const qty = Math.max(1, Math.min(20, Number(c.qty) || 1));
+        for (let i = 0; i < qty; i++) {
+          validatedCases.push({ tier: tier.id, cost: tier.entry });
+          entryCost += tier.entry;
+        }
       }
 
-      const deducted = await this.db.atomicDeduct(uid, -tier.entry);
+      // Deduct entry cost atomically
+      const deducted = await this.db.atomicDeduct(uid, -entryCost);
       if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
 
-      // Try to match with another player in queue
-      if (!this._cbQueue.has(tier.id)) this._cbQueue.set(tier.id, []);
-      const queue = this._cbQueue.get(tier.id);
-      const opponentIdx = queue.findIndex(e => e.uid !== uid);
-      if (opponentIdx >= 0) {
-        const opponent = queue.splice(opponentIdx, 1)[0];
-        const battleId = crypto.randomBytes(8).toString("hex");
-        const battle = {
-          id: battleId,
-          tier: tier.id,
-          entry: tier.entry,
-          pot: tier.entry * 2,
-          phase: "opening",
-          winner: null,
-          createdAt: Date.now(),
-          openedAt: Date.now() + 3000,
-          p1: { uid: opponent.uid, value: 0, reward: null, netWin: 0 },
-          p2: { uid,                value: 0, reward: null, netWin: 0 },
-        };
-        this._cbActive.set(battleId, battle);
-        this._cbUserBattle.set(opponent.uid, battleId);
-        this._cbUserBattle.set(uid, battleId);
-        // Queue the resolution for 3 seconds later
-        setTimeout(() => this._cbResolve(battle), 3050);
-        return this._json(res, 200, { status: "matched", battleId });
-      } else {
-        queue.push({ uid, joinedAt: Date.now() });
-        return this._json(res, 200, { status: "queued", position: queue.length });
-      }
+      const battleId = crypto.randomBytes(8).toString("hex");
+      const battle = {
+        id: battleId,
+        creatorUid: uid,
+        mode,
+        maxPlayers: mp,
+        cases: validatedCases,
+        cost: entryCost,
+        pot: entryCost * mp,
+        phase: "pending",
+        players: [{ uid, tag, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
+        createdAt: Date.now(),
+        resolvedAt: 0,
+        winnerUid: null,
+      };
+      this._cbActive.set(battleId, battle);
+      this._cbUserBattle.set(uid, battleId);
+      return this._json(res, 200, { battleId });
     }
 
-    if (p === "/api/case-battle/status" && req.method === "GET") {
+    // POST /api/case-battle/:id/join — join an existing battle
+    if (p.startsWith("/api/case-battle/") && p.endsWith("/join") && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      const battleId = new URL(req.url, "http://localhost").searchParams.get("battleId");
-      if (!battleId) return this._json(res, 400, { error: "battleId required" });
+      const cookies = parseCookies(req);
+      const tag = decodeURIComponent(cookies.dtag || uid);
+      const battleId = p.slice("/api/case-battle/".length, -"/join".length);
       const battle = this._cbActive.get(battleId);
-      if (!battle) return this._json(res, 200, { status: "not_found" });
+      if (!battle) return this._json(res, 200, { error: "Battle not found" });
+      if (battle.phase !== "pending")
+        return this._json(res, 200, { error: "Battle has already started" });
+      if (battle.players.some(p => p.uid === uid))
+        return this._json(res, 200, { error: "Already in this battle" });
+      if (battle.players.length >= battle.maxPlayers)
+        return this._json(res, 200, { error: "Battle is full" });
 
-      // Time-based phase trigger: if openedAt has passed, resolve now
-      if (battle.phase === "opening" && Date.now() >= battle.openedAt) {
-        this._cbResolve(battle);
+      const deducted = await this.db.atomicDeduct(uid, -battle.cost);
+      if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
+
+      battle.players.push({ uid, tag, cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
+      this._cbUserBattle.set(uid, battleId);
+
+      // If now full, start the battle
+      if (battle.players.length >= battle.maxPlayers) {
+        this._cbStartBattle(battle);
       }
 
-      const myPlayer = battle.p1.uid === uid ? battle.p1 : (battle.p2.uid === uid ? battle.p2 : null);
-      const oppPlayer = battle.p1.uid === uid ? battle.p2 : (battle.p2.uid === uid ? battle.p1 : null);
-      const isWinner = battle.winner === uid;
-      const isTie    = battle.winner === "tie";
+      return this._json(res, 200, { battleId });
+    }
+
+    // GET /api/case-battle/:id — get battle state (also used for watching)
+    if (p.startsWith("/api/case-battle/") && !p.includes("/join") && !p.includes("/create") && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const battleId = p.slice("/api/case-battle/".length);
+      const battle = this._cbActive.get(battleId);
+      if (!battle) return this._json(res, 200, { notFound: true });
 
       return this._json(res, 200, {
-        status: battle.phase,
-        battleId,
-        tier: battle.tier,
-        phase: battle.phase,
-        winner: battle.winner,
+        id: battle.id,
+        mode: battle.mode,
+        cases: battle.cases,
+        cost: battle.cost,
         pot: battle.pot,
-        rake: battle.rake ?? Math.floor(battle.pot * 0.05),
-        openedAt: battle.openedAt,
-        my: myPlayer ? { value: myPlayer.value, reward: myPlayer.reward, netWin: myPlayer.netWin } : null,
-        opp: oppPlayer ? { value: oppPlayer.value, reward: oppPlayer.reward } : null,
-        isWinner,
-        isTie,
-        myBattleId: battleId,
+        maxPlayers: battle.maxPlayers,
+        creatorUid: battle.creatorUid,
+        phase: battle.phase,
+        startsAt: battle.startsAt || null,
+        winnerUid: battle.winnerUid,
+        resolvedAt: battle.resolvedAt || null,
+        players: battle.players.map(p => ({
+          uid: p.uid,
+          tag: p.tag || p.uid,
+          cost: p.cost,
+          rewards: p.rewards || [],
+          totalValue: p.totalValue || 0,
+          netWin: p.netWin || 0,
+        })),
       });
-    }
-
-    if (p === "/api/case-battle/my" && req.method === "GET") {
-      const uid = this._uid(req);
-      if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      const battleId = this._cbUserBattle.get(uid);
-      if (!battleId) return this._json(res, 200, { status: "idle" });
-      const battle = this._cbActive.get(battleId);
-      if (!battle) { this._cbUserBattle.delete(uid); return this._json(res, 200, { status: "idle" }); }
-      return this._json(res, 200, { status: battle.phase, battleId, tier: battle.tier });
     }
 
     if (p === "/login" && req.method === "GET") {

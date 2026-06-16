@@ -8,179 +8,102 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
 body{background:#060e06;color:#e2ffe2;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
-
 a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
-
-/* Nav */
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track:background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7155;border-radius:99px}
 .nav{position:sticky;top:0;z-index:100;background:rgba(6,14,6,.92);backdrop-filter:blur(12px);border-bottom:1px solid #2ecc7122;display:flex;align-items:center;gap:.8rem;padding:.5rem 1.2rem;min-height:48px}
-.nav-logo{font-weight:900;color:#2ecc71;font-size:.95rem;white-space:nowrap;letter-spacing:-.01em}
+.nav-logo{font-weight:900;color:#2ecc71;font-size:.95rem;white-space:nowrap}
 .nav-spacer{flex:1}
 .nav-bal{font-size:.75rem;font-weight:700;color:#a8e6a8;white-space:nowrap}
 .nav-bal strong{color:#2ecc71}
 .nav-tag{font-size:.75rem;color:#a8d5a8}
-.nav-link{font-size:.72rem;color:#2ecc7188;border-bottom:1px solid #2ecc7133;transition:color .15s,border-color .15s}
+.nav-link{font-size:.72rem;color:#2ecc7188;border-bottom:1px solid #2ecc7133;transition:color .15s}
 .nav-link:hover{color:#2ecc71}
-
-/* Hero */
 .hero{background:radial-gradient(ellipse at 50% -20%,#0c2a12 0%,#060e06 70%);padding:3rem 1.5rem 2.5rem;text-align:center;border-bottom:1px solid #1c3a2244;position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232ecc71' fill-opacity='0.03'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");opacity:.8}
-.hero-emoji{font-size:3.5rem;display:block;margin-bottom:.6rem;filter:drop-shadow(0 0 20px #2ecc7155)}
+.hero-emoji{font-size:3.5rem;display:block;margin-bottom:.6rem;filter:drop-shadow(0 0 20px #2ecc7155);position:relative}
 .hero-title{font-size:2rem;font-weight:900;color:#2ecc71;letter-spacing:-.02em;text-shadow:0 0 30px #2ecc7144;position:relative}
 .hero-sub{font-size:.82rem;color:#4a9a4a;margin-top:.5rem;position:relative}
-.hero-tagline{display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:1rem;position:relative}
-.hero-tagline span{background:#0a1f0a;border:1px solid #2ecc7133;border-radius:99px;padding:.3rem .8rem;font-size:.7rem;font-weight:600;color:#a8e6a8}
-
-/* Sections */
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 1.5rem}
-.section-label{display:flex;align-items:center;gap:.6rem;font-size:.72rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#2ecc71;margin-bottom:1.1rem}
-.section-label::before{content:"";display:block;width:3px;height:14px;background:#2ecc71;border-radius:2px;box-shadow:0 0 8px #2ecc7188}
-.section-label .count{font-size:.62rem;color:#3a6a3a;font-weight:400;letter-spacing:0}
-
-/* Case Battle */
-.cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.9rem}
-.cb-card{background:#0a1f0a;border:1px solid #1c3a22;border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;position:relative}
-.cb-card:hover{transform:translateY(-3px)scale(1.02);box-shadow:0 10px 32px #2ecc7122;border-color:#2ecc7155}
-.cb-card-header{padding:1rem 1rem .6rem;position:relative;overflow:hidden}
-.cb-card-header::after{content:"";position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--tc),transparent)}
-.cb-tier{font-size:.62rem;font-weight:900;letter-spacing:.15em;text-transform:uppercase;color:var(--tc);opacity:.8}
-.cb-name{font-size:1.3rem;font-weight:900;color:var(--tc);margin-top:.15rem;letter-spacing:-.01em}
-.cb-card-body{padding:.6rem 1rem 1rem;background:#060e06}
-.cb-entry{display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem}
-.cb-entry-label{font-size:.65rem;color:#3a6a3a;font-weight:600;flex:1}
-.cb-entry-value{font-size:.9rem;font-weight:800;color:#e2ffe2}
-.cb-entry-value span{font-size:.65rem;font-weight:400;color:#4a9a4a}
-.cb-bar-wrap{background:#1c3a22;border-radius:99px;height:5px;overflow:hidden;margin-bottom:.5rem}
-.cb-bar-inner{height:100%;background:linear-gradient(90deg,var(--tc),color-mix(in srgb,var(--tc) 60%,#fff));border-radius:99px;min-width:3px;transition:width .4s ease}
-.cb-rtp{font-size:.62rem;color:#4a9a4a}
-.cb-rtp strong{color:var(--tc)}
-.cb-play{width:100%;margin-top:.6rem;padding:.45rem;background:linear-gradient(135deg,var(--tc),color-mix(in srgb,var(--tc) 70%,#000));color:#060e06;border-radius:8px;font-size:.75rem;font-weight:900;letter-spacing:.05em;text-transform:uppercase;transition:box-shadow .18s,transform .18s}
-.cb-card:hover .cb-play{box-shadow:0 4px 18px color-mix(in srgb,var(--tc) 40%,transparent);transform:scale(1.01)}
-
-/* Slots */
-.slots-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:2rem}
-.slot-card{background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s}
-.slot-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px #0003}
-.slot-thumb{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,#071507,#0d2b0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem}
-.slot-info{padding:.4rem .5rem .5rem}
-.slot-name{font-size:.68rem;font-weight:700;color:#c8f5c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.slot-meta{font-size:.58rem;color:#4a9a4a;margin-top:.1rem}
-.slot-disabled{position:relative}
-.slot-disabled::after{content:"COMING SOON";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:.58rem;font-weight:900;letter-spacing:.1em;color:#2ecc71;background:rgba(6,14,6,.85);padding:.2rem .5rem;border-radius:4px;border:1px solid #2ecc7144}
-.slot-soon{text-align:center;padding:2rem;background:#0a1f0a;border:1px dashed #1c3a22;border-radius:11px;color:#3a6a3a;font-size:.8rem}
-
-/* Quick links */
-.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-top:2rem}
-.quick-card{display:flex;align-items:center;gap:.7rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:.75rem 1rem;cursor:pointer;transition:border-color .18s,background .18s}
-.quick-card:hover{border-color:#2ecc7155;background:#0f2a0f}
-.quick-icon{font-size:1.5rem;flex-shrink:0}
-.quick-info{overflow:hidden}
-.quick-name{font-size:.78rem;font-weight:700;color:#c8f5c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.quick-desc{font-size:.6rem;color:#4a9a4a;margin-top:.1rem}
-
-/* Responsive */
-@media(max-width:600px){
-  .hero{padding:2rem 1rem 2rem}
-  .hero-title{font-size:1.5rem}
-  .cb-grid{grid-template-columns:repeat(2,1fr)}
-  .wrap{padding:1.5rem 1rem}
-}
+.game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+.game-card{background:#0a1f0a;border:1px solid #1c3a22;border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;text-decoration:none;color:inherit;display:block}
+.game-card:hover{transform:translateY(-4px)scale(1.02);box-shadow:0 12px 36px #2ecc7122;border-color:#2ecc7155}
+.game-thumb{width:100%;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;font-size:3rem;position:relative;overflow:hidden}
+.game-thumb .glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 80%,var(--gc,#2ecc7133) 0%,transparent 70%)}
+.game-info{padding:.8rem 1rem}
+.game-name{font-size:.9rem;font-weight:800;color:#e2ffe2;letter-spacing:-.01em}
+.game-desc{font-size:.68rem;color:#4a9a4a;margin-top:.25rem;line-height:1.4}
+.game-badge{display:inline-block;margin-top:.4rem;padding:.15rem .5rem;border-radius:99px;font-size:.58rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid}
+.badge-live{color:#2ecc71;border-color:#2ecc7133;background:#0a2a10}
+.badge-soon{color:#4a9a4a;border-color:#1c3a22;background:#0a1f0a}
+@media(max-width:600px){.hero{padding:2rem 1rem 1.5rem}.hero-title{font-size:1.5rem}.game-grid{grid-template-columns:repeat(2,1fr)}.wrap{padding:1.2rem 1rem}}
 </style>
 </head>
 <body>
-
 <nav class="nav">
   <div class="nav-logo">🎰 SirGreen Casino</div>
   <div class="nav-spacer"></div>
   <div class="nav-bal">Balance: <strong id="navBal">__BALANCE__ FC</strong></div>
   <span class="nav-tag" id="navTag">__TAG__</span>
-  <a href="/case-battle" class="nav-link">⚔️ Case Battle</a>
   <a href="/logout" class="nav-link">logout</a>
 </nav>
-
 <section class="hero">
   <span class="hero-emoji">🎰</span>
   <div class="hero-title">SirGreen Casino</div>
   <div class="hero-sub">The Fluxer economy built for real stakes.</div>
-  <div class="hero-tagline">
-    <span>⚔️ Case Battle</span>
-    <span>🎲 Dice</span>
-    <span>🪙 Coin Flip</span>
-    <span>🎰 Slots</span>
-    <span>🃏 Blackjack</span>
-  </div>
 </section>
-
 <div class="wrap">
-  <!-- Case Battle -->
-  <div class="section-label">⚔️ Case Battle<span class="count"> — 1v1 · 5% house rake</span></div>
-  <div class="cb-grid" id="cbGrid"></div>
-
-  <!-- Slots -->
-  <div class="section-label" style="margin-top:2.5rem">🎰 Slots<span class="count"> — coming soon</span></div>
-  <div class="slots-grid" id="slotsGrid">
-    <div class="slot-soon" style="grid-column:1/-1">Slot games are coming soon — powered by GoldSlot. Stay tuned!</div>
-  </div>
-
-  <!-- Quick links -->
-  <div class="section-label" style="margin-top:2.5rem">🎮 Quick Commands</div>
-  <div class="quick-grid">
-    <div class="quick-card" onclick="location.href='/case-battle'">
-      <span class="quick-icon">⚔️</span>
-      <div class="quick-info">
-        <div class="quick-name">Case Battle</div>
-        <div class="quick-desc">1v1 · 5% rake</div>
+  <div class="game-grid">
+    <a class="game-card" href="/case-battle">
+      <div class="game-thumb" style="background:linear-gradient(135deg,#0a1a0a,#0d2b0d);--gc:#2ecc7144">
+        <span style="position:relative;z-index:1">⚔️</span>
+        <div class="glow"></div>
       </div>
-    </div>
-    <div class="quick-card" onclick="location.href='/lobby'">
-      <span class="quick-icon">🎰</span>
-      <div class="quick-info">
-        <div class="quick-name">Lobby</div>
-        <div class="quick-desc">All games</div>
+      <div class="game-info">
+        <div class="game-name">Case Battle</div>
+        <div class="game-desc">Open cases head-to-head. Create or join battles — winner takes the pot.</div>
+        <span class="game-badge badge-live">Live</span>
       </div>
-    </div>
+    </a>
+    <a class="game-card" href="/lobby">
+      <div class="game-thumb" style="background:linear-gradient(135deg,#0a0e1a,#0d142b);--gc:#60c0f044">
+        <span style="position:relative;z-index:1">🎰</span>
+        <div class="glow"></div>
+      </div>
+      <div class="game-info">
+        <div class="game-name">Slots</div>
+        <div class="game-desc">GoldSlot powered slot machines. Spin to win big.</div>
+        <span class="game-badge badge-soon">Coming Soon</span>
+      </div>
+    </a>
+    <a class="game-card" href="/lobby">
+      <div class="game-thumb" style="background:linear-gradient(135deg,#1a0e06,#2b1a0d);--gc:#f0802044">
+        <span style="position:relative;z-index:1">🎲</span>
+        <div class="glow"></div>
+      </div>
+      <div class="game-info">
+        <div class="game-name">Live Tables</div>
+        <div class="game-desc">Roulette, blackjack, and more with live dealers.</div>
+        <span class="game-badge badge-soon">Coming Soon</span>
+      </div>
+    </a>
+    <a class="game-card" href="/lobby">
+      <div class="game-thumb" style="background:linear-gradient(135deg,#0e061a,#1a0d2b);--gc:#b060f044">
+        <span style="position:relative;z-index:1">🏆</span>
+        <div class="glow"></div>
+      </div>
+      <div class="game-info">
+        <div class="game-name">Tournaments</div>
+        <div class="game-desc">Compete against the house and other players for the top spot.</div>
+        <span class="game-badge badge-soon">Coming Soon</span>
+      </div>
+    </a>
   </div>
 </div>
-
 <script>
 (function(){
-  var balTimer;
-  function refreshBal() {
-    fetch('/api/balance').then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(d){ if(d&&d.bal!==undefined) document.getElementById('navBal').textContent = Number(d.bal).toLocaleString()+' FC'; })
-      .catch(function(){});
-  }
-  refreshBal();
-  balTimer = setInterval(refreshBal, 8000);
-
-  // Load Case Battle tiers
-  fetch('/api/case-battle/tiers').then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(data){
-      if(!data||!data.tiers) return;
-      var grid=document.getElementById('cbGrid');
-      data.tiers.forEach(function(tier){
-        var card=document.createElement('div');
-        card.className='cb-card';
-        card.style.setProperty('--tc',tier.color);
-        card.style.background = tier.bg;
-        card.onclick=function(){ location.href='/case-battle?tier='+tier.id; };
-        card.innerHTML='<div class="cb-card-header" style="--tc:'+tier.color+'">'+
-          '<div class="cb-tier">'+tier.label+' Case</div>'+
-          '<div class="cb-name">'+tier.label+'</div>'+
-        '</div>'+
-        '<div class="cb-card-body">'+
-          '<div class="cb-entry">'+
-            '<span class="cb-entry-label">Entry fee</span>'+
-            '<span class="cb-entry-value">'+Number(tier.entry).toLocaleString()+' <span>FC</span></span>'+
-          '</div>'+
-          '<div class="cb-bar-wrap"><div class="cb-bar-inner" style="width:'+tier.rtp+'%"></div></div>'+
-          '<div class="cb-rtp">RTP: <strong>'+tier.rtp+'%</strong> &nbsp;·&nbsp; Max: '+Number(Math.round(tier.entry*25)).toLocaleString()+' FC</div>'+
-          '<button class="cb-play">Play '+tier.label+'</button>'+
-        '</div>';
-        grid.appendChild(card);
-      });
-    }).catch(function(e){ console.error(e); });
+  function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined)document.getElementById('navBal').textContent=Number(d.bal).toLocaleString()+' FC'}).catch(function(){})}
+  refreshBal();setInterval(refreshBal,8000);
 })();
 </script>
 </body>

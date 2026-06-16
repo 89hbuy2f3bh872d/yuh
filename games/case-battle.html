@@ -3,15 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>⚔️ Case Battle — SirGreen Casino</title>
+<title>Case Battle — SirGreen Casino</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:#060e06;color:#e2ffe2;font-family:'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
 a{color:inherit;text-decoration:none}
-button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7144;border-radius:99px}
-
-/* ─── Nav ─────────────────────────────────────────────── */
+button{cursor:pointer;border:none;color:inherit;font:inherit}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track:background:#0a1a0a}::-webkit-scrollbar-thumb{background:#2ecc7144;border-radius:99px}
+.hidden{display:none!important}
+input,select{background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;color:#e2ffe2;padding:.45rem .7rem;font-size:.82rem;font-family:inherit;outline:none;transition:border-color .15s}
+input:focus,select:focus{border-color:#2ecc71}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
 .nav{display:flex;align-items:center;gap:.8rem;padding:.5rem 1.2rem;background:rgba(6,14,6,.95);border-bottom:1px solid #2ecc7122;min-height:48px;position:sticky;top:0;z-index:100}
 .nav-logo{font-weight:900;color:#2ecc71;font-size:.95rem}
 .nav-spacer{flex:1}
@@ -20,85 +23,139 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 .nav-tag{font-size:.75rem;color:#a8d5a8}
 .nav-link{font-size:.72rem;color:#2ecc7188;border-bottom:1px solid #2ecc7133;transition:color .15s}
 .nav-link:hover{color:#2ecc71}
+.wrap{max-width:980px;margin:0 auto;padding:1.5rem}
 
-/* ─── Shared ──────────────────────────────────────────── */
-.hidden{display:none!important}
-.wrap{max-width:960px;margin:0 auto;padding:1.5rem}
+/* Page headers */
+.page-title{font-size:1.4rem;font-weight:900;color:#e2ffe2;letter-spacing:-.01em;margin-bottom:.3rem}
+.page-sub{font-size:.78rem;color:#4a9a4a;margin-bottom:1.5rem}
 
-/* ─── View: Tier Select ───────────────────────────────── */
-.select-title{text-align:center;margin-bottom:2rem}
-.select-title h2{font-size:1.6rem;font-weight:900;color:#e2ffe2;letter-spacing:-.01em}
-.select-title p{font-size:.78rem;color:#4a9a4a;margin-top:.4rem}
-.tier-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.9rem}
-.tier-card{background:#0a1f0a;border:2px solid var(--tc);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s;position:relative}
-.tier-card:hover{transform:translateY(-3px);box-shadow:0 10px 32px color-mix(in srgb,var(--tc) 30%,transparent)}
-.tier-card.selected{border-color:var(--tc);box-shadow:0 0 0 1px var(--tc),0 0 24px color-mix(in srgb,var(--tc) 35%,transparent)}
-.tier-hdr{padding:1rem 1rem .7rem;background:linear-gradient(135deg,var(--tc) 0%,transparent 60%);position:relative}
-.tier-hdr::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--tc)}
-.tier-label{font-size:.6rem;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--tc);opacity:.7}
-.tier-name{font-size:1.5rem;font-weight:900;color:var(--tc);margin-top:.2rem;letter-spacing:-.02em}
-.tier-body{padding:.8rem 1rem}
-.tier-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
-.tier-row-lbl{font-size:.65rem;color:#3a6a3a;font-weight:600}
-.tier-row-val{font-size:.88rem;font-weight:700;color:#e2ffe2}
-.tier-row-val span{font-size:.6rem;color:#4a9a4a;font-weight:400}
-.tier-bar{background:#1c3a22;border-radius:99px;height:4px;overflow:hidden;margin-bottom:.5rem}
-.tier-bar-inner{height:100%;background:var(--tc);border-radius:99px;min-width:3px;transition:width 1s ease}
-.tier-rtp{font-size:.62rem;color:#4a9a4a}
-.tier-rtp strong{color:var(--tc)}
-.join-btn{width:100%;margin-top:.7rem;padding:.55rem;border-radius:8px;background:linear-gradient(135deg,var(--tc),color-mix(in srgb,var(--tc) 60%,#000));color:#060e06;font-size:.8rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;transition:box-shadow .18s,transform .18s}
-.tier-card:hover .join-btn{box-shadow:0 4px 18px color-mix(in srgb,var(--tc) 45%,transparent);transform:scale(1.01)}
-.join-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+/* Battle list */
+.battle-list{display:flex;flex-direction:column;gap:.75rem}
+.battle-card{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:1rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:.8rem 1rem;transition:border-color .15s}
+.battle-card:hover{border-color:#2ecc7155}
+.battle-card.full{border-color:#3a6a3a44}
+.battle-info{display:flex;flex-direction:column;gap:.25rem}
+.battle-title{font-size:.88rem;font-weight:700;color:#e2ffe2}
+.battle-meta{font-size:.65rem;color:#4a9a4a;display:flex;gap:.8rem;flex-wrap:wrap}
+.battle-meta span{display:flex;align-items:center;gap:.2rem}
+.battle-players{display:flex;align-items:center;gap:.5rem;font-size:.72rem;color:#a8e6a8;white-space:nowrap}
+.player-dot{width:8px;height:8px;border-radius:50%;background:#2ecc71;flex-shrink:0}
+.player-dot.empty{background:#1c3a22}
+.battle-actions{display:flex;gap:.5rem;align-items:center}
+.btn{padding:.45rem 1rem;border-radius:7px;font-size:.75rem;font-weight:700;transition:box-shadow .15s,transform .15s}
+.btn-primary{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06}
+.btn-primary:hover{box-shadow:0 4px 14px #2ecc7144;transform:translateY(-1px)}
+.btn-secondary{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8}
+.btn-secondary:hover{background:#0f2a0f}
+.btn-watch{background:#1a1a1a;border:1px solid #3a3a3a;color:#4a4a4a}
+.btn-full{opacity:.4;cursor:not-allowed}
+.empty-state{text-align:center;padding:3rem 1rem;background:#0a1f0a;border:1px dashed #1c3a22;border-radius:11px;color:#3a6a3a;font-size:.85rem}
 
-/* ─── View: Matchmaking ──────────────────────────────── */
-.match-wrap{min-height:calc(100vh - 48px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem}
-.match-icon{font-size:4rem;display:block;margin-bottom:1.2rem;animation:float 2s ease-in-out infinite}
-@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-.match-title{font-size:1.8rem;font-weight:900;color:#2ecc71;letter-spacing:-.02em;margin-bottom:.4rem}
-.match-sub{font-size:.82rem;color:#4a9a4a;margin-bottom:2rem}
-.spinner-ring{width:48px;height:48px;border:3px solid #1c3a22;border-top-color:#2ecc71;border-radius:50%;animation:spin .9s linear infinite;margin:0 auto}
-@keyframes spin{to{transform:rotate(360deg)}}
-.match-actions{display:flex;gap:.8rem;justify-content:center;margin-top:2rem}
-.btn-cancel{padding:.6rem 1.4rem;background:#1a0808;border:1px solid #7a1a2a;color:#e07070;border-radius:8px;font-size:.78rem;font-weight:700;transition:background .15s}
-.btn-cancel:hover{background:#2a0f0f}
-.btn-back{padding:.6rem 1.4rem;background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;border-radius:8px;font-size:.78rem;font-weight:700;transition:background .15s}
-.btn-back:hover{background:#0f2a0f}
+/* Create battle */
+.create-wrap{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
+.create-card{background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:1.2rem}
+.create-section-label{font-size:.65rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#4a9a4a;margin-bottom:.8rem;padding-bottom:.5rem;border-bottom:1px solid #1c3a2244}
+.mode-toggle{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.8rem}
+.mode-btn{padding:.6rem;border-radius:7px;border:1px solid #1c3a22;font-size:.78rem;font-weight:700;color:#4a9a4a;text-align:center;cursor:pointer;transition:all .15s;background:#060e06}
+.mode-btn.active{background:#0f2a0f;border-color:#2ecc71;color:#2ecc71}
+.mode-desc{font-size:.65rem;color:#3a6a3a;margin-bottom:1rem;line-height:1.4}
+.case-tiers{display:flex;flex-direction:column;gap:.5rem}
+.case-tier-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:.7rem;background:#060e06;border:1px solid #1c3a2244;border-radius:8px;padding:.5rem .7rem}
+.case-tier-color{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.case-tier-name{font-size:.78rem;font-weight:700;color:#e2ffe2}
+.case-tier-info{font-size:.6rem;color:#4a9a4a;text-align:right}
+.case-tier-cost{font-size:.65rem;color:#3a6a3a;text-align:right}
+.qty-ctrl{display:flex;align-items:center;gap:.3rem}
+.qty-btn{width:26px;height:26px;border-radius:5px;background:#0a1f0a;border:1px solid #2ecc7133;color:#2ecc71;font-size:1rem;line-height:1;text-align:center;padding:0;flex-shrink:0;transition:background .15s}
+.qty-btn:hover{background:#1c3a22}
+.qty-num{font-size:.82rem;font-weight:700;color:#e2ffe2;min-width:24px;text-align:center}
+.player-count-row{display:flex;align-items:center;gap:.8rem;margin-bottom:.8rem}
+.player-count-label{font-size:.78rem;font-weight:700;color:#e2ffe2;flex:1}
+.player-count-btn{width:30px;height:30px;border-radius:6px;background:#0a1f0a;border:1px solid #2ecc7133;color:#2ecc71;font-size:1rem;line-height:1;text-align:center;padding:0}
+.cost-summary{background:#060e06;border:1px solid #1c3a22;border-radius:8px;padding:.8rem;margin-top:1rem}
+.cost-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;font-size:.78rem}
+.cost-row:last-child{margin-bottom:0}
+.cost-label{color:#4a9a4a}
+.cost-val{font-weight:700;color:#e2ffe2}
+.cost-total .cost-label{font-weight:700;color:#2ecc71;font-size:.88rem}
+.cost-total .cost-val{font-size:1.1rem;color:#2ecc71;font-weight:900}
+.rake-note{font-size:.62rem;color:#3a6a3a;margin-top:.4rem;text-align:center}
 
-/* ─── View: Battle Arena ─────────────────────────────── */
-.arena{display:grid;grid-template-columns:1fr auto 1fr;gap:1rem;align-items:center;min-height:calc(100vh - 48px)}
-.arena-player{display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:1.5rem;border-radius:14px;background:#0a1f0a;border:1px solid #1c3a22;position:relative}
-.arena-player.winner{border-color:var(--tc);box-shadow:0 0 24px color-mix(in srgb,var(--tc) 30%,transparent)}
-.arena-player.loser{opacity:.6}
-.arena-vs{font-size:1.4rem;font-weight:900;color:#3a6a3a;padding:1rem 0}
-.player-tag{font-size:.78rem;font-weight:700;color:#a8e6a8}
-.player-tag.you{color:#2ecc71}
-.case-display{width:120px;height:120px;border-radius:14px;background:linear-gradient(135deg,#1c3a22,#0a1f0a);border:2px solid #2ecc7133;display:flex;align-items:center;justify-content:center;font-size:3.5rem;position:relative;overflow:hidden;margin:.5rem 0}
-.case-display::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 60%,#2ecc7111);border-radius:12px}
-.case-anim{animation:none}
-.case-anim.spinning{animation:caseSpin 0.4s ease-in-out infinite}
-@keyframes caseSpin{0%{transform:rotateY(0deg)}50%{transform:rotateY(90deg)}100%{transform:rotateY(0deg)}}
-.case-glow{position:absolute;inset:-4px;border-radius:16px;background:radial-gradient(circle,var(--tc) 0%,transparent 70%);opacity:.15;animation:pulse 1.5s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.3;transform:scale(1.05)}}
-.reward-display{text-align:center;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.reward-emoji{font-size:2.5rem;display:block;line-height:1}
-.reward-name{font-size:.75rem;font-weight:700;color:#c8f5c8;margin-top:.3rem}
-.reward-value{font-size:1.1rem;font-weight:900;color:var(--tc);margin-top:.2rem;letter-spacing:-.01em}
-.reward-value.winner-val{color:#2ecc71}
-.case-placeholder{color:#1c3a22;font-size:2.5rem;line-height:1}
-.countdown{font-size:2rem;font-weight:900;color:var(--tc);font-family:'Segoe UI',system-ui,sans-serif;text-align:center;line-height:1;min-height:2.4rem}
-.countdown.big{font-size:3.5rem;animation:countPop .5s ease both}
-@keyframes countPop{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
-.result-label{font-size:.78rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;margin-top:.4rem;padding:.25rem .6rem;border-radius:99px}
-.result-label.win{background:#0a2a10;border:1px solid #2ecc7144;color:#2ecc71}
-.result-label.lose{background:#1a0808;border:1px solid #7a1a2a44;color:#e05050}
-.result-label.tie{background:#1a1400;border:1px solid #f1c40f44;color:#f1c40f}
+/* Battle arena */
+.arena{width:100%}
+.arena-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;gap:1rem}
+.arena-mode{font-size:.72rem;font-weight:700;padding:.25rem .7rem;border-radius:99px}
+.arena-mode.shared{background:#0a1428;border:1px solid #60c0f044;color:#60c0f0}
+.arena-mode.regular{background:#0a1a0a;border:1px solid #2ecc7144;color:#2ecc71}
+.arena-status{font-size:.75rem;color:#4a9a4a}
+.arena-slots{display:flex;flex-direction:column;gap:1rem;margin-bottom:1.5rem}
+.arena-player{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:1rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:1rem 1.2rem;transition:border-color .5s}
+.arena-player.me{border-color:#2ecc7133}
+.arena-player.winner{border-color:#2ecc71;background:#0a2010}
+.arena-player.loser{opacity:.5}
+.arena-player-tag{display:flex;align-items:center;gap:.5rem;min-width:100px}
+.tag-you{font-size:.65rem;background:#0a2a10;border:1px solid #2ecc7133;color:#2ecc71;padding:.1rem .4rem;border-radius:4px;font-weight:700}
+.tag-winner{font-size:.65rem;background:#0a2a10;border:1px solid #2ecc7144;color:#2ecc71;padding:.1rem .4rem;border-radius:4px;font-weight:700}
+.tag-loser{font-size:.65rem;background:#1a0808;border:1px solid #7a1a2a44;color:#e05050;padding:.1rem .4rem;border-radius:4px;font-weight:700}
+.tag-name{font-size:.82rem;font-weight:700;color:#c8f5c8}
+.tag-cost{font-size:.62rem;color:#3a6a3a}
 
-/* ─── Responsive ─────────────────────────────────────── */
+/* Spinner / slot animation */
+.slot-wrap{display:flex;align-items:center;gap:.6rem;overflow:hidden;flex:1}
+.slot-reel{position:relative;width:56px;height:56px;border-radius:10px;background:#060e06;border:1px solid #2ecc7133;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.slot-reel-inner{position:absolute;inset:0;display:flex;flex-direction:column;animation:none}
+.slot-reel.spinning .slot-reel-inner{animation:slotSpin 0.12s linear infinite}
+.slot-symbol{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0}
+.slot-reel-bg{position:absolute;inset:0;background:linear-gradient(transparent 0%,#060e06 15%,#060e06 85%,transparent 100%);pointer-events:none;z-index:1}
+.slot-arrow{font-size:.72rem;color:#2ecc71;min-width:20px;text-align:center}
+
+/* Reward display */
+.reward-stack{display:flex;gap:.4rem;flex-wrap:wrap;max-width:300px;align-items:center}
+.reward-item{display:flex;flex-direction:column;align-items:center;gap:.15rem;padding:.3rem;border-radius:7px;border:1px solid #1c3a2244;min-width:52px;background:#060e06}
+.reward-item.winning{border-color:#2ecc71;background:#0a2010}
+.reward-item.losing{border-color:#7a1a2a44;opacity:.6}
+.reward-emoji{font-size:1.4rem;line-height:1}
+.reward-fc{font-size:.58rem;font-weight:700;color:#e2ffe2}
+.reward-label{font-size:.52rem;color:#4a9a4a}
+.net-win{font-size:.82rem;font-weight:800;min-width:80px;text-align:right}
+.net-win.pos{color:#2ecc71}
+.net-win.neg{color:#e05050}
+.net-win.neu{color:#f1c40f}
+
+/* Battle result overlay */
+.result-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;text-align:center;padding:2rem;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.result-icon{font-size:5rem;display:block;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes popIn{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
+.result-title{font-size:2.5rem;font-weight:900;letter-spacing:-.02em}
+.result-title.win{color:#2ecc71;text-shadow:0 0 40px #2ecc7188}
+.result-title.lose{color:#e05050}
+.result-title.tie{color:#f1c40f}
+.result-sub{font-size:.85rem;color:#4a9a4a;max-width:38ch}
+.result-net{font-size:1.5rem;font-weight:900}
+.result-actions{display:flex;gap:.8rem;margin-top:1rem}
+.result-actions button{padding:.65rem 1.4rem;border-radius:8px;font-size:.82rem;font-weight:700}
+.result-close{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8}
+.result-close:hover{background:#0f2a0f}
+.result-play{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06}
+
+/* Countdown overlay */
+.countdown-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.5rem}
+.countdown-number{font-size:8rem;font-weight:900;color:#2ecc71;text-shadow:0 0 60px #2ecc7188;line-height:1;animation:countPop .9s ease both}
+@keyframes countPop{0%{transform:scale(.5);opacity:0}20%{transform:scale(1.1);opacity:1}100%{transform:scale(1);opacity:1}}
+.countdown-label{font-size:.85rem;color:#4a9a4a}
+
+/* Back button */
+.back-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;border-radius:8px;font-size:.75rem;font-weight:700;transition:background .15s;cursor:pointer}
+.back-btn:hover{background:#0f2a0f}
+.back-row{margin-bottom:1.5rem}
+
+/* Responsive */
 @media(max-width:700px){
-  .arena{grid-template-columns:1fr;gap:.6rem}
-  .arena-vs{font-size:1rem;padding:.4rem 0}
-  .case-display{width:100px;height:100px;font-size:2.8rem}
-  .tier-grid{grid-template-columns:repeat(2,1fr)}
+  .create-wrap{grid-template-columns:1fr}
+  .battle-card{grid-template-columns:1fr}
+  .arena-player{grid-template-columns:auto 1fr;gap:.6rem}
+  .arena-player .reward-stack{max-width:160px}
 }
 </style>
 </head>
@@ -113,404 +170,439 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
   <a href="/logout" class="nav-link">logout</a>
 </nav>
 
-<!-- ── View: Tier Select ───────────────────────────────── -->
-<div id="view-select" class="wrap">
-  <div class="select-title">
-    <h2>⚔️ Case Battle</h2>
-    <p>Pick a case tier, find an opponent, and duel for the pot. 5% house rake.</p>
+<!-- View: Battle list -->
+<div id="view-list" class="wrap">
+  <div class="back-row">
+    <button class="back-btn" onclick="location.href='/lobby'">← Lobby</button>
   </div>
-  <div class="tier-grid" id="tierGrid"></div>
-</div>
-
-<!-- ── View: Matchmaking ──────────────────────────────── -->
-<div id="view-match" class="match-wrap hidden">
-  <span class="match-icon">⚔️</span>
-  <div class="match-title">Finding Opponent…</div>
-  <div class="match-sub" id="matchSub">Joining queue for <strong id="matchTierLabel"></strong> Case — <strong id="matchEntry"></strong> FC</div>
-  <div class="spinner-ring"></div>
-  <div class="match-actions">
-    <button class="btn-cancel" id="cancelBtn">Cancel</button>
-    <button class="btn-back" onclick="location.href='/case-battle'">← Change Tier</button>
+  <div class="page-title">⚔️ Case Battles</div>
+  <div class="page-sub" id="listSub">Open battles you can join or watch</div>
+  <div class="battle-list" id="battleList"><div class="empty-state">Loading battles…</div></div>
+  <div style="margin-top:1.5rem;text-align:center">
+    <button class="btn btn-primary" onclick="showCreate()">+ Create Battle</button>
   </div>
 </div>
 
-<!-- ── View: Battle Arena ─────────────────────────────── -->
-<div id="view-arena" class="arena hidden">
-  <!-- Player 1 (opponent) -->
-  <div class="arena-player" id="player1">
-    <span class="player-tag" id="p1Tag">Opponent</span>
-    <div class="case-display" id="p1Case"><span class="case-placeholder">🎁</span><div class="case-glow" id="p1Glow"></div></div>
-    <div class="countdown" id="p1Countdown"></div>
-    <div class="reward-display" id="p1Reward"></div>
-    <div id="p1Result"></div>
+<!-- View: Create battle -->
+<div id="view-create" class="wrap hidden">
+  <div class="back-row">
+    <button class="back-btn" onclick="showList()">← Back to Battles</button>
   </div>
-
-  <!-- VS divider -->
-  <div style="text-align:center">
-    <div id="vsLabel" style="font-size:1.5rem;font-weight:900;color:#3a6a3a;padding:1rem 0">VS</div>
-  </div>
-
-  <!-- Player 2 (you) -->
-  <div class="arena-player" id="player2">
-    <span class="player-tag you" id="p2Tag">You</span>
-    <div class="case-display" id="p2Case"><span class="case-placeholder">🎁</span><div class="case-glow" id="p2Glow"></div></div>
-    <div class="countdown" id="p2Countdown"></div>
-    <div class="reward-display" id="p2Reward"></div>
-    <div id="p2Result"></div>
+  <div class="page-title">Create Case Battle</div>
+  <div class="page-sub">Pick your cases, choose player count and mode</div>
+  <div class="create-wrap">
+    <!-- Left: Cases -->
+    <div class="create-card">
+      <div class="create-section-label">Select Cases</div>
+      <div class="case-tiers" id="caseTiers"></div>
+      <div class="cost-summary">
+        <div class="cost-row cost-total"><span class="cost-label">Your Entry</span><span class="cost-val" id="summaryCost">0 FC</span></div>
+        <div class="cost-row"><span class="cost-label">Total pot (all players)</span><span class="cost-val" id="summaryPot">0 FC</span></div>
+        <div class="rake-note">5% house rake applied to winnings</div>
+      </div>
+    </div>
+    <!-- Right: Settings -->
+    <div class="create-card">
+      <div class="create-section-label">Battle Settings</div>
+      <div style="margin-bottom:.8rem">
+        <div style="font-size:.72rem;color:#4a9a4a;margin-bottom:.4rem">Mode</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="mode-regular" onclick="setMode('regular')">Regular</button>
+          <button class="mode-btn" id="mode-shared" onclick="setMode('shared')">Shared</button>
+        </div>
+        <div class="mode-desc" id="modeDesc">Regular: highest single item wins the pot. Losers get nothing.</div>
+      </div>
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.72rem;color:#4a9a4a;margin-bottom:.4rem">Max Players</div>
+        <div class="player-count-row">
+          <button class="player-count-btn" onclick="adjustPlayers(-1)">−</button>
+          <span id="playerCount" style="font-size:1rem;font-weight:900;color:#e2ffe2;min-width:30px;text-align:center">2</span>
+          <button class="player-count-btn" onclick="adjustPlayers(1)">+</button>
+          <span style="font-size:.7rem;color:#4a9a4a;margin-left:.4rem">players (2–8)</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;padding:.7rem;font-size:.88rem" onclick="createBattle()">Create Battle</button>
+    </div>
   </div>
 </div>
 
-<!-- ── View: Battle Result ────────────────────────────── -->
-<div id="view-result" class="match-wrap hidden">
-  <div id="resultIcon" style="font-size:4rem;display:block;margin-bottom:1rem"></div>
-  <div id="resultTitle" style="font-size:2rem;font-weight:900;letter-spacing:-.02em;margin-bottom:.5rem"></div>
-  <div id="resultSub" style="font-size:.85rem;color:#4a9a4a;margin-bottom:.5rem;max-width:40ch;margin-left:auto;margin-right:auto"></div>
-  <div id="resultNet" style="font-size:1.3rem;font-weight:900;margin-bottom:1.5rem"></div>
-  <div class="match-actions">
-    <button class="btn-back" onclick="location.href='/case-battle'">⚔️ Play Again</button>
-    <button class="btn-back" onclick="location.href='/lobby'">← Lobby</button>
+<!-- View: Battle Arena -->
+<div id="view-arena" class="wrap hidden">
+  <div class="arena-hdr">
+    <div>
+      <div class="page-title" id="arenaTitle">Battle</div>
+      <div style="font-size:.72rem;color:#4a9a4a" id="arenaMeta"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:.8rem">
+      <span class="arena-mode" id="arenaMode"></span>
+      <button class="back-btn" onclick="showList()">← Leave</button>
+    </div>
+  </div>
+  <div id="arenaStatus" style="font-size:.75rem;color:#4a9a4a;margin-bottom:1rem"></div>
+  <div class="arena-slots" id="arenaSlots"></div>
+</div>
+
+<!-- Countdown overlay -->
+<div id="countdownOverlay" class="countdown-overlay hidden">
+  <div class="countdown-number" id="countdownNum">3</div>
+  <div class="countdown-label">Cases opening…</div>
+</div>
+
+<!-- Result overlay -->
+<div id="resultOverlay" class="result-overlay hidden">
+  <div id="resultIcon"></div>
+  <div id="resultTitle" class="result-title"></div>
+  <div id="resultSub" class="result-sub"></div>
+  <div id="resultNet" class="result-net"></div>
+  <div class="result-actions">
+    <button class="result-close" onclick="closeResult()">Close</button>
+    <button class="result-play" onclick="closeResult();showList()">⚔️ Play Again</button>
   </div>
 </div>
 
 <script>
-(function(){
-  var TIERS = [];
-  var myBattleId = null;
-  var selectedTier = null;
-  var pollTimer = null;
-  var countdownTimer = null;
-  var pollInterval = 1500;
-  var currentPhase = null;
+var TIERS = [];
+var CASES = {}; // tierId -> [{s,n,v}]
+var GAMES_BASE = '/case-battle';
+var MY_UID = null;
+var MY_BATTLE = null; // current battle id if any
+var STATE = {}; // battleId -> battle state
+var mode = 'regular';
+var playerCount = 2;
+var caseQty = {}; // tierId -> number
+var pollTimer = null;
 
-  var navBal = document.getElementById('navBal');
-  var navTag = document.getElementById('navTag');
-  var viewSelect = document.getElementById('view-select');
-  var viewMatch  = document.getElementById('view-match');
-  var viewArena  = document.getElementById('view-arena');
-  var viewResult = document.getElementById('view-result');
+var navBal = document.getElementById('navBal');
+function fmt(n){return Number(n||0).toLocaleString();}
+function refreshBal(){
+  fetch('/api/balance').then(function(r){return r.ok?r.json():null})
+    .then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)+' FC'}).catch(function(){});
+}
+refreshBal();
+setInterval(refreshBal,8000);
 
-  function show(el){ [viewSelect,viewMatch,viewArena,viewResult].forEach(function(e){e.classList.add('hidden');}); el.classList.remove('hidden'); }
-  function fmt(n){ return Number(n||0).toLocaleString(); }
-  function refreshBal(){
-    fetch('/api/balance').then(function(r){return r.ok?r.json():null;})
-      .then(function(d){ if(d&&d.bal!==undefined) navBal.textContent=fmt(d.bal)+' FC'; })
-      .catch(function(){});
-  }
-  refreshBal();
-  setInterval(refreshBal,8000);
+function $(id){return document.getElementById(id);}
+function show(el){document.querySelectorAll('[id^=view-]').forEach(function(e){e.classList.add('hidden')});el.classList.remove('hidden');}
+function showList(){stopPolling();show($('view-list'));loadBattles();}
+function showCreate(){$('view-create').classList.remove('hidden');$('view-list').classList.add('hidden');renderCaseTiers();}
+function showArena(){$('view-arena').classList.remove('hidden');$('view-list').classList.add('hidden');}
 
-  // ── Load tiers + init ────────────────────────────────────
-  fetch('/api/case-battle/tiers').then(function(r){return r.ok?r.json():null;})
-    .then(function(data){
-      if(!data||!data.tiers) return;
-      TIERS=data.tiers;
-      renderTierGrid();
-      // Auto-join if ?tier= is in URL (from lobby click)
-      var urlTier=(new URL(location.href,'http://x')).searchParams.get('tier');
-      if(urlTier){
-        var t=TIERS.find(function(ti){return ti.id===urlTier;});
-        if(t) joinQueue(t);
-        return;
-      }
-      // Check if we already have an active battle
-      checkMyBattle();
-    }).catch(function(e){console.error(e);});
+// ── Load tiers ─────────────────────────────────────────────
+fetch('/api/case-battle/tiers').then(function(r){return r.json();})
+  .then(function(d){TIERS=d.tiers||[];CASES={};TIERS.forEach(function(t){CASES[t.id]=t.items||[];});renderCaseTiers();})
+  .catch(function(e){console.error(e);});
 
-  function renderTierGrid(){
-    var grid=document.getElementById('tierGrid');
-    grid.innerHTML='';
-    TIERS.forEach(function(t){
-      var card=document.createElement('div');
-      card.className='tier-card';
-      card.style.setProperty('--tc',t.color);
-      card.style.background=t.bg;
-      card.innerHTML='<div class="tier-hdr" style="--tc:'+t.color+'">'+
-        '<div class="tier-label">'+t.label+' Case</div>'+
-        '<div class="tier-name">'+t.label+'</div>'+
+// ── Case tier picker ───────────────────────────────────────
+function renderCaseTiers(){
+  var el=$('caseTiers');
+  el.innerHTML='';
+  TIERS.forEach(function(t){
+    caseQty[t.id]=caseQty[t.id]||0;
+    var row=document.createElement('div');
+    row.className='case-tier-row';
+    row.innerHTML=
+      '<div class="case-tier-color" style="background:'+t.color+'"></div>'+
+      '<div>'+
+        '<div class="case-tier-name">'+t.label+'</div>'+
+        '<div class="case-tier-info">avg '+fmt(Math.round(t.items.reduce(function(s,i){return s+i.v*i.w;},0)/t.items.reduce(function(s,i){return s+i.w;},0)))+' FC</div>'+
       '</div>'+
-      '<div class="tier-body">'+
-        '<div class="tier-row"><span class="tier-row-lbl">Entry fee</span><span class="tier-row-val">'+fmt(t.entry)+' <span>FC</span></span></div>'+
-        '<div class="tier-row"><span class="tier-row-lbl">Max win</span><span class="tier-row-val">'+fmt(Math.round(t.entry*25))+' <span>FC</span></span></div>'+
-        '<div class="tier-bar"><div class="tier-bar-inner" style="width:'+t.rtp+'%;background:'+t.color+'"></div></div>'+
-        '<div class="tier-rtp">RTP: <strong style="color:'+t.color+'">'+t.rtp+'%</strong> &nbsp;·&nbsp; 5% house rake</div>'+
-        '<button class="join-btn" style="--tc:'+t.color+'">Join '+t.label+'</button>'+
-      '</div>';
-      card.querySelector('.join-btn').onclick=function(e){e.stopPropagation();joinQueue(t);};
-      card.onclick=function(){ selectTier(t); };
-      grid.appendChild(card);
-    });
-  }
+      '<div class="qty-ctrl">'+
+        '<button class="qty-btn" onclick="adjustQty(\''+t.id+'\',-1)">−</button>'+
+        '<span class="qty-num" id="qty-'+t.id+'">'+caseQty[t.id]+'</span>'+
+        '<button class="qty-btn" onclick="adjustQty(\''+t.id+'\',1)">+</button>'+
+      '</div>'+
+      '<div class="case-tier-cost">'+fmt(t.entry)+' FC ea</div>';
+    el.appendChild(row);
+  });
+  updateCost();
+}
 
-  function selectTier(t){
-    selectedTier=t;
-    document.querySelectorAll('.tier-card').forEach(function(c){c.classList.remove('selected');});
-    event.currentTarget.classList.add('selected');
-  }
+function adjustQty(id,delta){
+  caseQty[id]=Math.max(0,Math.min(20,(caseQty[id]||0)+delta));
+  $('qty-'+id).textContent=caseQty[id];
+  updateCost();
+}
 
-  function joinQueue(tier){
-    selectedTier=tier;
-    fetch('/api/case-battle/queue',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tier:tier.id})
-    }).then(function(r){return r.json();})
-    .then(function(data){
-      if(data.error){ alert(data.error); return; }
-      if(data.status==='queued'){
-        myBattleId=null;
-        document.getElementById('matchTierLabel').textContent=tier.label;
-        document.getElementById('matchEntry').textContent=fmt(tier.entry);
-        show(viewMatch);
-        startPolling();
-      } else if(data.status==='matched'){
-        myBattleId=data.battleId;
-        startArena(tier,data.battleId);
-      } else if(data.status==='in_battle'){
-        myBattleId=data.battleId;
-        startArena(tier,data.battleId);
-      }
+function updateCost(){
+  var total=0;
+  TIERS.forEach(function(t){total+=(caseQty[t.id]||0)*t.entry;});
+  $('summaryCost').textContent=fmt(total)+' FC';
+  $('summaryPot').textContent=fmt(total*playerCount)+' FC';
+}
+
+// ── Mode / player count ────────────────────────────────────
+function setMode(m){
+  mode=m;
+  $('mode-regular').classList.toggle('active',m==='regular');
+  $('mode-shared').classList.toggle('active',m==='shared');
+  $('modeDesc').textContent=m==='regular'
+    ?'Regular: highest single item wins the pot. Losers get nothing.'
+    :'Shared: pot is split equally among all players regardless of items.';
+}
+
+function adjustPlayers(delta){
+  playerCount=Math.max(2,Math.min(8,playerCount+delta));
+  $('playerCount').textContent=playerCount;
+  updateCost();
+}
+
+// ── Create battle ──────────────────────────────────────────
+function createBattle(){
+  var cases=[];
+  TIERS.forEach(function(t){
+    var qty=caseQty[t.id]||0;
+    for(var i=0;i<qty;i++) cases.push({tier:t.id,cost:t.entry});
+  });
+  if(cases.length===0){alert('Select at least one case.');return;}
+
+  fetch('/api/case-battle/create',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({cases:cases,mode:mode,maxPlayers:playerCount})
+  }).then(function(r){return r.json();})
+  .then(function(d){
+    if(d.error){alert(d.error);return;}
+    MY_BATTLE=d.battleId;
+    showArena();
+    renderArena(d.battleId,d);
+    startPolling(d.battleId);
+  }).catch(function(e){console.error(e);});
+}
+
+// ── Load battle list ───────────────────────────────────────
+function loadBattles(){
+  fetch('/api/case-battle/list').then(function(r){return r.json();})
+    .then(function(d){
+      var list=d.battles||[];
+      var el=$('battleList');
+      $('listSub').textContent=list.length+' battle'+(list.length!==1?'s':'')+' open';
+      if(list.length===0){el.innerHTML='<div class="empty-state">No open battles right now. Create one!</div>';return;}
+      el.innerHTML='';
+      list.forEach(function(b){
+        var filled=b.players.length>=b.maxPlayers;
+        var myBattle=b.players.some(function(p){return p.uid===MY_UID;});
+        var card=document.createElement('div');
+        card.className='battle-card'+(filled?' full':'');
+        var cases=b.cases||[];
+        var cost=b.cost||0;
+        var slots=Array(b.maxPlayers).fill(null);
+        b.players.forEach(function(p,i){slots[i]=p;});
+        card.innerHTML=
+          '<div class="battle-info">'+
+            '<div class="battle-title">'+(b.mode==='shared'?'Shared':'Regular')+' · '+b.cases.length+' case'+(b.cases.length!==1?'s':'')+'</div>'+
+            '<div class="battle-meta">'+
+              '<span>💰 '+fmt(cost)+' FC entry</span>'+
+              '<span>👥 '+b.players.length+'/'+b.maxPlayers+'</span>'+
+              '<span>⚔️ '+(b.mode==='shared'?'Shared pot':'Highest wins')+'</span>'+
+            '</div>'+
+          '</div>'+
+          '<div class="battle-players">'+
+            slots.map(function(p){
+              if(!p) return '<div class="player-dot empty"></div>';
+              return '<div class="player-dot'+(p.isCreator?' me':'')+'" title="'+p.tag+'"></div>';
+            }).join('')+
+          '</div>'+
+          '<div class="battle-actions">'+
+            (filled
+              ?'<button class="btn btn-watch" onclick="watchBattle(\''+b.id+'\')">👁 Watch</button>'
+              :myBattle
+                ?'<button class="btn btn-secondary" onclick="joinBattle(\''+b.id+'\')">⚔️ Enter</button>'
+                :'<button class="btn btn-primary" onclick="joinBattle(\''+b.id+'\')">⚔️ Join</button>')+
+          '</div>';
+        el.appendChild(card);
+      });
     }).catch(function(e){console.error(e);});
+}
+
+// ── Join / watch ────────────────────────────────────────────
+function joinBattle(id){
+  fetch('/api/case-battle/'+id+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error){alert(d.error);return;}
+      MY_BATTLE=d.battleId;
+      showArena();
+      renderArena(d.battleId,d);
+      startPolling(d.battleId);
+    }).catch(function(e){console.error(e);});
+}
+
+function watchBattle(id){
+  MY_BATTLE=id;
+  showArena();
+  startPolling(id);
+}
+
+// ── Render arena ────────────────────────────────────────────
+function renderArena(id,battle){
+  battle=battle||STATE[id]||{};
+  var myUid=MY_UID;
+  var isShared=battle.mode==='shared';
+  var players=(battle.players||[]).map(function(p){return p;});
+  var isCreator=(battle.creatorUid||'')===myUid;
+
+  $('arenaTitle').textContent=(isShared?'Shared':'Regular')+' Battle · '+players.length+'/'+(battle.maxPlayers||2);
+  var modeEl=$('arenaMode');
+  modeEl.textContent=isShared?'SHARED':'REGULAR';
+  modeEl.className='arena-mode '+(isShared?'shared':'regular');
+
+  var totalCost=battle.cost||0;
+  var pot=totalCost*(battle.maxPlayers||2);
+  var rake=Math.floor(pot*0.05);
+  $('arenaMeta').textContent='Entry: '+fmt(totalCost)+' FC · Pot: '+fmt(pot)+' FC · Rake: '+fmt(rake)+' FC';
+
+  var statusEl=$('arenaStatus');
+  if(battle.phase==='pending'){
+    statusEl.textContent='Waiting for '+(battle.maxPlayers-players.length)+' more player'+(battle.maxPlayers-players.length!==1?'s':'')+'…';
+  } else if(battle.phase==='countdown'){
+    statusEl.textContent='Starting soon…';
+  } else if(battle.phase==='opening'){
+    statusEl.textContent='Opening cases…';
+  } else if(battle.phase==='done'){
+    statusEl.textContent='Battle complete!';
   }
 
-  // ── Check if already in a battle ────────────────────────
-  function checkMyBattle(){
-    fetch('/api/case-battle/my').then(function(r){return r.ok?r.json():null;})
-      .then(function(data){
-        if(data&&data.status==='idle') return;
-        if(data&&data.battleId){
-          fetch('/api/case-battle/status?battleId='+data.battleId).then(function(r){return r.json();})
-            .then(function(d){
-              if(!d||!d.tier) return;
-              var tier=TIERS.find(function(t){return t.id===d.tier;})||TIERS[0];
-              myBattleId=data.battleId;
-              startArena(tier,data.battleId);
-            }).catch(function(){});
-        }
-      }).catch(function(){});
-  }
+  var slotsEl=$('arenaSlots');
+  slotsEl.innerHTML='';
+  players.forEach(function(player){
+    var isMe=player.uid===myUid;
+    var items=player.rewards||[];
+    var phase=battle.phase||'pending';
+    var isWinner=(battle.winnerUid||'')===player.uid;
+    var isLoser=battle.winnerUid&&battle.winnerUid!==player.uid;
+    var isTie=battle.winnerUid==='tie';
+    var cardClass='arena-player'+(isMe?' me':'')+(isWinner?' winner':'')+(isLoser&&phase==='done'?' loser':'');
+    var tagLabel=isMe?'<span class="tag-you">YOU</span>':(isWinner&&phase==='done'?'<span class="tag-winner">WIN</span>':(isLoser&&phase==='done'?'<span class="tag-loser">LOST</span>':''));
 
-  // ── Polling ─────────────────────────────────────────────
-  function startPolling(){
-    stopPolling();
-    pollTimer=setInterval(pollStatus,pollInterval);
-  }
-  function stopPolling(){
-    if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
-    if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}
-  }
+    var reelHTML='<div class="slot-wrap">';
+    var rewardHTML='<div class="reward-stack">';
+    var totalVal=0;
+    (battle.cases||[]).forEach(function(c,i){
+      var item=items[i]||null;
+      var spinning=phase==='opening';
+      reelHTML+=
+        '<div class="slot-reel'+(spinning?' spinning':'')+'" id="reel-'+player.uid.slice(-6)+'-'+i+'">'+
+          '<div class="slot-reel-inner">'+
+            Array.from({length:8},function(_,j){
+              var faces=['🪙','💎','👑','🏆','🔮','⚡','🌟','💠'];
+              return'<div class="slot-symbol">'+faces[j%faces.length]+'</div>';
+            }).join('')+
+          '</div>'+
+          '<div class="slot-reel-bg"></div>'+
+          (item?'<div class="slot-symbol" style="position:relative;z-index:2">'+item.s+'</div>':'')+
+        '</div>';
+      if(item){totalVal+=item.v||0;}
+      rewardHTML+=
+        '<div class="reward-item '+((isWinner&&phase==='done')?'winning':(isLoser&&phase==='done'?'losing':''))+'">'+
+          '<div class="reward-emoji">'+(item?item.s:'?')+'</div>'+
+          '<div class="reward-fc">'+(item?fmt(item.v):'—')+'</div>'+
+        '</div>';
+    });
+    reelHTML+='</div>';
+    rewardHTML+='</div>';
 
-  function pollStatus(){
-    if(!myBattleId){
-      // Still in queue — check if matched
-      fetch('/api/case-battle/my').then(function(r){return r.json();})
-        .then(function(data){
-          if(data&&data.status==='idle'){
-            stopPolling();
-            show(viewSelect);
-            return;
-          }
-          if(data&&data.battleId&&data.battleId!==myBattleId){
-            myBattleId=data.battleId;
-            var tier=TIERS.find(function(t){return t.id===data.tier;})||TIERS[0];
-            startArena(tier,data.battleId);
-          }
-        }).catch(function(){});
-      return;
+    var netWin=player.netWin||0;
+    var netHTML='';
+    if(phase==='done'){
+      if(netWin>0) netHTML='<div class="net-win pos">+'+fmt(netWin)+' FC</div>';
+      else if(netWin<0) netHTML='<div class="net-win neg">'+fmt(netWin)+' FC</div>';
+      else netHTML='<div class="net-win neu">+'+fmt(netWin)+' FC</div>';
     }
-    fetch('/api/case-battle/status?battleId='+myBattleId).then(function(r){return r.json();})
-      .then(handleStatus).catch(function(){});
-  }
 
-  function handleStatus(data){
-    if(!data||data.status==='not_found'){
-      stopPolling();
-      myBattleId=null;
-      show(viewSelect);
-      return;
-    }
-    currentPhase=data.phase;
-    if(data.phase==='opening'){
-      showArenaPhase(data);
-    } else if(data.phase==='done'){
-      stopPolling();
-      showResultPhase(data);
-    }
-  }
+    slotsEl.innerHTML+=
+      '<div class="'+cardClass+'">'+
+        '<div class="arena-player-tag">'+tagLabel+'<div><div class="tag-name">'+(player.tag||player.uid)+'</div><div class="tag-cost">'+fmt(player.cost||0)+' FC</div></div></div>'+
+        reelHTML+
+        '<div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end">'+
+          rewardHTML+
+          netHTML+
+        '</div>'+
+      '</div>';
+  });
 
-  // ── Arena: Opening phase ────────────────────────────────
-  function startArena(tier,battleId){
-    myBattleId=battleId;
-    selectedTier=tier;
-    show(viewArena);
-
-    document.getElementById('p1Tag').textContent='Opponent';
-    document.getElementById('p2Tag').textContent='You';
-    document.getElementById('p1Case').innerHTML='<span class="case-placeholder">🎁</span><div class="case-glow" id="p1Glow"></div>';
-    document.getElementById('p2Case').innerHTML='<span class="case-placeholder">🎁</span><div class="case-glow" id="p2Glow"></div>';
-    document.getElementById('p1Reward').innerHTML='';
-    document.getElementById('p2Reward').innerHTML='';
-    document.getElementById('p1Result').innerHTML='';
-    document.getElementById('p2Result').innerHTML='';
-    document.getElementById('p1Countdown').textContent='';
-    document.getElementById('p2Countdown').textContent='';
-    document.getElementById('player1').className='arena-player';
-    document.getElementById('player2').className='arena-player';
-    document.getElementById('vsLabel').textContent='VS';
-
-    // Start polling for updates
-    startPolling();
-  }
-
-  function showArenaPhase(data){
-    // Countdown to open — use server's openedAt timestamp for sync
-    var now=Date.now();
-    var openedAt=data.openedAt||(now+3000); // fallback
-    var remaining=Math.max(0,Math.ceil((openedAt-now)/1000));
-
-    // Update countdown on both sides
-    var cd1=document.getElementById('p1Countdown');
-    var cd2=document.getElementById('p2Countdown');
-    if(remaining>0){
-      var label=remaining>0?remaining:'GO!';
-      cd1.textContent=label;
-      cd2.textContent=label;
-      cd1.className='countdown big';
-      cd2.className='countdown big';
-      // Animate case
-      spinCase('p1Case');
-      spinCase('p2Case');
-      document.getElementById('vsLabel').textContent=remaining+'…';
+  // Show countdown overlay if needed
+  if(battle.phase==='countdown'&&battle.startsAt){
+    var remaining=Math.ceil((battle.startsAt-Date.now())/1000);
+    if(remaining>0&&remaining<=5){
+      $('countdownOverlay').classList.remove('hidden');
+      $('countdownNum').textContent=remaining;
     } else {
-      cd1.textContent='OPENING';
-      cd2.textContent='OPENING';
-      cd1.className='countdown';
-      cd2.className='countdown';
-      document.getElementById('vsLabel').textContent='VS';
+      $('countdownOverlay').classList.add('hidden');
     }
+  } else {
+    $('countdownOverlay').classList.add('hidden');
   }
+}
 
-  function spinCase(id){
-    var el=document.getElementById(id);
-    if(!el)return;
-    var sym=document.createElement('span');
-    sym.style.cssText='animation:caseSpin .4s ease-in-out infinite;font-size:2.5rem;line-height:1';
-    var faces=['🎁','💎','👑','🏆','🔮','⚡','🌟','💠'];
-    sym.textContent=faces[Math.floor(Math.random()*faces.length)];
-    el.innerHTML='';
-    el.appendChild(sym);
-    el.innerHTML+='<div class="case-glow" id="'+id.replace('Case','Glow')+'"></div>';
+// ── Polling ─────────────────────────────────────────────────
+function startPolling(battleId){
+  stopPolling();
+  MY_BATTLE=battleId||MY_BATTLE;
+  pollTimer=setInterval(function(){pollBattle(MY_BATTLE);},1200);
+  pollBattle(MY_BATTLE);
+}
+function stopPolling(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+}
+
+function pollBattle(id){
+  if(!id)return;
+  fetch('/api/case-battle/'+id).then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error||d.notFound){stopPolling();showList();return;}
+      STATE[id]=d;
+      // If not yet watching and battle is full, switch to watch mode
+      if(d.phase==='pending'){
+        $('arenaStatus').textContent='Waiting for '+(d.maxPlayers-(d.players||[]).length)+' more player'+((d.maxPlayers-(d.players||[]).length)!==1?'s':'')+'…';
+      }
+      renderArena(id,d);
+      if(d.phase==='done'){
+        stopPolling();
+        showResult(id,d);
+      }
+    }).catch(function(){});
+}
+
+// ── Result overlay ──────────────────────────────────────────
+function showResult(id,battle){
+  var myPlayer=(battle.players||[]).find(function(p){return p.uid===MY_UID;})||{};
+  var won=battle.winnerUid===MY_UID;
+  var tied=battle.winnerUid==='tie';
+  var net=myPlayer.netWin||0;
+  var pot=battle.pot||0;
+
+  if(won){
+    $('resultIcon').textContent='🏆';
+    $('resultTitle').className='result-title win';
+    $('resultTitle').textContent='Victory!';
+    $('resultSub').textContent='You opened the highest item and won the pot!';
+    $('resultNet').className='result-net';
+    $('resultNet').style.color='#2ecc71';
+    $('resultNet').textContent='+'+fmt(net)+' FC';
+  } else if(tied){
+    $('resultIcon').textContent='🤝';
+    $('resultTitle').className='result-title tie';
+    $('resultTitle').textContent="It's a Tie!";
+    $('resultSub').textContent='Everyone gets their entry back.';
+    $('resultNet').className='result-net';
+    $('resultNet').style.color='#f1c40f';
+    $('resultNet').textContent=(net>=0?'+':'')+fmt(net)+' FC';
+  } else {
+    $('resultIcon').textContent='💔';
+    $('resultTitle').className='result-title lose';
+    $('resultTitle').textContent='Defeat';
+    $('resultSub').textContent='Your items weren\'t enough this time. Better luck next battle!';
+    $('resultNet').className='result-net';
+    $('resultNet').style.color='#e05050';
+    $('resultNet').textContent=fmt(net)+' FC';
   }
+  $('resultOverlay').classList.remove('hidden');
+  refreshBal();
+}
+function closeResult(){$('resultOverlay').classList.add('hidden');MY_BATTLE=null;}
 
-  // ── Arena: Result phase ─────────────────────────────────
-  function showResultPhase(data){
-    var tier=TIERS.find(function(t){return t.id===data.tier;})||selectedTier;
-    var tc=tier?tier.color:'#2ecc71';
-    var won=data.isWinner;
-    var tied=data.isTie;
-
-    // Stop any spinning
-    stopCaseSpin('p1Case');
-    stopCaseSpin('p2Case');
-
-    // Show rewards
-    if(data.my&&data.my.reward){
-      document.getElementById('p2Case').innerHTML='<span style="font-size:3rem;line-height:1">'+data.my.reward.s+'</span><div class="case-glow" style="--tc:'+tc+'"></div>';
-      document.getElementById('p2Reward').innerHTML=
-        '<span class="reward-name">'+data.my.reward.n+'</span>'+
-        '<span class="reward-value" style="color:'+tc+'">'+fmt(data.my.value)+' FC</span>';
-    }
-    if(data.opp&&data.opp.reward){
-      document.getElementById('p1Case').innerHTML='<span style="font-size:3rem;line-height:1">'+data.opp.reward.s+'</span><div class="case-glow" style="--tc:'+tc+'"></div>';
-      document.getElementById('p1Reward').innerHTML=
-        '<span class="reward-name">'+data.opp.reward.n+'</span>'+
-        '<span class="reward-value" style="color:'+tc+'">'+fmt(data.opp.value)+' FC</span>';
-    }
-
-    // Clear countdowns
-    document.getElementById('p1Countdown').textContent='';
-    document.getElementById('p2Countdown').textContent='';
-
-    // Player 2 (you) styling
-    var p2card=document.getElementById('player2');
-    p2card.className='arena-player'+(won?' winner':(tied?'':' loser'));
-
-    // Player 1 (opp) styling
-    var p1card=document.getElementById('player1');
-    p1card.className='arena-player'+(data.winner&&data.winner!==''&&!won&&!tied?' winner':' loser');
-
-    // Result labels
-    if(won){
-      document.getElementById('p2Result').innerHTML='<span class="result-label win">WINNER</span>';
-      document.getElementById('p1Result').innerHTML='<span class="result-label lose">LOST</span>';
-    } else if(tied){
-      document.getElementById('p2Result').innerHTML='<span class="result-label tie">TIE</span>';
-      document.getElementById('p1Result').innerHTML='<span class="result-label tie">TIE</span>';
-    } else {
-      document.getElementById('p2Result').innerHTML='<span class="result-label lose">LOST</span>';
-      document.getElementById('p1Result').innerHTML='<span class="result-label win">WINNER</span>';
-    }
-
-    // After 4s show result screen
-    setTimeout(function(){
-      stopPolling();
-      showResultScreen(data,tier);
-    },4000);
-  }
-
-  function stopCaseSpin(id){
-    var el=document.getElementById(id);
-    if(!el)return;
-    // Leave the reward visible
-  }
-
-  // ── Full Result Screen ───────────────────────────────────
-  function showResultScreen(data,tier){
-    var tc=tier?tier.color:'#2ecc71';
-    var won=data.isWinner;
-    var tied=data.isTie;
-    var net=data.my?data.my.netWin:0;
-    var pot=data.pot||0;
-    var rake=data.rake||Math.floor(pot*0.05);
-
-    if(won){
-      document.getElementById('resultIcon').textContent='🏆';
-      document.getElementById('resultTitle').style.color='#2ecc71';
-      document.getElementById('resultTitle').textContent='Victory!';
-      document.getElementById('resultSub').textContent=
-        'Your '+data.my.reward.s+' ('+fmt(data.my.value)+' FC) beat their '+data.opp.reward.s+' ('+fmt(data.opp.value)+' FC).';
-      document.getElementById('resultNet').style.color='#2ecc71';
-      document.getElementById('resultNet').textContent='+'+fmt(net)+' FC';
-    } else if(tied){
-      document.getElementById('resultIcon').textContent='🤝';
-      document.getElementById('resultTitle').style.color='#f1c40f';
-      document.getElementById('resultTitle').textContent="It's a Tie!";
-      document.getElementById('resultSub').textContent=
-        'Both opened '+data.my.reward.s+' ('+fmt(data.my.value)+' FC). Bets returned.';
-      document.getElementById('resultNet').style.color='#f1c40f';
-      document.getElementById('resultNet').textContent=(net>=0?'+':'')+fmt(net)+' FC';
-    } else {
-      document.getElementById('resultIcon').textContent='💔';
-      document.getElementById('resultTitle').style.color='#e05050';
-      document.getElementById('resultTitle').textContent='Defeat';
-      document.getElementById('resultSub').textContent=
-        'Their '+data.opp.reward.s+' ('+fmt(data.opp.value)+' FC) beat your '+data.my.reward.s+' ('+fmt(data.my.value)+' FC).';
-      document.getElementById('resultNet').style.color='#e05050';
-      document.getElementById('resultNet').textContent=fmt(net)+' FC';
-    }
-
-    refreshBal();
-    show(viewResult);
-    // Clean up battle ID
-    myBattleId=null;
-  }
-
-  // ── Cancel queue ────────────────────────────────────────
-  document.getElementById('cancelBtn').onclick=function(){
-    stopPolling();
-    myBattleId=null;
-    show(viewSelect);
-  };
-})();
+// Auto-load
+(function(){loadBattles();})();
 </script>
 </body>
 </html>
