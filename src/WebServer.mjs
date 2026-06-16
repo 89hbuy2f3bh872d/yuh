@@ -445,46 +445,50 @@ export class WebServer {
       p.cost = cases.reduce((s, c) => s + (c.cost || 0), 0);
     });
 
-    // Determine winner(s)
+    // Determine winner(s) and credit balances.
+    // IMPORTANT: entry fee was ALREADY deducted via atomicDeduct when
+    // creating/joining the battle. We only call updateBalance for amounts
+    // to ADD. Losers need no balance change (already paid).
+    // p.netWin stores the DISPLAY value (total profit/loss including entry).
     if (mode === "shared") {
-      // Pot split equally
       battle.winnerUid = "tie";
       const rake = Math.floor(battle.pot * 0.05);
       const share = Math.floor((battle.pot - rake) / players.length);
       players.forEach(p => {
-        p.netWin = share - p.cost;
-        this.db.updateBalance(p.uid, p.netWin).catch(() => {});
+        p.netWin = share - p.cost;               // display: e.g. +90 or -100
+        this.db.updateBalance(p.uid, share).catch(() => {});  // add share back
         this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
       });
     } else {
-      // Regular: highest single item wins everything (minus rake)
+      // Regular: highest total item value wins the pot (minus rake)
       const maxValue = Math.max(...players.map(p => p.totalValue));
       const winners = players.filter(p => p.totalValue === maxValue);
       const rake = Math.floor(battle.pot * 0.05);
-      const winnerShare = Math.floor((battle.pot - rake) / winners.length);
 
       if (winners.length === 1) {
         battle.winnerUid = winners[0].uid;
+        const winnerPayout = battle.pot - rake;
         players.forEach(p => {
           if (p === winners[0]) {
-            p.netWin = winnerShare - p.cost;
+            p.netWin = winnerPayout - p.cost;     // display: e.g. +90
+            this.db.updateBalance(p.uid, winnerPayout).catch(() => {});
           } else {
-            p.netWin = -p.cost;
+            p.netWin = -p.cost;                   // display: e.g. -100
+            // Loser: already deducted, no balance change needed
           }
-          this.db.updateBalance(p.uid, p.netWin).catch(() => {});
           this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
         });
       } else {
         // Tie for highest — split pot, no rake
         battle.winnerUid = "tie";
-        const share = Math.floor(battle.pot / winners.length);
+        const share = Math.floor((battle.pot - rake) / winners.length);
         players.forEach(p => {
           if (winners.includes(p)) {
             p.netWin = share - p.cost;
+            this.db.updateBalance(p.uid, share).catch(() => {});
           } else {
             p.netWin = -p.cost;
           }
-          this.db.updateBalance(p.uid, p.netWin).catch(() => {});
           this.db.recordGame(p.uid, p.netWin > 0, p.cost).catch(() => {});
         });
       }
@@ -492,6 +496,16 @@ export class WebServer {
 
     battle.phase = "done";
     battle.resolvedAt = Date.now();
+    // Auto-cleanup: remove from active battles after 60s
+    setTimeout(() => {
+      const b = this._cbActive.get(battle.id);
+      if (b && b.phase === "done" && Date.now() - b.resolvedAt > 50000) {
+        this._cbActive.delete(battle.id);
+        for (const p of b.players) {
+          if (this._cbUserBattle.get(p.uid) === battle.id) this._cbUserBattle.delete(p.uid);
+        }
+      }
+    }, 60_000);
   }
 
   _cbStartBattle(battle) {
@@ -817,6 +831,7 @@ export class WebServer {
       const html = fs.readFileSync(cbPath, "utf8")
         .replace("__BALANCE__", String(bal))
         .replace("__TAG__", esc(tag))
+        .replace("__UID__", uid)
         .replace("__BATTLE_ID__", battleId ?? "");
       return this._html(res, 200, html);
     }
