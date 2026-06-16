@@ -1,9 +1,61 @@
 import { COLORS } from "../src/theme.mjs";
 
-const COOLDOWN_MS = 30 * 60 * 1000; // 30 min
-const MIN_EARN = 80;
-const MAX_EARN = 220;
-const WORK_FIELD = "lw"; // stored in user document alongside ld (lastDaily)
+const COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown between work claims
+const MIN_EARN    = 80;
+const MAX_EARN    = 220;
+const FL_LIST_URL = "https://fluxerlist.com/api/v1";
+const VOTE_TTL_MS = 5 * 60 * 1000;  // cache FluxerList vote check for 5 min
+
+// In-memory vote cache: uid -> { voted: bool, cachedAt: ms }
+const _voteCache = new Map();
+
+// In-flight guards — coalesce concurrent calls for the same user
+const _inflight = new Map();
+
+/**
+ * Check whether a Discord userId has voted for the bot on FluxerList.
+ * Results are cached per-UID for VOTE_TTL_MS to avoid hammering the API.
+ */
+async function hasVoted(botId, userId, apiKey) {
+  const now    = Date.now();
+  const cached = _voteCache.get(userId);
+
+  if (cached && now - cached.cachedAt < VOTE_TTL_MS) return cached.voted;
+
+  try {
+    const url = `${FL_LIST_URL}/bots/${botId}/voters`;
+    const { default: fetch } = await import("undici").catch(() => ({ default: globalThis.fetch }));
+    const fn = typeof fetch === "function" ? fetch : (u, o) => import("undici").then(m => m.default(u, o));
+    const r = await fn(url, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) throw new Error(`FluxerList ${r.status}`);
+    const data = await r.json();
+
+    // The API returns { voters: [...], page, total }.
+    // Each voter object typically has `id` or `userId`.
+    const voters = Array.isArray(data?.voters) ? data.voters : [];
+    const voted  = voters.some(v => String(v?.id ?? v?.userId ?? v) === String(userId));
+
+    _voteCache.set(userId, { voted, cachedAt: now });
+    return voted;
+  } catch (e) {
+    console.error("[FluxerList] vote check failed:", e?.message);
+    // Fail open: if the API is unreachable, don't block legitimate voters
+    // who have a cached entry from a previous successful call.
+    if (cached) return cached.voted;
+    return false;
+  }
+}
+
+// Prune stale cache entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [uid, entry] of _voteCache) {
+    if (now - entry.cachedAt > VOTE_TTL_MS) _voteCache.delete(uid);
+  }
+}, 10 * 60 * 1000);
 
 const JOBS = [
   { emoji: "🧹", text: "swept the casino floor" },
@@ -18,17 +70,33 @@ const JOBS = [
   { emoji: "📦", text: "unloaded a shipment of dice" },
 ];
 
-// In-flight guards: same pattern as daily.mjs
-const _inflight = new Map();
-
 export default {
   name: "work",
   aliases: ["earn", "grind"],
-  description: "Earn some FC by working a shift (30 min cooldown).",
+  description: "Earn FC by working a shift. Requires voting for the bot on FluxerList.",
 
-  async execute({ message, db, embed }) {
-    const uid = message.author.id;
+  async execute({ message, db, embed, config }) {
+    const uid    = message.author.id;
+    const apiKey = config?.fluxerListApiKey;
+    const botId  = config?.fluxerListBotId;
 
+    // ── FluxerList voter gate ─────────────────────────────────────────────────
+    if (apiKey && botId) {
+      const voted = await hasVoted(botId, uid, apiKey);
+      if (!voted) {
+        return message.channel.send({ embeds: [
+          embed(COLORS.warn)
+            .setDescription(
+              "🗳️  **Vote to unlock work!**\n" +
+              "Vote for the bot on [FluxerList](https://fluxerlist.com) to earn FC.\n" +
+              "Then come back and run `&work` again."
+            )
+        ]});
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Coalesce concurrent requests from the same user
     if (_inflight.has(uid)) {
       await _inflight.get(uid);
     }
@@ -38,9 +106,8 @@ export default {
     _inflight.set(uid, p);
 
     try {
-      // Read the lw field for persistent cooldown (persists across bot restarts)
-      const u = await db.getUser(uid);
-      const now = Date.now();
+      const u    = await db.getUser(uid);
+      const now  = Date.now();
       const last = u.lw ?? 0;
       const diff = now - last;
 
@@ -55,15 +122,11 @@ export default {
       }
 
       const amount = Math.floor(Math.random() * (MAX_EARN - MIN_EARN + 1)) + MIN_EARN;
-      const job = JOBS[Math.floor(Math.random() * JOBS.length)];
+      const job    = JOBS[Math.floor(Math.random() * JOBS.length)];
 
       // Atomically credit earnings and persist cooldown timestamp
       await db.updateBalance(uid, amount);
-      await db._users.updateOne(
-        { _id: uid },
-        { $set: { [WORK_FIELD]: now } },
-        { upsert: true }
-      );
+      await db.setLastWork(uid, now); // fixed: use public DB method instead of _users
 
       const user = await db.getUser(uid);
 
