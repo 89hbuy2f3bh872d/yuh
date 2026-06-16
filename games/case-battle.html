@@ -440,7 +440,7 @@ var lastData = null;       // last battle state fetched
 var navBal = document.getElementById('navBal');
 function fmt(n){return Number(n||0).toLocaleString();}
 function $(id){return document.getElementById(id);}
-function showView(id){['view-list','view-create','view-arena'].forEach(function(v){$(v).classList.add('hidden')});$(v||id).classList.remove('hidden');}
+function showView(id){['view-list','view-create','view-arena'].forEach(function(v){$(v).classList.add('hidden')});$(id).classList.remove('hidden');}
 function showList(){stopBattlePoll();currentBattle=null;openedAt=0;showView('view-list');loadBattles();startListPoll();}
 function showCreate(){stopListPoll();showView('view-create');renderCaseTiers();}
 function showArena(){stopListPoll();showView('view-arena');}

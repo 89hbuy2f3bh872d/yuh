@@ -142,7 +142,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
   transition:background 150ms ease;
 }
 .nav-item:hover{background:var(--surface);color:var(--text-bright)}
-.nav-item.active{background:var(--surface);color:var(--text-bright;font-weight:600}
+.nav-item.active{background:var(--surface);color:var(--text-bright);font-weight:600}
 .nav-item.active::before{background:var(--pc,var(--accent))}
 .nav-section{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);padding:.7rem .9rem .35rem;font-weight:600}
 .sidebar-foot{display:flex;flex-direction:column;gap:.1rem;padding:.6rem .9rem 0;margin-top:.5rem;border-top:1px solid var(--border)}
