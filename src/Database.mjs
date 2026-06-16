@@ -22,8 +22,6 @@ function dbNameFromUri(uri, fallback = "casino") {
 }
 
 function unwrap(r) {
-  // findOneAndUpdate returns the doc directly in newer drivers,
-  // or nested under .value in older ones.
   if (!r) return null;
   return r.value !== undefined ? r.value : r;
 }
@@ -37,26 +35,17 @@ export class Database {
   async connect() {
     this._client = new MongoClient(this._uri);
     await this._client.connect();
-    this._db    = this._client.db(this._dbName);
-    this._users = this._db.collection("u");
+    this._db      = this._client.db(this._dbName);
+    this._users   = this._db.collection("u");
+    this._stats   = this._db.collection("stats");
+    this._guilds  = this._db.collection("guilds");
     console.log(`[DB] Connected → ${this._dbName}.u`);
   }
 
   async getUser(userId) {
-    // Use $set with $min/$setOnInsert won't help if doc already exists without
-    // bal — so we explicitly $set any missing fields to their defaults here.
-    // This handles the race where createSession creates the doc before getUser.
-    const setIfMissing = {};
-    for (const [k, v] of Object.entries(DEFAULTS)) {
-      // Only set the field if it is missing (null / undefined won't apply for
-      // $setOnInsert on existing docs, so we use a conditional update instead).
-      setIfMissing[k] = v;
-    }
     const r = await this._users.findOneAndUpdate(
       { _id: userId },
       [
-        // Aggregation pipeline update: set each field only when it doesn't
-        // already exist on the document.
         { $set: {
           bal: { $ifNull: ["$bal", DEFAULTS.bal] },
           tw:  { $ifNull: ["$tw",  DEFAULTS.tw]  },
@@ -105,21 +94,85 @@ export class Database {
     return this._users.find({}).sort({ [field ?? "bal"]: -1 }).limit(limit ?? 10).toArray();
   }
 
-  // Sessions stored inside user doc as st.{token} = expiry ms
+  // ─── Admin stats ───────────────────────────────────────────────────────────
+
+  /** Increment a command counter. Called by CommandHandler on every invocation. */
+  async recordCommand(cmdName) {
+    if (!this._stats) return;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    await this._stats.bulkWrite([
+      // All-time total per command
+      { updateOne: { filter: { _id: `cmd:${cmdName}` }, update: { $inc: { count: 1 } }, upsert: true } },
+      // Daily bucket
+      { updateOne: { filter: { _id: `daily:${today}` }, update: { $inc: { [`cmds.${cmdName}`]: 1, total: 1 } }, upsert: true } },
+    ]);
+  }
+
+  /** Upsert a guild record whenever the bot receives a message from that guild. */
+  async upsertGuild(guildId, data) {
+    if (!this._guilds) return;
+    await this._guilds.updateOne(
+      { _id: guildId },
+      { $set: { ...data, lastSeen: Date.now() }, $setOnInsert: { joinedAt: Date.now() } },
+      { upsert: true }
+    );
+  }
+
+  /** Pull all-time command counts. */
+  async getCommandStats() {
+    if (!this._stats) return [];
+    return this._stats.find({ _id: /^cmd:/ }).sort({ count: -1 }).toArray();
+  }
+
+  /** Pull last N daily buckets. */
+  async getDailyStats(days = 14) {
+    if (!this._stats) return [];
+    return this._stats.find({ _id: /^daily:/ }).sort({ _id: -1 }).limit(days).toArray();
+  }
+
+  /** Pull all known guilds. */
+  async getGuilds() {
+    if (!this._guilds) return [];
+    return this._guilds.find({}).sort({ lastSeen: -1 }).toArray();
+  }
+
+  /** Pull top N users by balance. */
+  async getAdminUserStats(limit = 20) {
+    return this._users
+      .find({})
+      .sort({ bal: -1 })
+      .limit(limit)
+      .project({ _id: 1, bal: 1, tw: 1, tl: 1, gp: 1 })
+      .toArray();
+  }
+
+  /** Aggregate totals across all users. */
+  async getGlobalTotals() {
+    const r = await this._users.aggregate([
+      { $group: {
+          _id: null,
+          totalUsers:    { $sum: 1 },
+          totalBalance:  { $sum: "$bal" },
+          totalWon:      { $sum: "$tw" },
+          totalLost:     { $sum: "$tl" },
+          totalGames:    { $sum: "$gp" },
+      } }
+    ]).toArray();
+    return r[0] ?? { totalUsers: 0, totalBalance: 0, totalWon: 0, totalLost: 0, totalGames: 0 };
+  }
+
+  // ─── Sessions ──────────────────────────────────────────────────────────────
+
   async createSession(userId, token, ttlMs) {
     const expiry = Date.now() + (ttlMs ?? 7_200_000);
-    // Also seed the balance fields if this is a brand-new user doc,
-    // so getUser always finds them pre-populated.
     const r = await this._users.findOne({ _id: userId });
     if (!r) {
-      // Doc doesn't exist yet — create it with defaults + session token
       await this._users.updateOne(
         { _id: userId },
         { $setOnInsert: { _id: userId, ...DEFAULTS }, $set: { [`st.${token}`]: expiry } },
         { upsert: true }
       );
     } else {
-      // Doc exists — just write the session token
       await this._users.updateOne(
         { _id: userId },
         { $set: { [`st.${token}`]: expiry } }
