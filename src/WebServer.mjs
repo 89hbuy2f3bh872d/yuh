@@ -8,6 +8,12 @@ import path    from "path";
 import { fileURLToPath } from "url";
 import { GoldSlotAPI }   from "./GoldSlotAPI.mjs";
 
+// ─── Feature flag ─────────────────────────────────────────────────────────────
+// Set to true to re-enable the GoldSlot game lobby and launch routes.
+// All GoldSlot code below is preserved — only this flag needs changing.
+const GOLDSLOT_ENABLED = false;
+// ─────────────────────────────────────────────────────────────────────────────
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -206,6 +212,10 @@ button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 .err-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06;font-weight:900;padding:.65rem 1.3rem;border-radius:8px;margin-top:.5rem;cursor:pointer;font-size:.84rem;transition:all .18s}
 .err-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px #2ecc7155}
 .loading{text-align:center;padding:3rem;color:#4a9a4a;font-size:.85rem}
+.coming-soon-wrap{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;gap:1rem}
+.coming-soon-icon{font-size:3.5rem}
+.coming-soon-title{font-size:1.4rem;font-weight:900;color:#2ecc71}
+.coming-soon-sub{font-size:.84rem;color:#4a9a4a;max-width:38ch;line-height:1.7}
 `;
 
 function shell(head, body) {
@@ -224,13 +234,16 @@ function lobbyPage(bal, tag, gamesByProvider) {
         const thumb = g.game_image
           ? `<img src="${esc(g.game_image)}" alt="${esc(g.game_name ?? g.name)}" loading="lazy">`
           : `<span style="font-size:2.5rem">🎰</span>`;
-        // Encode both game_code and provider_id into the URL: /game/<provider_id>/<game_code>
         return `<div class="game-card" onclick="location.href='/game/${pid}/${gid}'">\n  <div class="game-thumb">${thumb}</div>\n  <div class="game-info"><div class="game-name">${esc(g.game_name ?? g.name ?? gid)}</div><div class="game-meta">${esc(g.game_type ?? g.type ?? pn ?? provider)}</div></div>\n</div>`;
       }).join("\n");
       sections += `<div class="provider-title">🎮 ${esc(pn ?? provider)}</div>\n<div class="games-grid">\n${cards}\n</div>\n`;
     }
   }
   return shell("", `<nav class="nav"><div class="nav-logo">🎰 SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span><a href="/logout" class="nav-logout">logout</a></nav><div class="wrap"><div class="section-title">🎮 Game Lobby</div>${sections}</div>`);
+}
+
+function comingSoonPage(bal, tag) {
+  return shell("", `<nav class="nav"><div class="nav-logo">🎰 SirGreen Casino</div><div class="nav-spacer"></div><div class="nav-bal">Balance: <strong>${Number(bal).toLocaleString()} FC</strong></div><span style="font-size:.75rem;color:#a8d5a8">${esc(tag)}</span><a href="/logout" class="nav-logout">logout</a></nav><div class="wrap"><div class="coming-soon-wrap"><div class="coming-soon-icon">🎰</div><div class="coming-soon-title">Games Coming Soon</div><div class="coming-soon-sub">The casino lobby is being set up. Check back shortly — slots, live tables, and more are on their way.</div></div></div>`);
 }
 
 function loginPage(authUrl) {
@@ -306,6 +319,7 @@ export class WebServer {
     const gsToken     = config.goldSlotApiToken ?? "";
     const gsUrl       = config.goldSlotApiUrl ?? "https://agent.goldslotpalase.com";
     const gsCbUrl     = `${this.baseUrl}/callback`;
+    // GoldSlot instance kept in memory even when disabled — flip GOLDSLOT_ENABLED to reactivate
     this.goldSlot     = gsToken ? new GoldSlotAPI(gsToken, gsUrl, gsCbUrl) : null;
     this.callbackToken = config.goldSlotCallbackToken ?? "";
     this.gsParent     = config.goldSlotParent ?? "";
@@ -431,7 +445,6 @@ export class WebServer {
 
     if (command === "authenticate") {
       if (!user) return this._cbReply(res, 1, "USER_NOT_FOUND");
-      console.log(`[Callback] authenticate account=${gsAccount} bal=${currentBal}`);
       return this._cbReply(res, 0, "OK", { account: gsAccount, balance: currentBal });
     }
     if (command === "balance") {
@@ -458,7 +471,6 @@ export class WebServer {
         } catch(e) { console.error("[Callback] DB bet:", e); return this._cbReply(res, 1001, "INTERNAL_ERROR"); }
       }
       this._markTrans(transGuid, { type: "bet", localUid, amount: betAmt });
-      console.log(`[Callback] bet account=${gsAccount} amount=${betAmt} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "win") {
@@ -480,7 +492,6 @@ export class WebServer {
         await this.db.recordGame(localUid, false, 0).catch(() => {});
       }
       this._markTrans(transGuid, { type: "win", localUid, amount: winAmt });
-      console.log(`[Callback] win account=${gsAccount} amount=${winAmt} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "cancel") {
@@ -500,7 +511,6 @@ export class WebServer {
       }
       this._markTrans(cancelTransGuid, { type: "cancel", localUid, amount: originalBet });
       if (transGuid) this._processedTrans.delete(transGuid);
-      console.log(`[Callback] cancel account=${gsAccount} refund=${originalBet} newBal=${newBal}`);
       return this._cbReply(res, 0, "OK", { balance: newBal });
     }
     if (command === "status") {
@@ -514,7 +524,12 @@ export class WebServer {
 
   async start() {
     _preloadAssets();
-    this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm:", e));
+    // Only pre-warm game cache when GoldSlot is enabled
+    if (GOLDSLOT_ENABLED) {
+      this._fetchGames().catch(e => console.error("[GoldSlot] Pre-warm:", e));
+    } else {
+      console.log("[GoldSlot] Disabled (GOLDSLOT_ENABLED=false) — game lobby will show coming soon page.");
+    }
     this._server = http.createServer((req, res) =>
       this._handle(req, res).catch(e => {
         console.error("[Web]", e);
@@ -546,6 +561,7 @@ export class WebServer {
     }
 
     if (p === "/api/goldslot/debug" && req.method === "GET") {
+      if (!GOLDSLOT_ENABLED) return this._json(res, 503, { error: "GoldSlot is disabled (GOLDSLOT_ENABLED=false)" });
       if (!this.goldSlot) return this._json(res, 503, { error: "goldSlotApiToken not configured" });
       const out = {};
       try { out.agentInfo = await this.goldSlot.agentInfo(); } catch(e) { out.agentInfo = { error: e.message }; }
@@ -553,7 +569,6 @@ export class WebServer {
         const testName = `gs_debug_${Date.now()}`;
         out.userCreate = await this.goldSlot.userCreate(testName, this.gsParent || undefined);
         if (out.userCreate?.data?.user_code) {
-          // Use provider_id=1 (Pragmatic Play) for the debug test
           out.getGameUrlTest = await this.goldSlot.getGameUrl(out.userCreate.data.user_code, "vs20fruitsw", 1, `${this.baseUrl}/lobby`, 1);
         }
       } catch(e) { out.error = e.message; }
@@ -571,53 +586,45 @@ export class WebServer {
     if (p === "/lobby" && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
-      const user            = await this.db.getUser(uid);
-      const cookies         = parseCookies(req);
-      const bal             = Number(user?.bal ?? 0);
-      const tag             = decodeURIComponent(cookies.dtag ?? "Player");
+      const user    = await this.db.getUser(uid);
+      const cookies = parseCookies(req);
+      const bal     = Number(user?.bal ?? 0);
+      const tag     = decodeURIComponent(cookies.dtag ?? "Player");
+      // When GoldSlot is disabled, show a "coming soon" page instead of the game grid
+      if (!GOLDSLOT_ENABLED) return this._html(res, 200, comingSoonPage(bal, tag));
       const gamesByProvider = await this._fetchGames();
       return this._html(res, 200, lobbyPage(bal, tag, gamesByProvider));
     }
 
-    // ── Game launch — URL format: /game/<provider_id>/<game_code> ─────────
-    // provider_id and game_code are both required by /v4/game/game-url
     if (p.startsWith("/game/") && req.method === "GET") {
       const uid = this._uid(req);
       if (!uid) return this._redirect(res, "/login");
+      // When GoldSlot is disabled, redirect game links back to lobby
+      if (!GOLDSLOT_ENABLED) return this._redirect(res, "/lobby");
       const cookies  = parseCookies(req);
       const tag      = decodeURIComponent(cookies.dtag ?? "Player");
-
-      // Parse /game/<provider_id>/<game_code>
       const parts      = p.slice("/game/".length).split("/");
       const providerId = parts.length >= 2 ? Number(decodeURIComponent(parts[0])) : NaN;
       const gameCode   = parts.length >= 2
         ? decodeURIComponent(parts.slice(1).join("/"))
         : decodeURIComponent(parts[0] ?? "");
-
       if (!gameCode) return this._redirect(res, "/lobby");
       if (!this.goldSlot) return this._html(res, 503, errPage("⚠️ Not Configured", "goldSlotApiToken is not set.", "/lobby", "Back"));
-
-      // Fallback: look up provider_id from the game cache if not in URL
       await this._fetchGames();
       const gameMeta    = this._gameById.get(String(gameCode));
       const resolvedPid = (!isNaN(providerId) && providerId > 0)
         ? providerId
         : Number(gameMeta?.provider_id ?? gameMeta?.providerCode ?? NaN);
-
       console.log(`[GoldSlot] launch: gameCode=${gameCode} provider_id=${resolvedPid} (from url: ${providerId}, from cache: ${gameMeta?.provider_id})`);
-
       if (isNaN(resolvedPid) || resolvedPid <= 0) {
-        console.error(`[GoldSlot] Cannot resolve provider_id for game_code=${gameCode} — game not in cache?`);
+        console.error(`[GoldSlot] Cannot resolve provider_id for game_code=${gameCode}`);
         return this._html(res, 400, errPage("⚠️ Error", `Unknown provider for game "${gameCode}". Try returning to the lobby.`, "/lobby", "Back to Lobby"));
       }
-
       const gs = await this._ensureGsUser(uid);
       if (!gs) return this._html(res, 500, errPage("⚠️ Error", "Could not create your casino account.", "/lobby", "Back"));
-
       let gameUrl;
       try {
         const urlResp = await this.goldSlot.getGameUrl(gs.userCode, gameCode, resolvedPid, `${this.baseUrl}/lobby`, 1);
-        // API returns data.game_url (not data.url)
         const launchUrl = urlResp.data?.game_url ?? urlResp.data?.url ?? null;
         console.log(`[GoldSlot] getGameUrl userCode=${gs.userCode} provider_id=${resolvedPid} game_code=${gameCode} → code:${urlResp.code} url:${launchUrl ?? "(none)"}`);
         if (urlResp.code !== 0 || !launchUrl)
@@ -627,7 +634,6 @@ export class WebServer {
         console.error("[GoldSlot] getGameUrl:", e);
         return this._html(res, 500, errPage("⚠️ Error", "Game launch failed.", "/lobby", "Back"));
       }
-
       const gameName = gameMeta?.game_name ?? gameMeta?.name ?? gameCode;
       const user     = await this.db.getUser(uid);
       const bal      = Number(user?.bal ?? 0);
