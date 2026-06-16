@@ -634,13 +634,11 @@ export class WebServer {
   _cbStartBattle(battle) {
     const isFast = battle.speed === "fast";
     const countdownMs = isFast ? 1500 : 3000;
-    // Total animation time: 3s normal, 2s fast — long enough for sequential reveals
-    const totalAnimMs = isFast ? 2000 : 3500;
     const caseCount = battle.cases.length;
-    // Per-case stagger: divide animation time across cases
-    // Each case gets: stagger (delay before spin starts) + spinTime (spinning animation)
-    const staggerMs = Math.max(300, Math.floor(totalAnimMs / (caseCount + 1)));
-    const spinMs = Math.max(500, Math.floor(staggerMs * 0.6));
+    // Each case: spin (fixed) then a stagger gap before the next starts.
+    // Fixed spin so the reel always has a satisfying scroll regardless of case count.
+    const spinMs = isFast ? 900 : 1600;
+    const staggerMs = isFast ? 350 : 550;
 
     battle.phase = "countdown";
     battle.startsAt = Date.now() + countdownMs;

@@ -621,6 +621,10 @@ function buildPage(data, prefix) {
 
   const script = `<script>
 (function(){
+  // ── Browser-side helpers (esc/fmt — module-scope versions are NOT available here) ──
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function fmt(n){ return Number(n || 0).toLocaleString('en-US'); }
+
   // ── Tab switching ────────────────────────────────────────────────────────
   var navButtons = Array.prototype.slice.call(document.querySelectorAll('.nav-item[data-page]'));
   var pages = Array.prototype.slice.call(document.querySelectorAll('.page[data-page]'));
@@ -640,6 +644,7 @@ function buildPage(data, prefix) {
     try { history.replaceState(null, '', '#' + id); } catch(e) {}
     // Fire loaders for tabs that need fresh data on activation.
     if (id === 'cases')   { try { window.adminLoadCases();   } catch(e) { console.error(e); } }
+    if (id === 'balances') { try { window.adminSearchUsers(); } catch(e) { console.error(e); } }
     if (id === 'battles') { try { window.adminLoadBattles(); } catch(e) { console.error(e); } }
   }
 
@@ -852,8 +857,9 @@ function buildPage(data, prefix) {
 
   // Initial load if the page hash already points at a data-driven tab.
   var startHash = (location.hash || '').replace('#', '');
-  if (startHash === 'cases')   { try { window.adminLoadCases();   } catch(e) {} }
-  if (startHash === 'battles') { try { window.adminLoadBattles(); } catch(e) {} }
+  if (startHash === 'cases')    { try { window.adminLoadCases();   } catch(e) {} }
+  if (startHash === 'balances') { try { window.adminSearchUsers(); } catch(e) {} }
+  if (startHash === 'battles')  { try { window.adminLoadBattles(); } catch(e) {} }
 })();
 </script>`;
 
