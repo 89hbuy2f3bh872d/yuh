@@ -16,14 +16,14 @@ const _inflight = new Map();
  * Check whether a Discord userId has voted for the bot on FluxerList.
  * Results are cached per-UID for VOTE_TTL_MS to avoid hammering the API.
  */
-async function hasVoted(botId, userId, apiKey) {
+async function hasVoted(serverId, userId, apiKey) {
   const now    = Date.now();
   const cached = _voteCache.get(userId);
 
   if (cached && now - cached.cachedAt < VOTE_TTL_MS) return cached.voted;
 
   try {
-    const url = `${FL_LIST_URL}/bots/${botId}/voters`;
+    const url = `${FL_LIST_URL}/servers/${botId}/voters`;
     const { default: fetch } = await import("undici").catch(() => ({ default: globalThis.fetch }));
     const fn = typeof fetch === "function" ? fetch : (u, o) => import("undici").then(m => m.default(u, o));
     const r = await fn(url, {
@@ -78,17 +78,17 @@ export default {
   async execute({ message, db, embed, config }) {
     const uid    = message.author.id;
     const apiKey = config?.fluxerListApiKey;
-    const botId  = config?.fluxerListBotId;
+    const serverId = config?.fluxerListServerId;
 
     // ── FluxerList voter gate ─────────────────────────────────────────────────
-    if (apiKey && botId) {
-      const voted = await hasVoted(botId, uid, apiKey);
+    if (apiKey && serverId) {
+      const voted = await hasVoted(serverId, uid, apiKey);
       if (!voted) {
         return message.channel.send({ embeds: [
           embed(COLORS.warn)
             .setDescription(
               "🗳️  **Vote to unlock work!**\n" +
-              "Vote for the bot on [FluxerList](https://fluxerlist.com) to earn FC.\n" +
+              "Vote for the server on [FluxerList](https://fluxerlist.com/servers/fabrikken) to earn FC.\n" +
               "Then come back and run `&work` again."
             )
         ]});

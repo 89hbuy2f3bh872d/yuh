@@ -16,7 +16,7 @@
 
   "_callbackUrl_note": "Set your Callback URL to https://www.sirgreen.online/callback in https://admin.goldslotpalase.com/#/settings",
 
-  "fluxerListBotId":   "YOUR_FLUXER_BOT_ID", // usually the same as fluxerClientId (your bot's Discord user ID)
+  "fluxerListServerId": "1512882040398159873", // FluxerList community/server ID (from the server page URL)
   "fluxerListApiKey":  "fl_your_api_key_here",
 
   "dailyAmount":        100,
