@@ -511,12 +511,13 @@ export class WebServer {
   _cbStartBattle(battle) {
     battle.phase = "countdown";
     battle.startsAt = Date.now() + 3000;
-    // 3s countdown → opening → resolve immediately after
+    // 3s countdown → 3s opening phase (spinning animation) → resolve
     setTimeout(() => {
       const b = this._cbActive.get(battle.id);
       if (!b) return;
       b.phase = "opening";
-      setTimeout(() => this._cbResolve(b), 100);
+      b.openedAt = Date.now();
+      setTimeout(() => this._cbResolve(b), 3000);
     }, 3050);
   }
 
@@ -857,7 +858,7 @@ export class WebServer {
       return this._json(res, 200, { tiers });
     }
 
-    // GET /api/case-battle/list — open battles (pending phase)
+    // GET /api/case-battle/list — open and in-progress battles
     if (p === "/api/case-battle/list" && req.method === "GET") {
       const uid = this._uid(req);
       const battles = [...this._cbActive.values()]

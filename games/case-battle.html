@@ -15,14 +15,14 @@ input,select{background:#0a1f0a;border:1px solid #2ecc7133;border-radius:7px;col
 input:focus,select:focus{border-color:#2ecc71}
 input[type=number]{-moz-appearance:textfield}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+
+/* Nav */
 .nav{display:flex;align-items:center;gap:.8rem;padding:.5rem 1.2rem;background:rgba(6,14,6,.95);border-bottom:1px solid #2ecc7122;min-height:48px;position:sticky;top:0;z-index:100}
 .nav-logo{font-weight:900;color:#2ecc71;font-size:.95rem}
 .nav-spacer{flex:1}
-.nav-bal{font-size:.75rem;color:#a8e6a8}
-.nav-bal strong{color:#2ecc71}
+.nav-bal{font-size:.75rem;color:#a8e6a8}.nav-bal strong{color:#2ecc71}
 .nav-tag{font-size:.75rem;color:#a8d5a8}
-.nav-link{font-size:.72rem;color:#2ecc7188;border-bottom:1px solid #2ecc7133;transition:color .15s}
-.nav-link:hover{color:#2ecc71}
+.nav-link{font-size:.72rem;color:#2ecc7188;border-bottom:1px solid #2ecc7133;transition:color .15s}.nav-link:hover{color:#2ecc71}
 .wrap{max-width:980px;margin:0 auto;padding:1.5rem}
 
 /* Page headers */
@@ -31,27 +31,25 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 
 /* Battle list */
 .battle-list{display:flex;flex-direction:column;gap:.75rem}
-.battle-card{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:1rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:.8rem 1rem;transition:border-color .15s}
+.battle-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:1rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:.8rem 1rem;transition:border-color .15s}
 .battle-card:hover{border-color:#2ecc7155}
-.battle-card.full{border-color:#3a6a3a44}
 .battle-info{display:flex;flex-direction:column;gap:.25rem}
 .battle-title{font-size:.88rem;font-weight:700;color:#e2ffe2}
 .battle-meta{font-size:.65rem;color:#4a9a4a;display:flex;gap:.8rem;flex-wrap:wrap}
 .battle-meta span{display:flex;align-items:center;gap:.2rem}
-.battle-players{display:flex;align-items:center;gap:.5rem;font-size:.72rem;color:#a8e6a8;white-space:nowrap}
-.player-dot{width:8px;height:8px;border-radius:50%;background:#2ecc71;flex-shrink:0}
-.player-dot.empty{background:#1c3a22}
-.battle-actions{display:flex;gap:.5rem;align-items:center}
+.battle-dots{display:flex;gap:4px;align-items:center;margin-top:.3rem}
+.dot{width:10px;height:10px;border-radius:50%;background:#2ecc71;transition:background .2s}
+.dot.empty{background:#1c3a22;border:1px dashed #2ecc7144}
+.dot.me{box-shadow:0 0 0 2px #2ecc71}
 .btn{padding:.45rem 1rem;border-radius:7px;font-size:.75rem;font-weight:700;transition:box-shadow .15s,transform .15s}
 .btn-primary{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06}
 .btn-primary:hover{box-shadow:0 4px 14px #2ecc7144;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
 .btn-secondary{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8}
 .btn-secondary:hover{background:#0f2a0f}
-.btn-watch{background:#1a1a1a;border:1px solid #3a3a3a;color:#4a4a4a}
-.btn-full{opacity:.4;cursor:not-allowed}
 .empty-state{text-align:center;padding:3rem 1rem;background:#0a1f0a;border:1px dashed #1c3a22;border-radius:11px;color:#3a6a3a;font-size:.85rem}
 
-/* Create battle */
+/* Create */
 .create-wrap{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
 .create-card{background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:1.2rem}
 .create-section-label{font-size:.65rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#4a9a4a;margin-bottom:.8rem;padding-bottom:.5rem;border-bottom:1px solid #1c3a2244}
@@ -66,97 +64,71 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .case-tier-info{font-size:.6rem;color:#4a9a4a;text-align:right}
 .case-tier-cost{font-size:.65rem;color:#3a6a3a;text-align:right}
 .qty-ctrl{display:flex;align-items:center;gap:.3rem}
-.qty-btn{width:26px;height:26px;border-radius:5px;background:#0a1f0a;border:1px solid #2ecc7133;color:#2ecc71;font-size:1rem;line-height:1;text-align:center;padding:0;flex-shrink:0;transition:background .15s}
-.qty-btn:hover{background:#1c3a22}
+.qty-btn{width:26px;height:26px;border-radius:5px;background:#0a1f0a;border:1px solid #2ecc7133;color:#2ecc71;font-size:1rem;line-height:1;text-align:center;padding:0;flex-shrink:0;transition:background .15s}.qty-btn:hover{background:#1c3a22}
 .qty-num{font-size:.82rem;font-weight:700;color:#e2ffe2;min-width:24px;text-align:center}
 .player-count-row{display:flex;align-items:center;gap:.8rem;margin-bottom:.8rem}
-.player-count-label{font-size:.78rem;font-weight:700;color:#e2ffe2;flex:1}
 .player-count-btn{width:30px;height:30px;border-radius:6px;background:#0a1f0a;border:1px solid #2ecc7133;color:#2ecc71;font-size:1rem;line-height:1;text-align:center;padding:0}
 .cost-summary{background:#060e06;border:1px solid #1c3a22;border-radius:8px;padding:.8rem;margin-top:1rem}
 .cost-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;font-size:.78rem}
 .cost-row:last-child{margin-bottom:0}
-.cost-label{color:#4a9a4a}
-.cost-val{font-weight:700;color:#e2ffe2}
+.cost-label{color:#4a9a4a}.cost-val{font-weight:700;color:#e2ffe2}
 .cost-total .cost-label{font-weight:700;color:#2ecc71;font-size:.88rem}
 .cost-total .cost-val{font-size:1.1rem;color:#2ecc71;font-weight:900}
 .rake-note{font-size:.62rem;color:#3a6a3a;margin-top:.4rem;text-align:center}
 
-/* Battle arena */
-.arena{width:100%}
-.arena-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;gap:1rem}
-.arena-mode{font-size:.72rem;font-weight:700;padding:.25rem .7rem;border-radius:99px}
-.arena-mode.shared{background:#0a1428;border:1px solid #60c0f044;color:#60c0f0}
-.arena-mode.regular{background:#0a1a0a;border:1px solid #2ecc7144;color:#2ecc71}
-.arena-status{font-size:.75rem;color:#4a9a4a}
-.arena-slots{display:flex;flex-direction:column;gap:1rem;margin-bottom:1.5rem}
-.arena-player{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:1rem;background:#0a1f0a;border:1px solid #1c3a22;border-radius:11px;padding:1rem 1.2rem;transition:border-color .5s}
-.arena-player.me{border-color:#2ecc7133}
-.arena-player.winner{border-color:#2ecc71;background:#0a2010}
+/* Arena */
+.arena-player{background:#0a1f0a;border:2px solid #1c3a22;border-radius:14px;padding:1rem 1.2rem;margin-bottom:.8rem;transition:border-color .4s,background .4s}
+.arena-player.me{border-color:#2ecc7144}
+.arena-player.winner{border-color:#2ecc71;background:#081a0a;box-shadow:0 0 20px #2ecc7122}
 .arena-player.loser{opacity:.5}
-.arena-player-tag{display:flex;align-items:center;gap:.5rem;min-width:100px}
-.tag-you{font-size:.65rem;background:#0a2a10;border:1px solid #2ecc7133;color:#2ecc71;padding:.1rem .4rem;border-radius:4px;font-weight:700}
-.tag-winner{font-size:.65rem;background:#0a2a10;border:1px solid #2ecc7144;color:#2ecc71;padding:.1rem .4rem;border-radius:4px;font-weight:700}
-.tag-loser{font-size:.65rem;background:#1a0808;border:1px solid #7a1a2a44;color:#e05050;padding:.1rem .4rem;border-radius:4px;font-weight:700}
-.tag-name{font-size:.82rem;font-weight:700;color:#c8f5c8}
-.tag-cost{font-size:.62rem;color:#3a6a3a}
+.player-hdr{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem}
+.player-tag{font-size:.85rem;font-weight:700;color:#c8f5c8}
+.tag-you{font-size:.6rem;background:#0a2a10;border:1px solid #2ecc7144;color:#2ecc71;padding:.1rem .35rem;border-radius:3px;font-weight:700;margin-left:.3rem}
+.tag-winner{font-size:.6rem;background:#0a2a10;border:1px solid #2ecc71;color:#2ecc71;padding:.1rem .35rem;border-radius:3px;font-weight:700;margin-left:.3rem}
+.tag-loser{font-size:.6rem;background:#1a0808;border:1px solid #7a1a2a44;color:#e05050;padding:.1rem .35rem;border-radius:3px;font-weight:700;margin-left:.3rem}
+.player-cost{font-size:.62rem;color:#3a6a3a;margin-left:auto}
+.player-total{font-size:.72rem;font-weight:700;color:#e2ffe2}
 
-/* Spinner / slot animation */
-.slot-wrap{display:flex;align-items:center;gap:.6rem;overflow:hidden;flex:1}
-.slot-reel{position:relative;width:56px;height:56px;border-radius:10px;background:#060e06;border:1px solid #2ecc7133;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
-.slot-reel-inner{position:absolute;inset:0;display:flex;flex-direction:column;animation:none}
-.slot-reel.spinning .slot-reel-inner{animation:slotSpin 0.12s linear infinite}
-.slot-symbol{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0}
-.slot-reel-bg{position:absolute;inset:0;background:linear-gradient(transparent 0%,#060e06 15%,#060e06 85%,transparent 100%);pointer-events:none;z-index:1}
-.slot-arrow{font-size:.72rem;color:#2ecc71;min-width:20px;text-align:center}
+/* Case reel animation */
+.case-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.4rem}
+.case-slot{position:relative;width:64px;height:64px;border-radius:10px;background:#060e06;border:2px solid #2ecc7133;overflow:hidden;flex-shrink:0}
+.case-slot.winner-slot{border-color:#2ecc71;box-shadow:0 0 12px #2ecc7133}
+.case-slot.loser-slot{border-color:#7a1a2a44}
+.reel-strip{position:absolute;left:0;width:64px;transition:none}
+.reel-strip.spinning{animation:spinReel 0.08s linear infinite}
+@keyframes spinReel{from{transform:translateY(0)}to{transform:translateY(-64px)}}
+.reel-item{width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:2rem;line-height:1;flex-shrink:0}
+.reel-reveal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2rem;z-index:2;animation:revealPop .35s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes revealPop{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
+.reel-value{font-size:.62rem;text-align:center;color:#4a9a4a;margin-top:.15rem;font-weight:700}
+.reel-value.wv-win{color:#2ecc71}
+.reel-value.wv-lose{color:#e05050}
 
-/* Reward display */
-.reward-stack{display:flex;gap:.4rem;flex-wrap:wrap;max-width:300px;align-items:center}
-.reward-item{display:flex;flex-direction:column;align-items:center;gap:.15rem;padding:.3rem;border-radius:7px;border:1px solid #1c3a2244;min-width:52px;background:#060e06}
-.reward-item.winning{border-color:#2ecc71;background:#0a2010}
-.reward-item.losing{border-color:#7a1a2a44;opacity:.6}
-.reward-emoji{font-size:1.4rem;line-height:1}
-.reward-fc{font-size:.58rem;font-weight:700;color:#e2ffe2}
-.reward-label{font-size:.52rem;color:#4a9a4a}
-.net-win{font-size:.82rem;font-weight:800;min-width:80px;text-align:right}
-.net-win.pos{color:#2ecc71}
-.net-win.neg{color:#e05050}
-.net-win.neu{color:#f1c40f}
-
-/* Battle result overlay */
-.result-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;text-align:center;padding:2rem;animation:fadeIn .3s ease}
+/* Result overlay */
+.result-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;text-align:center;padding:2rem;animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .result-icon{font-size:5rem;display:block;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
 @keyframes popIn{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
-.result-title{font-size:2.5rem;font-weight:900;letter-spacing:-.02em}
+.result-title{font-size:2.2rem;font-weight:900;letter-spacing:-.02em}
 .result-title.win{color:#2ecc71;text-shadow:0 0 40px #2ecc7188}
 .result-title.lose{color:#e05050}
 .result-title.tie{color:#f1c40f}
-.result-sub{font-size:.85rem;color:#4a9a4a;max-width:38ch}
-.result-net{font-size:1.5rem;font-weight:900}
+.result-sub{font-size:.85rem;color:#4a9a4a;max-width:40ch}
+.result-net{font-size:1.4rem;font-weight:900}
 .result-actions{display:flex;gap:.8rem;margin-top:1rem}
-.result-actions button{padding:.65rem 1.4rem;border-radius:8px;font-size:.82rem;font-weight:700}
-.result-close{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8}
-.result-close:hover{background:#0f2a0f}
-.result-play{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06}
+.result-actions button{padding:.6rem 1.3rem;border-radius:8px;font-size:.82rem;font-weight:700}
+.rbtn-back{background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8}.rbtn-back:hover{background:#0f2a0f}
+.rbtn-again{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#060e06}
 
-/* Countdown overlay */
-.countdown-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.5rem}
-.countdown-number{font-size:8rem;font-weight:900;color:#2ecc71;text-shadow:0 0 60px #2ecc7188;line-height:1;animation:countPop .9s ease both}
-@keyframes countPop{0%{transform:scale(.5);opacity:0}20%{transform:scale(1.1);opacity:1}100%{transform:scale(1);opacity:1}}
+/* Countdown */
+.countdown-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,14,6,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.5rem}
+.countdown-num{font-size:7rem;font-weight:900;color:#2ecc71;text-shadow:0 0 60px #2ecc7188;line-height:1}
 .countdown-label{font-size:.85rem;color:#4a9a4a}
 
 /* Back button */
-.back-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;border-radius:8px;font-size:.75rem;font-weight:700;transition:background .15s;cursor:pointer}
-.back-btn:hover{background:#0f2a0f}
-.back-row{margin-bottom:1.5rem}
+.back-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#0a1f0a;border:1px solid #2ecc7133;color:#a8e6a8;border-radius:8px;font-size:.75rem;font-weight:700;transition:background .15s;cursor:pointer}.back-btn:hover{background:#0f2a0f}
 
-/* Responsive */
-@media(max-width:700px){
-  .create-wrap{grid-template-columns:1fr}
-  .battle-card{grid-template-columns:1fr}
-  .arena-player{grid-template-columns:auto 1fr;gap:.6rem}
-  .arena-player .reward-stack{max-width:160px}
-}
+@media(max-width:700px){.create-wrap{grid-template-columns:1fr}.battle-card{grid-template-columns:1fr}.case-slot{width:52px;height:52px}.reel-item{width:52px;height:52px;font-size:1.6rem}}
 </style>
 </head>
 <body>
@@ -172,36 +144,31 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 
 <!-- View: Battle list -->
 <div id="view-list" class="wrap">
-  <div class="back-row">
-    <button class="back-btn" onclick="location.href='/lobby'">← Lobby</button>
-  </div>
-  <div class="page-title">⚔️ Case Battles</div>
-  <div class="page-sub" id="listSub">Open battles you can join or watch</div>
-  <div class="battle-list" id="battleList"><div class="empty-state">Loading battles…</div></div>
-  <div style="margin-top:1.5rem;text-align:center">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <div>
+      <div class="page-title">⚔️ Case Battles</div>
+      <div class="page-sub" id="listSub">Open battles — join or create</div>
+    </div>
     <button class="btn btn-primary" onclick="showCreate()">+ Create Battle</button>
   </div>
+  <div class="battle-list" id="battleList"><div class="empty-state">Loading…</div></div>
 </div>
 
-<!-- View: Create battle -->
+<!-- View: Create -->
 <div id="view-create" class="wrap hidden">
-  <div class="back-row">
-    <button class="back-btn" onclick="showList()">← Back to Battles</button>
-  </div>
+  <div style="margin-bottom:1.5rem"><button class="back-btn" onclick="showList()">← Back to Battles</button></div>
   <div class="page-title">Create Case Battle</div>
-  <div class="page-sub">Pick your cases, choose player count and mode</div>
+  <div class="page-sub">Pick cases, choose player count and mode</div>
   <div class="create-wrap">
-    <!-- Left: Cases -->
     <div class="create-card">
       <div class="create-section-label">Select Cases</div>
       <div class="case-tiers" id="caseTiers"></div>
       <div class="cost-summary">
         <div class="cost-row cost-total"><span class="cost-label">Your Entry</span><span class="cost-val" id="summaryCost">0 FC</span></div>
-        <div class="cost-row"><span class="cost-label">Total pot (all players)</span><span class="cost-val" id="summaryPot">0 FC</span></div>
-        <div class="rake-note">5% house rake applied to winnings</div>
+        <div class="cost-row"><span class="cost-label">Total pot</span><span class="cost-val" id="summaryPot">0 FC</span></div>
+        <div class="rake-note">5% house rake on winnings</div>
       </div>
     </div>
-    <!-- Right: Settings -->
     <div class="create-card">
       <div class="create-section-label">Battle Settings</div>
       <div style="margin-bottom:.8rem">
@@ -210,15 +177,15 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
           <button class="mode-btn active" id="mode-regular" onclick="setMode('regular')">Regular</button>
           <button class="mode-btn" id="mode-shared" onclick="setMode('shared')">Shared</button>
         </div>
-        <div class="mode-desc" id="modeDesc">Regular: highest single item wins the pot. Losers get nothing.</div>
+        <div class="mode-desc" id="modeDesc">Highest total value wins the pot. Losers lose their entry.</div>
       </div>
       <div style="margin-bottom:1rem">
-        <div style="font-size:.72rem;color:#4a9a4a;margin-bottom:.4rem">Max Players</div>
+        <div style="font-size:.72rem;color:#4a9a4a;margin-bottom:.4rem">Players</div>
         <div class="player-count-row">
           <button class="player-count-btn" onclick="adjustPlayers(-1)">−</button>
           <span id="playerCount" style="font-size:1rem;font-weight:900;color:#e2ffe2;min-width:30px;text-align:center">2</span>
           <button class="player-count-btn" onclick="adjustPlayers(1)">+</button>
-          <span style="font-size:.7rem;color:#4a9a4a;margin-left:.4rem">players (2–8)</span>
+          <span style="font-size:.7rem;color:#4a9a4a;margin-left:.4rem">(2–8)</span>
         </div>
       </div>
       <button class="btn btn-primary" style="width:100%;padding:.7rem;font-size:.88rem" onclick="createBattle()">Create Battle</button>
@@ -226,25 +193,25 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
   </div>
 </div>
 
-<!-- View: Battle Arena -->
+<!-- View: Arena -->
 <div id="view-arena" class="wrap hidden">
-  <div class="arena-hdr">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
     <div>
       <div class="page-title" id="arenaTitle">Battle</div>
       <div style="font-size:.72rem;color:#4a9a4a" id="arenaMeta"></div>
     </div>
     <div style="display:flex;align-items:center;gap:.8rem">
-      <span class="arena-mode" id="arenaMode"></span>
-      <button class="back-btn" onclick="showList()">← Leave</button>
+      <span id="arenaMode" style="font-size:.72rem;font-weight:700;padding:.25rem .7rem;border-radius:99px;background:#0a1a0a;border:1px solid #2ecc7144;color:#2ecc71"></span>
+      <button class="back-btn" onclick="leaveArena()">← Leave</button>
     </div>
   </div>
-  <div id="arenaStatus" style="font-size:.75rem;color:#4a9a4a;margin-bottom:1rem"></div>
-  <div class="arena-slots" id="arenaSlots"></div>
+  <div id="arenaStatus" style="font-size:.78rem;color:#4a9a4a;margin-bottom:1rem"></div>
+  <div id="arenaPlayers"></div>
 </div>
 
 <!-- Countdown overlay -->
 <div id="countdownOverlay" class="countdown-overlay hidden">
-  <div class="countdown-number" id="countdownNum">3</div>
+  <div class="countdown-num" id="countdownNum">3</div>
   <div class="countdown-label">Cases opening…</div>
 </div>
 
@@ -255,354 +222,208 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
   <div id="resultSub" class="result-sub"></div>
   <div id="resultNet" class="result-net"></div>
   <div class="result-actions">
-    <button class="result-close" onclick="closeResult()">Close</button>
-    <button class="result-play" onclick="closeResult();showList()">⚔️ Play Again</button>
+    <button class="rbtn-back" onclick="backToList()">Back to Battles</button>
+    <button class="rbtn-again" onclick="backToList()">⚔️ Play Again</button>
   </div>
 </div>
 
 <script>
+var MY_UID = "__UID__";
 var TIERS = [];
-var CASES = {}; // tierId -> [{s,n,v}]
-var GAMES_BASE = '/case-battle';
-var MY_UID = null;
-var MY_BATTLE = null; // current battle id if any
-var STATE = {}; // battleId -> battle state
 var mode = 'regular';
 var playerCount = 2;
-var caseQty = {}; // tierId -> number
+var caseQty = {};
 var pollTimer = null;
+var listTimer = null;
+var currentBattle = null; // {id, phase, ...}
 
 var navBal = document.getElementById('navBal');
 function fmt(n){return Number(n||0).toLocaleString();}
-function refreshBal(){
-  fetch('/api/balance').then(function(r){return r.ok?r.json():null})
-    .then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)+' FC'}).catch(function(){});
-}
-refreshBal();
-setInterval(refreshBal,8000);
-
 function $(id){return document.getElementById(id);}
-function show(el){document.querySelectorAll('[id^=view-]').forEach(function(e){e.classList.add('hidden')});el.classList.remove('hidden');}
-function showList(){stopPolling();show($('view-list'));loadBattles();}
-function showCreate(){$('view-create').classList.remove('hidden');$('view-list').classList.add('hidden');renderCaseTiers();}
-function showArena(){$('view-arena').classList.remove('hidden');$('view-list').classList.add('hidden');}
+function showView(id){['view-list','view-create','view-arena'].forEach(function(v){$(v).classList.add('hidden')});$(id).classList.remove('hidden');}
+function showList(){stopBattlePoll();currentBattle=null;showView('view-list');loadBattles();startListPoll();}
+function showCreate(){stopListPoll();showView('view-create');renderCaseTiers();}
+function showArena(){stopListPoll();showView('view-arena');}
 
-// ── Load tiers ─────────────────────────────────────────────
-fetch('/api/case-battle/tiers').then(function(r){return r.json();})
-  .then(function(d){TIERS=d.tiers||[];CASES={};TIERS.forEach(function(t){CASES[t.id]=t.items||[];});renderCaseTiers();})
-  .catch(function(e){console.error(e);});
+function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)+' FC'}).catch(function(){});}
+refreshBal();setInterval(refreshBal,8000);
 
-// ── Case tier picker ───────────────────────────────────────
+// ── Tiers ─────────────────────────────────────────────────
+fetch('/api/case-battle/tiers').then(function(r){return r.json()}).then(function(d){TIERS=d.tiers||[];renderCaseTiers();}).catch(function(e){console.error(e)});
+
 function renderCaseTiers(){
-  var el=$('caseTiers');
-  el.innerHTML='';
+  var el=$('caseTiers');el.innerHTML='';
   TIERS.forEach(function(t){
     caseQty[t.id]=caseQty[t.id]||0;
-    var row=document.createElement('div');
-    row.className='case-tier-row';
-    row.innerHTML=
-      '<div class="case-tier-color" style="background:'+t.color+'"></div>'+
-      '<div>'+
-        '<div class="case-tier-name">'+t.label+'</div>'+
-        '<div class="case-tier-info">avg '+fmt(Math.round(t.items.reduce(function(s,i){return s+i.v*i.w;},0)/t.items.reduce(function(s,i){return s+i.w;},0)))+' FC</div>'+
-      '</div>'+
-      '<div class="qty-ctrl">'+
-        '<button class="qty-btn" onclick="adjustQty(\''+t.id+'\',-1)">−</button>'+
-        '<span class="qty-num" id="qty-'+t.id+'">'+caseQty[t.id]+'</span>'+
-        '<button class="qty-btn" onclick="adjustQty(\''+t.id+'\',1)">+</button>'+
-      '</div>'+
-      '<div class="case-tier-cost">'+fmt(t.entry)+' FC ea</div>';
+    var avg=Math.round(t.items.reduce(function(s,i){return s+i.v*i.w},0)/t.items.reduce(function(s,i){return s+i.w},0));
+    var row=document.createElement('div');row.className='case-tier-row';
+    row.innerHTML='<div class="case-tier-color" style="background:'+t.color+'"></div><div><div class="case-tier-name">'+t.label+'</div><div class="case-tier-info">avg '+fmt(avg)+' FC</div></div><div class="qty-ctrl"><button class="qty-btn" onclick="adjustQty(\''+t.id+'\',-1)">−</button><span class="qty-num" id="qty-'+t.id+'">'+caseQty[t.id]+'</span><button class="qty-btn" onclick="adjustQty(\''+t.id+'\',1)">+</button></div><div class="case-tier-cost">'+fmt(t.entry)+' FC</div>';
     el.appendChild(row);
-  });
-  updateCost();
+  });updateCost();
 }
+function adjustQty(id,d){caseQty[id]=Math.max(0,Math.min(20,(caseQty[id]||0)+d));$('qty-'+id).textContent=caseQty[id];updateCost();}
+function updateCost(){var t=0;TIERS.forEach(function(v){t+=(caseQty[v.id]||0)*v.entry});$('summaryCost').textContent=fmt(t)+' FC';$('summaryPot').textContent=fmt(t*playerCount)+' FC';}
+function setMode(m){mode=m;$('mode-regular').classList.toggle('active',m==='regular');$('mode-shared').classList.toggle('active',m==='shared');$('modeDesc').textContent=m==='regular'?'Highest total value wins the pot. Losers lose their entry.':'Pot split equally among all players.';}
+function adjustPlayers(d){playerCount=Math.max(2,Math.min(8,playerCount+d));$('playerCount').textContent=playerCount;updateCost();}
 
-function adjustQty(id,delta){
-  caseQty[id]=Math.max(0,Math.min(20,(caseQty[id]||0)+delta));
-  $('qty-'+id).textContent=caseQty[id];
-  updateCost();
-}
-
-function updateCost(){
-  var total=0;
-  TIERS.forEach(function(t){total+=(caseQty[t.id]||0)*t.entry;});
-  $('summaryCost').textContent=fmt(total)+' FC';
-  $('summaryPot').textContent=fmt(total*playerCount)+' FC';
-}
-
-// ── Mode / player count ────────────────────────────────────
-function setMode(m){
-  mode=m;
-  $('mode-regular').classList.toggle('active',m==='regular');
-  $('mode-shared').classList.toggle('active',m==='shared');
-  $('modeDesc').textContent=m==='regular'
-    ?'Regular: highest single item wins the pot. Losers get nothing.'
-    :'Shared: pot is split equally among all players regardless of items.';
-}
-
-function adjustPlayers(delta){
-  playerCount=Math.max(2,Math.min(8,playerCount+delta));
-  $('playerCount').textContent=playerCount;
-  updateCost();
-}
-
-// ── Create battle ──────────────────────────────────────────
+// ── Create ────────────────────────────────────────────────
 function createBattle(){
-  var cases=[];
-  TIERS.forEach(function(t){
-    var qty=caseQty[t.id]||0;
-    for(var i=0;i<qty;i++) cases.push({tier:t.id,cost:t.entry});
-  });
-  if(cases.length===0){alert('Select at least one case.');return;}
-
-  fetch('/api/case-battle/create',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({cases:cases,mode:mode,maxPlayers:playerCount})
-  }).then(function(r){return r.json();})
-  .then(function(d){
-    if(d.error){alert(d.error);return;}
-    MY_BATTLE=d.battleId;
-    showArena();
-    renderArena(d.battleId,d);
-    startPolling(d.battleId);
-  }).catch(function(e){console.error(e);});
+  var cases=[];TIERS.forEach(function(t){var q=caseQty[t.id]||0;for(var i=0;i<q;i++)cases.push({tier:t.id,cost:t.entry});});
+  if(!cases.length){alert('Pick at least one case.');return;}
+  fetch('/api/case-battle/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cases:cases,mode:mode,maxPlayers:playerCount})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){alert(d.error);return;}
+      currentBattle={id:d.battleId};showArena();startBattlePoll();
+    }).catch(function(e){console.error(e)});
 }
 
-// ── Load battle list ───────────────────────────────────────
+// ── List (polling) ────────────────────────────────────────
+function startListPoll(){stopListPoll();listTimer=setInterval(loadBattles,2500);loadBattles();}
+function stopListPoll(){if(listTimer){clearInterval(listTimer);listTimer=null;}}
+
 function loadBattles(){
-  fetch('/api/case-battle/list').then(function(r){return r.json();})
-    .then(function(d){
-      var list=d.battles||[];
-      var el=$('battleList');
-      $('listSub').textContent=list.length+' battle'+(list.length!==1?'s':'')+' open';
-      if(list.length===0){el.innerHTML='<div class="empty-state">No open battles right now. Create one!</div>';return;}
-      el.innerHTML='';
-      list.forEach(function(b){
-        var filled=b.players.length>=b.maxPlayers;
-        var myBattle=b.players.some(function(p){return p.uid===MY_UID;});
-        var card=document.createElement('div');
-        card.className='battle-card'+(filled?' full':'');
-        var cases=b.cases||[];
-        var cost=b.cost||0;
-        var slots=Array(b.maxPlayers).fill(null);
-        b.players.forEach(function(p,i){slots[i]=p;});
-        card.innerHTML=
-          '<div class="battle-info">'+
-            '<div class="battle-title">'+(b.mode==='shared'?'Shared':'Regular')+' · '+b.cases.length+' case'+(b.cases.length!==1?'s':'')+'</div>'+
-            '<div class="battle-meta">'+
-              '<span>💰 '+fmt(cost)+' FC entry</span>'+
-              '<span>👥 '+b.players.length+'/'+b.maxPlayers+'</span>'+
-              '<span>⚔️ '+(b.mode==='shared'?'Shared pot':'Highest wins')+'</span>'+
-            '</div>'+
-          '</div>'+
-          '<div class="battle-players">'+
-            slots.map(function(p){
-              if(!p) return '<div class="player-dot empty"></div>';
-              return '<div class="player-dot'+(p.isCreator?' me':'')+'" title="'+p.tag+'"></div>';
-            }).join('')+
-          '</div>'+
-          '<div class="battle-actions">'+
-            (filled
-              ?'<button class="btn btn-watch" onclick="watchBattle(\''+b.id+'\')">👁 Watch</button>'
-              :myBattle
-                ?'<button class="btn btn-secondary" onclick="joinBattle(\''+b.id+'\')">⚔️ Enter</button>'
-                :'<button class="btn btn-primary" onclick="joinBattle(\''+b.id+'\')">⚔️ Join</button>')+
-          '</div>';
-        el.appendChild(card);
-      });
-    }).catch(function(e){console.error(e);});
+  fetch('/api/case-battle/list').then(function(r){return r.json()}).then(function(d){
+    var list=d.battles||[];var el=$('battleList');
+    $('listSub').textContent=list.length+' battle'+(list.length!==1?'s':'')+' open';
+    if(!list.length){el.innerHTML='<div class="empty-state">No open battles. Create one!</div>';return;}
+    el.innerHTML='';
+    list.forEach(function(b){
+      var full=b.players.length>=b.maxPlayers;
+      var inBattle=b.players.some(function(p){return p.uid===MY_UID;});
+      var card=document.createElement('div');card.className='battle-card';
+      var slots='';for(var i=0;i<b.maxPlayers;i++){var p=b.players[i];if(p)slots+='<div class="dot'+(p.uid===MY_UID?' me':'')+'" title="'+p.tag+'"></div>';else slots+='<div class="dot empty"></div>';}
+      var btnText=full?'Full':inBattle?'Waiting…':'Join';
+      var btnClass=full?'btn btn-secondary':inBattle?'btn btn-secondary':'btn btn-primary';
+      card.innerHTML='<div class="battle-info"><div class="battle-title">'+(b.mode==='shared'?'Shared':'Regular')+' · '+b.cases.length+' case'+(b.cases.length!==1?'s':'')+'</div><div class="battle-meta"><span>💰 '+fmt(b.cost)+' FC</span><span>👥 '+b.players.length+'/'+b.maxPlayers+'</span><span>⚔️ '+(b.mode==='shared'?'Split pot':'Highest wins')+'</span></div><div class="battle-dots">'+slots+'</div></div><div>'+(full?'':'<button class="'+btnClass+'" onclick="joinBattle(\''+b.id+'\')">'+btnText+'</button>')+'</div>';
+      el.appendChild(card);
+    });
+  }).catch(function(){});
 }
 
-// ── Join / watch ────────────────────────────────────────────
+// ── Join ───────────────────────────────────────────────────
 function joinBattle(id){
   fetch('/api/case-battle/'+id+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-    .then(function(r){return r.json();})
-    .then(function(d){
+    .then(function(r){return r.json()}).then(function(d){
       if(d.error){alert(d.error);return;}
-      MY_BATTLE=d.battleId;
-      showArena();
-      renderArena(d.battleId,d);
-      startPolling(d.battleId);
-    }).catch(function(e){console.error(e);});
+      currentBattle={id:d.battleId};showArena();startBattlePoll();
+    }).catch(function(e){console.error(e)});
 }
 
-function watchBattle(id){
-  MY_BATTLE=id;
-  showArena();
-  startPolling(id);
+// ── Arena polling ──────────────────────────────────────────
+function startBattlePoll(){stopBattlePoll();pollTimer=setInterval(pollBattle,1000);pollBattle();}
+function stopBattlePoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+function leaveArena(){stopBattlePoll();currentBattle=null;showList();}
+
+function pollBattle(){
+  if(!currentBattle)return;
+  fetch('/api/case-battle/'+currentBattle.id).then(function(r){return r.json()}).then(function(d){
+    if(d.notFound){stopBattlePoll();showList();return;}
+    currentBattle=d;renderArena(d);
+    if(d.phase==='done'&&!currentBattle.resultShown){currentBattle.resultShown=true;setTimeout(function(){showResult(d);},800);}
+  }).catch(function(){});
 }
 
-// ── Render arena ────────────────────────────────────────────
-function renderArena(id,battle){
-  battle=battle||STATE[id]||{};
-  var myUid=MY_UID;
-  var isShared=battle.mode==='shared';
-  var players=(battle.players||[]).map(function(p){return p;});
-  var isCreator=(battle.creatorUid||'')===myUid;
-
-  $('arenaTitle').textContent=(isShared?'Shared':'Regular')+' Battle · '+players.length+'/'+(battle.maxPlayers||2);
-  var modeEl=$('arenaMode');
-  modeEl.textContent=isShared?'SHARED':'REGULAR';
-  modeEl.className='arena-mode '+(isShared?'shared':'regular');
-
-  var totalCost=battle.cost||0;
-  var pot=totalCost*(battle.maxPlayers||2);
+// ── Render arena ───────────────────────────────────────────
+function renderArena(b){
+  var isShared=b.mode==='shared';
+  var players=b.players||[];
+  var cost=b.cost||0;
+  var pot=b.pot||0;
   var rake=Math.floor(pot*0.05);
-  $('arenaMeta').textContent='Entry: '+fmt(totalCost)+' FC · Pot: '+fmt(pot)+' FC · Rake: '+fmt(rake)+' FC';
+
+  $('arenaTitle').textContent=(isShared?'Shared':'Regular')+' · '+players.length+'/'+b.maxPlayers;
+  var mEl=$('arenaMode');mEl.textContent=isShared?'SHARED':'REGULAR';mEl.className='arena-mode '+(isShared?'shared':'regular');
+  $('arenaMeta').textContent='Entry '+fmt(cost)+' FC · Pot '+fmt(pot)+' FC · Rake '+fmt(rake)+' FC';
 
   var statusEl=$('arenaStatus');
-  if(battle.phase==='pending'){
-    statusEl.textContent='Waiting for '+(battle.maxPlayers-players.length)+' more player'+(battle.maxPlayers-players.length!==1?'s':'')+'…';
-  } else if(battle.phase==='countdown'){
-    statusEl.textContent='Starting soon…';
-  } else if(battle.phase==='opening'){
-    statusEl.textContent='Opening cases…';
-  } else if(battle.phase==='done'){
-    statusEl.textContent='Battle complete!';
-  }
+  if(b.phase==='pending') statusEl.textContent='Waiting for '+(b.maxPlayers-players.length)+' more…';
+  else if(b.phase==='countdown') statusEl.textContent='Starting…';
+  else if(b.phase==='opening') statusEl.textContent='Opening cases…';
+  else if(b.phase==='done') statusEl.textContent='Battle complete!';
 
-  var slotsEl=$('arenaSlots');
-  slotsEl.innerHTML='';
-  players.forEach(function(player){
-    var isMe=player.uid===myUid;
-    var items=player.rewards||[];
-    var phase=battle.phase||'pending';
-    var isWinner=(battle.winnerUid||'')===player.uid;
-    var isLoser=battle.winnerUid&&battle.winnerUid!==player.uid;
-    var isTie=battle.winnerUid==='tie';
-    var cardClass='arena-player'+(isMe?' me':'')+(isWinner?' winner':'')+(isLoser&&phase==='done'?' loser':'');
-    var tagLabel=isMe?'<span class="tag-you">YOU</span>':(isWinner&&phase==='done'?'<span class="tag-winner">WIN</span>':(isLoser&&phase==='done'?'<span class="tag-loser">LOST</span>':''));
+  var el=$('arenaPlayers');el.innerHTML='';
+  players.forEach(function(p){
+    var isMe=p.uid===MY_UID;
+    var isWinner=b.winnerUid===p.uid;
+    var isLoser=b.winnerUid&&b.winnerUid!=='tie'&&b.winnerUid!==p.uid;
+    var cls='arena-player'+(isMe?' me':'')+(isWinner&&b.phase==='done'?' winner':'')+(isLoser&&b.phase==='done'?' loser':'');
+    var tag=isMe?'<span class="tag-you">YOU</span>':'';
+    if(isWinner&&b.phase==='done') tag+='<span class="tag-winner">WIN</span>';
+    else if(isLoser&&b.phase==='done') tag+='<span class="tag-loser">LOST</span>';
 
-    var reelHTML='<div class="slot-wrap">';
-    var rewardHTML='<div class="reward-stack">';
-    var totalVal=0;
-    (battle.cases||[]).forEach(function(c,i){
-      var item=items[i]||null;
-      var spinning=phase==='opening';
-      reelHTML+=
-        '<div class="slot-reel'+(spinning?' spinning':'')+'" id="reel-'+player.uid.slice(-6)+'-'+i+'">'+
-          '<div class="slot-reel-inner">'+
-            Array.from({length:8},function(_,j){
-              var faces=['🪙','💎','👑','🏆','🔮','⚡','🌟','💠'];
-              return'<div class="slot-symbol">'+faces[j%faces.length]+'</div>';
-            }).join('')+
-          '</div>'+
-          '<div class="slot-reel-bg"></div>'+
-          (item?'<div class="slot-symbol" style="position:relative;z-index:2">'+item.s+'</div>':'')+
-        '</div>';
-      if(item){totalVal+=item.v||0;}
-      rewardHTML+=
-        '<div class="reward-item '+((isWinner&&phase==='done')?'winning':(isLoser&&phase==='done'?'losing':''))+'">'+
-          '<div class="reward-emoji">'+(item?item.s:'?')+'</div>'+
-          '<div class="reward-fc">'+(item?fmt(item.v):'—')+'</div>'+
-        '</div>';
+    var casesHTML='<div class="case-row">';
+    var rewards=p.rewards||[];
+    (b.cases||[]).forEach(function(c,ci){
+      var item=rewards[ci];
+      var spinning=b.phase==='opening';
+      var revealed=b.phase==='done'&&item;
+      var tierData=TIERS.find(function(t){return t.id===c.tier});
+      var borderColor=tierData?tierData.color:'#2ecc7133';
+
+      // Build spinning strip: show 6 random items cycling
+      var items=tierData?tierData.items:[{s:'🎁'}];
+      var stripItems='';
+      for(var j=0;j<6;j++) stripItems+='<div class="reel-item">'+items[j%items.length].s+'</div>';
+
+      var slotCls='case-slot';
+      if(isWinner&&revealed) slotCls+=' winner-slot';
+      if(isLoser&&revealed) slotCls+=' loser-slot';
+
+      casesHTML+='<div style="text-align:center"><div class="'+slotCls+'" style="border-color:'+(revealed?borderColor:'#2ecc7133')+'">';
+      if(revealed&&item){
+        casesHTML+='<div class="reel-reveal">'+item.s+'</div>';
+      } else if(spinning){
+        casesHTML+='<div class="reel-strip spinning">'+stripItems+'</div>';
+      } else {
+        casesHTML+='<div class="reel-item" style="opacity:.5">🎁</div>';
+      }
+      casesHTML+='</div><div class="reel-value'+(isWinner?' wv-win':(isLoser?' wv-lose':''))+'">'+(revealed&&item?fmt(item.v)+' FC':'—')+'</div></div>';
     });
-    reelHTML+='</div>';
-    rewardHTML+='</div>';
+    casesHTML+='</div>';
 
-    var netWin=player.netWin||0;
     var netHTML='';
-    if(phase==='done'){
-      if(netWin>0) netHTML='<div class="net-win pos">+'+fmt(netWin)+' FC</div>';
-      else if(netWin<0) netHTML='<div class="net-win neg">'+fmt(netWin)+' FC</div>';
-      else netHTML='<div class="net-win neu">+'+fmt(netWin)+' FC</div>';
+    if(b.phase==='done'){
+      var nw=p.netWin||0;
+      if(nw>0) netHTML='<div style="font-size:1rem;font-weight:900;color:#2ecc71;margin-top:.4rem">+'+fmt(nw)+' FC</div>';
+      else if(nw<0) netHTML='<div style="font-size:1rem;font-weight:900;color:#e05050;margin-top:.4rem">'+fmt(nw)+' FC</div>';
+      else netHTML='<div style="font-size:1rem;font-weight:900;color:#f1c40f;margin-top:.4rem">±0 FC</div>';
     }
 
-    slotsEl.innerHTML+=
-      '<div class="'+cardClass+'">'+
-        '<div class="arena-player-tag">'+tagLabel+'<div><div class="tag-name">'+(player.tag||player.uid)+'</div><div class="tag-cost">'+fmt(player.cost||0)+' FC</div></div></div>'+
-        reelHTML+
-        '<div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end">'+
-          rewardHTML+
-          netHTML+
-        '</div>'+
-      '</div>';
+    el.innerHTML+='<div class="'+cls+'"><div class="player-hdr"><div class="player-tag">'+tag+(p.tag||p.uid)+'</div><div class="player-cost">'+fmt(p.cost||cost)+' FC</div></div>'+casesHTML+netHTML+'</div>';
   });
 
-  // Show countdown overlay if needed
-  if(battle.phase==='countdown'&&battle.startsAt){
-    var remaining=Math.ceil((battle.startsAt-Date.now())/1000);
-    if(remaining>0&&remaining<=5){
-      $('countdownOverlay').classList.remove('hidden');
-      $('countdownNum').textContent=remaining;
-    } else {
-      $('countdownOverlay').classList.add('hidden');
-    }
-  } else {
-    $('countdownOverlay').classList.add('hidden');
-  }
+  // Countdown overlay
+  if(b.phase==='countdown'&&b.startsAt){
+    var rem=Math.ceil((b.startsAt-Date.now())/1000);
+    if(rem>0&&rem<=5){$('countdownOverlay').classList.remove('hidden');$('countdownNum').textContent=rem;}
+    else $('countdownOverlay').classList.add('hidden');
+  } else $('countdownOverlay').classList.add('hidden');
 }
 
-// ── Polling ─────────────────────────────────────────────────
-function startPolling(battleId){
-  stopPolling();
-  MY_BATTLE=battleId||MY_BATTLE;
-  pollTimer=setInterval(function(){pollBattle(MY_BATTLE);},1200);
-  pollBattle(MY_BATTLE);
-}
-function stopPolling(){
-  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
-}
-
-function pollBattle(id){
-  if(!id)return;
-  fetch('/api/case-battle/'+id).then(function(r){return r.json();})
-    .then(function(d){
-      if(d.error||d.notFound){stopPolling();showList();return;}
-      STATE[id]=d;
-      // If not yet watching and battle is full, switch to watch mode
-      if(d.phase==='pending'){
-        $('arenaStatus').textContent='Waiting for '+(d.maxPlayers-(d.players||[]).length)+' more player'+((d.maxPlayers-(d.players||[]).length)!==1?'s':'')+'…';
-      }
-      renderArena(id,d);
-      if(d.phase==='done'){
-        stopPolling();
-        showResult(id,d);
-      }
-    }).catch(function(){});
-}
-
-// ── Result overlay ──────────────────────────────────────────
-function showResult(id,battle){
-  var myPlayer=(battle.players||[]).find(function(p){return p.uid===MY_UID;})||{};
-  var won=battle.winnerUid===MY_UID;
-  var tied=battle.winnerUid==='tie';
-  var net=myPlayer.netWin||0;
-  var pot=battle.pot||0;
+// ── Result ─────────────────────────────────────────────────
+function showResult(b){
+  var me=(b.players||[]).find(function(p){return p.uid===MY_UID});
+  if(!me)me=b.players[0];
+  var won=b.winnerUid===MY_UID;
+  var tied=b.winnerUid==='tie';
+  var nw=me.netWin||0;
 
   if(won){
-    $('resultIcon').textContent='🏆';
-    $('resultTitle').className='result-title win';
-    $('resultTitle').textContent='Victory!';
-    $('resultSub').textContent='You opened the highest item and won the pot!';
-    $('resultNet').className='result-net';
-    $('resultNet').style.color='#2ecc71';
-    $('resultNet').textContent='+'+fmt(net)+' FC';
-  } else if(tied){
-    $('resultIcon').textContent='🤝';
-    $('resultTitle').className='result-title tie';
-    $('resultTitle').textContent="It's a Tie!";
-    $('resultSub').textContent='Everyone gets their entry back.';
-    $('resultNet').className='result-net';
-    $('resultNet').style.color='#f1c40f';
-    $('resultNet').textContent=(net>=0?'+':'')+fmt(net)+' FC';
-  } else {
-    $('resultIcon').textContent='💔';
-    $('resultTitle').className='result-title lose';
-    $('resultTitle').textContent='Defeat';
-    $('resultSub').textContent='Your items weren\'t enough this time. Better luck next battle!';
-    $('resultNet').className='result-net';
-    $('resultNet').style.color='#e05050';
-    $('resultNet').textContent=fmt(net)+' FC';
+    $('resultIcon').textContent='🏆';$('resultTitle').className='result-title win';$('resultTitle').textContent='Victory!';
+    $('resultSub').textContent='You had the highest value!';$('resultNet').style.color='#2ecc71';$('resultNet').textContent='+'+fmt(nw)+' FC';
+  }else if(tied){
+    $('resultIcon').textContent='🤝';$('resultTitle').className='result-title tie';$('resultTitle').textContent="It's a Tie!";
+    $('resultSub').textContent='Equal values — pot split equally.';$('resultNet').style.color='#f1c40f';$('resultNet').textContent=(nw>=0?'+':'')+fmt(nw)+' FC';
+  }else{
+    $('resultIcon').textContent='💔';$('resultTitle').className='result-title lose';$('resultTitle').textContent='Defeat';
+    $('resultSub').textContent='Better luck next time.';$('resultNet').style.color='#e05050';$('resultNet').textContent=fmt(nw)+' FC';
   }
-  $('resultOverlay').classList.remove('hidden');
-  refreshBal();
+  $('resultOverlay').classList.remove('hidden');refreshBal();
 }
-function closeResult(){$('resultOverlay').classList.add('hidden');MY_BATTLE=null;}
+function backToList(){$('resultOverlay').classList.add('hidden');currentBattle=null;showList();}
 
-// Auto-load
-(function(){loadBattles();})();
+// ── Init ───────────────────────────────────────────────────
+showList();
 </script>
 </body>
 </html>
