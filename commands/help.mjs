@@ -21,13 +21,7 @@ export default {
                 `**\`${prefix}leaderboard\`** — Top FC holders`,
             },
             {
-              name: "🎮 Casino Games (Web Lobby)",
-              value:
-                `**\`${prefix}web\`** — Open the casino lobby\n` +
-                `*Hundreds of real slots & live games — Pragmatic Play, PG Soft, Jili, CQ9, Habanero & more. Your FC is your wallet.*`,
-            },
-            {
-              name: "🃏 Discord Games",
+              name: "🃏 Casino Games",
               value:
                 `**\`${prefix}blackjack <bet>\`** — Classic Blackjack\n` +
                 `**\`${prefix}slots <bet>\`** — Pull the slot machine\n` +
