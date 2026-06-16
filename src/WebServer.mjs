@@ -656,9 +656,9 @@ export class WebServer {
       b.openedAt = Date.now();
       b.caseStaggerMs = staggerMs;
       b.caseSpinMs = spinMs;
-      // Resolve rewards immediately so frontend can poll them
+      // Resolve rewards — _cbResolve sets phase to "done", then we override back to "opening"
+      // so the frontend sees rewards available during the opening animation.
       this._cbResolve(b);
-      // But keep phase as "opening" for animation, switch to "done" after animation completes
       b.phase = "opening";
       b._resolvedButAnimating = true;
       const animRemaining = staggerMs * caseCount + spinMs + 500;
