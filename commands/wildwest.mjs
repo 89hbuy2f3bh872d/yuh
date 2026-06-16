@@ -170,7 +170,27 @@ export default {
       ]});
     }
 
-    const target = message.mentions?.users?.first?.();
+    let target;
+    const mentions = message.mentions;
+    if (mentions) {
+      if (typeof mentions.first === "function") {
+        target = mentions.users?.first?.() ?? mentions.first();
+      } else if (Array.isArray(mentions)) {
+        target = mentions[0];
+      } else if (mentions.users) {
+        const u = mentions.users;
+        target = typeof u.first === "function" ? u.first() : (Array.isArray(u) ? u[0] : Object.values(u)[0]);
+      }
+    }
+    // Fallback: parse a raw user id from args
+    if (!target) {
+      const match = (args[0] ?? "").match(/^<@!?(\d+)>$/);
+      if (match) {
+        const id = match[1];
+        try { target = await message.client.users.fetch(id); } catch { /* ignore */ }
+        if (!target) target = { id, username: id, bot: false };
+      }
+    }
     if (!target || target.bot || target.id === uid) {
       return message.channel.send({ embeds: [
         embed(COLORS.warn).setDescription(`⚠️ Usage: \`${prefix}wildwest @user <bet>\``)

@@ -330,7 +330,7 @@ export class WebServer {
     this._gameById    = new Map();
     this._processedTrans = new Map();
     this._gsUserCache = new Map();
-    this._admin       = new AdminPanel(db);
+    this._admin       = new AdminPanel(db, config.prefix ?? "&");
   }
 
   // ─── GoldSlot helpers (unchanged) ─────────────────────────────────────────

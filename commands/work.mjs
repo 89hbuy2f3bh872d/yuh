@@ -1,9 +1,9 @@
 import { COLORS } from "../src/theme.mjs";
 
-const COOLDOWN_MS  = 30 * 60 * 1000; // 30 min cooldown between work claims
-const MIN_EARN     = 80;
-const MAX_EARN     = 220;
-const FL_LIST_URL  = "https://fluxerlist.com/api/v1";
+const COOLDOWN_MS = 30 * 60 * 1000; // 30 min cooldown between work claims
+const MIN_EARN = 80;
+const MAX_EARN = 220;
+const FL_LIST_URL = "https://fluxerlist.com/api/v1";
 
 // In-flight guards — coalesce concurrent calls for the same user
 const _inflight = new Map();
@@ -15,10 +15,18 @@ const _inflight = new Map();
 async function hasVoted(serverId, userId, apiKey) {
   try {
     const url = `${FL_LIST_URL}/servers/${serverId}/voters`;
-    const { default: fetch } = await import("undici").catch(() => ({ default: globalThis.fetch }));
-    const fn = typeof fetch === "function" ? fetch : (u, o) => import("undici").then(m => m.default(u, o));
+    const { default: fetch } = await import("undici").catch(() => ({
+      default: globalThis.fetch,
+    }));
+    const fn =
+      typeof fetch === "function"
+        ? fetch
+        : (u, o) => import("undici").then((m) => m.default(u, o));
     const r = await fn(url, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) throw new Error(`FluxerList ${r.status}`);
@@ -27,7 +35,9 @@ async function hasVoted(serverId, userId, apiKey) {
     // The API returns { voters: [...], page, total }.
     // Each voter object has a `fluxerId` field containing their Discord user ID.
     const voters = Array.isArray(data?.voters) ? data.voters : [];
-    return voters.some(v => String(v?.fluxerId ?? v?.id ?? v) === String(userId));
+    return voters.some(
+      (v) => String(v?.fluxerId ?? v?.id ?? v) === String(userId),
+    );
   } catch (e) {
     console.error("[FluxerList] vote check failed:", e?.message);
     return false;
@@ -50,10 +60,11 @@ const JOBS = [
 export default {
   name: "work",
   aliases: ["earn", "grind"],
-  description: "Earn FC by working a shift. Requires voting for the bot on FluxerList.",
+  description:
+    "Earn FC by working a shift. Requires voting for the bot on FluxerList.",
 
   async execute({ message, db, embed, config }) {
-    const uid    = message.author.id;
+    const uid = message.author.id;
     const apiKey = config?.fluxerListApiKey;
     const serverId = config?.fluxerListServerId;
 
@@ -61,14 +72,15 @@ export default {
     if (apiKey && serverId) {
       const voted = await hasVoted(serverId, uid, apiKey);
       if (!voted) {
-        return message.channel.send({ embeds: [
-          embed(COLORS.warn)
-            .setDescription(
+        return message.channel.send({
+          embeds: [
+            embed(COLORS.warn).setDescription(
               "🗳️  **Vote to unlock work!**\n" +
-              "Vote for the server on [FluxerList](https://fluxerlist.com/servers/fabrikken) to earn FC.\n" +
-              "Then come back and run `&work` again."
-            )
-        ]});
+                "Vote for our server on [FluxerList](https://fluxerlist.com/servers/fabrikken) to earn FC.\n" +
+                "Then come back and run `&work` again.",
+            ),
+          ],
+        });
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -79,12 +91,14 @@ export default {
     }
 
     let release;
-    const p = new Promise(resolve => { release = resolve; });
+    const p = new Promise((resolve) => {
+      release = resolve;
+    });
     _inflight.set(uid, p);
 
     try {
-      const u    = await db.getUser(uid);
-      const now  = Date.now();
+      const u = await db.getUser(uid);
+      const now = Date.now();
       const last = u.lw ?? 0;
       const diff = now - last;
 
@@ -92,14 +106,18 @@ export default {
         const remaining = COOLDOWN_MS - diff;
         const m = Math.floor(remaining / 60_000);
         const s = Math.floor((remaining % 60_000) / 1000);
-        return message.channel.send({ embeds: [
-          embed(COLORS.warn)
-            .setDescription(`⏳ You're still on your break. Come back in **${m}m ${s}s**.`)
-        ]});
+        return message.channel.send({
+          embeds: [
+            embed(COLORS.warn).setDescription(
+              `⏳ You're still on your break. Come back in **${m}m ${s}s**.`,
+            ),
+          ],
+        });
       }
 
-      const amount = Math.floor(Math.random() * (MAX_EARN - MIN_EARN + 1)) + MIN_EARN;
-      const job    = JOBS[Math.floor(Math.random() * JOBS.length)];
+      const amount =
+        Math.floor(Math.random() * (MAX_EARN - MIN_EARN + 1)) + MIN_EARN;
+      const job = JOBS[Math.floor(Math.random() * JOBS.length)];
 
       // Atomically credit earnings and persist cooldown timestamp
       await db.updateBalance(uid, amount);
@@ -107,15 +125,17 @@ export default {
 
       const user = await db.getUser(uid);
 
-      return message.channel.send({ embeds: [
-        embed(COLORS.primary)
-          .setTitle(`${job.emoji} Shift Complete`)
-          .setDescription(
-            `You **${job.text}** and earned **+${amount.toLocaleString()} FC**!\n` +
-            `💰 Balance: **${Math.floor(user.bal).toLocaleString()} FC**`
-          )
-          .setFooter({ text: "Next shift available in 30 minutes." })
-      ]});
+      return message.channel.send({
+        embeds: [
+          embed(COLORS.primary)
+            .setTitle(`${job.emoji} Shift Complete`)
+            .setDescription(
+              `You **${job.text}** and earned **+${amount.toLocaleString()} FC**!\n` +
+                `💰 Balance: **${Math.floor(user.bal).toLocaleString()} FC**`,
+            )
+            .setFooter({ text: "Next shift available in 30 minutes." }),
+        ],
+      });
     } finally {
       _inflight.delete(uid);
       release();

@@ -362,7 +362,7 @@ function buildPage(data) {
           (c) => `
       <div class="cmd-card">
         <div class="cmd-top">
-          <span class="cmd-name">/${esc(String(c._id).replace(/^cmd:/, ""))}</span>
+          <span class="cmd-name">${esc(this.prefix)}${esc(String(c._id).replace(/^cmd:/, ""))}</span>
           <span class="cmd-count">${fmt(c.count)}</span>
         </div>
         <div class="cmd-bar"><div class="cmd-bar-inner" style="width:${pct(c.count, cmdMax)}%"></div></div>
@@ -516,8 +516,9 @@ function buildPage(data) {
 
 export class AdminPanel {
   /** @param {import('./Database.mjs').Database} db */
-  constructor(db) {
+  constructor(db, prefix = "&") {
     this.db = db;
+    this.prefix = prefix;
   }
 
   /**
