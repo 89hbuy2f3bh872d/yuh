@@ -28,16 +28,6 @@ export class CommandHandler {
 
   async handleMessage(message) {
     if (!message?.content || message?.author?.bot) return;
-
-    // ── Track guild presence ─────────────────────────────────────────────────
-    if (message.guild) {
-      this.db.upsertGuild(message.guild.id, {
-        name:        message.guild.name,
-        icon:        message.guild.iconURL?.() ?? null,
-        memberCount: message.guild.memberCount ?? null,
-      }).catch(() => {});
-    }
-
     if (!message.content.startsWith(this.prefix)) return;
 
     const args = message.content.slice(this.prefix.length).trim().split(/\s+/);
@@ -55,8 +45,20 @@ export class CommandHandler {
       return;
     }
 
-    // ── Record command usage ─────────────────────────────────────────────────
-    this.db.recordCommand(cmd.name).catch(() => {});
+    // ── Track command usage + guild presence ──────────────────────────────────
+    const guildId   = message.guild?.id ?? message.guildId ?? null;
+    const guildName = message.guild?.name ?? null;
+    if (this.db) {
+      this.db.recordCommand(cmd.name).catch(() => {});
+      if (guildId) {
+        this.db.upsertGuild(guildId, {
+          name:        guildName,
+          memberCount: message.guild?.memberCount ?? null,
+          icon:        message.guild?.icon ?? null,
+        }).catch(() => {});
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       await cmd.execute({
