@@ -2,7 +2,7 @@
   <a href="/lobby" class="sb-brand">
     <span class="sb-mark">G</span>
     <div>
-      <div class="sb-brand-txt">Sir<b>Green</b></div>
+      <div class="sb-brand-txt"><span class="sb-tw">Sir<b>Green</b></span></div>
       <div class="sb-brand-sub">Casino</div>
     </div>
   </a>
@@ -46,3 +46,18 @@
     </a>
   </div>
 </aside>
+<script>
+/* Cursor-reactive animated background (runs on every page using this sidebar). */
+(function(){
+  if(window.__bgfx)return; window.__bgfx=1;
+  var root=document.documentElement, raf=0, mx=50, my=50;
+  window.addEventListener('pointermove',function(e){
+    mx=e.clientX/window.innerWidth*100; my=e.clientY/window.innerHeight*100;
+    if(!raf)raf=requestAnimationFrame(function(){
+      raf=0;
+      root.style.setProperty('--mx',mx.toFixed(1)+'%');
+      root.style.setProperty('--my',my.toFixed(1)+'%');
+    });
+  },{passive:true});
+})();
+</script>

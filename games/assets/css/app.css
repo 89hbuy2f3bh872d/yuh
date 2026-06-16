@@ -31,7 +31,23 @@
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;font-feature-settings:"cv11","ss01"}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;font-feature-settings:"cv11","ss01";position:relative}
+/* Cursor-reactive glow (follows --mx/--my set in JS) — sits above the solid bg, below content. */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(600px circle at var(--mx,50%) var(--my,50%), rgba(34,197,94,.10), transparent 55%),
+    radial-gradient(820px circle at 85% 12%, rgba(34,197,94,.06), transparent 55%),
+    radial-gradient(720px circle at 10% 90%, rgba(16,185,129,.06), transparent 55%);
+  transition:background .25s ease-out}
+/* Slow drifting blobs for ambient motion. */
+body::after{content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;opacity:.6;
+  background:
+    radial-gradient(320px circle at 22% 28%, rgba(34,197,94,.07), transparent 60%),
+    radial-gradient(280px circle at 78% 72%, rgba(59,130,246,.05), transparent 60%);
+  animation:bgDrift 22s ease-in-out infinite alternate}
+@keyframes bgDrift{from{transform:translate(0,0) scale(1)}to{transform:translate(46px,-34px) scale(1.08)}}
+@media(prefers-reduced-motion:reduce){body::after{animation:none}}
+.app{position:relative;z-index:1}
 a{color:inherit;text-decoration:none}
 button{cursor:pointer;background:none;border:none;color:inherit;font:inherit}
 input,select,textarea{font:inherit;color:inherit}
@@ -54,6 +70,13 @@ input,select,textarea{font:inherit;color:inherit}
 .sb-mark{width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:900;font-size:.95rem;flex-shrink:0}
 .sb-brand-txt{font-weight:800;font-size:.95rem;letter-spacing:-.01em}
 .sb-brand-txt b{color:var(--accent)}
+/* Clean typewriter reveal for the brand wordmark. */
+.sb-tw{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;max-width:0;
+  border-right:1.5px solid var(--accent);
+  animation:sbType 1.1s steps(8,end) .25s forwards, sbCaret .62s step-end .25s 7 both}
+@keyframes sbType{from{max-width:0}to{max-width:10ch}}
+@keyframes sbCaret{from,to{border-color:transparent}50%{border-color:var(--accent)}}
+@media(prefers-reduced-motion:reduce){.sb-tw{max-width:10ch;animation:none;border-color:transparent}}
 .sb-brand-sub{font-size:.56rem;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:.1rem}
 
 .sb-section{font-size:.58rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--text3);padding:.75rem .6rem .35rem}

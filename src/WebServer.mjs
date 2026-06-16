@@ -524,8 +524,10 @@ export class WebServer {
     // Each case: spin (fixed) then a stagger gap before the next starts.
     // Normal is slower for a more satisfying reveal; fast stays snappy.
     const spinMs = isFast ? 900 : 2600;
-    const staggerMs = isFast ? 350 : 750;
-    // Extra hold after cases for jackpot wheel spin (client animates ~2.5s).
+    // Sequential reveal: next case only starts after the previous one's spin
+    // is fully done (stagger >= spin + a short pause).
+    const gapMs = isFast ? 150 : 300;
+    const staggerMs = spinMs + gapMs;
     battle.jackpotWheelMs = battle.jackpot ? 2800 : 0;
 
     battle.phase = "countdown";
@@ -547,7 +549,9 @@ export class WebServer {
       this._cbResolve(b);
       b.phase = "opening";
       b._resolvedButAnimating = true;
-      const animRemaining = staggerMs * caseCount + spinMs + 500 + (b.jackpotWheelMs || 0);
+      // Cases finish, then phase=done. Jackpot wheel is a client-side cosmetic
+      // that plays after done (winner already chosen server-side).
+      const animRemaining = staggerMs * caseCount + spinMs + 500;
       setTimeout(() => {
         const b2 = this._cbActive.get(battle.id);
         if (b2 && b2._resolvedButAnimating) {

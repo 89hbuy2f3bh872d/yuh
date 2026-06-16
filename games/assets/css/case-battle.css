@@ -173,18 +173,9 @@
 .result-net{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;margin-bottom:1.1rem}
 .result-actions{display:flex;gap:.5rem;justify-content:center}
 
-/* CSGO frame — avatars + badges */
-.player-av{width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid var(--border-2);background:var(--surface-3)}
-.player-av.ph{display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--text-2);text-transform:uppercase}
+/* badges */
 .badge-bot{background:#1a0a28;color:var(--purple);border:1px solid #a855f733}
 .badge-chance{background:#1a1400;color:var(--gold);border:1px solid #eab30833;font-variant-numeric:tabular-nums}
-
-/* reel wrap with faint avatar watermark while opening */
-.reel-wrap{position:relative}
-.reel-av-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .4s;z-index:5}
-.reel-wrap.opening .reel-av-overlay{opacity:.10}
-.reel-av-overlay .player-av{width:96px;height:96px;border-width:0;filter:grayscale(.2)}
-.reel-av-overlay .player-av.ph{font-size:2.4rem}
 
 /* Jackpot wheel overlay */
 .jp-head{font-size:.9rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:.4rem;margin-bottom:.4rem}

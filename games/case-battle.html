@@ -565,23 +565,14 @@ function buildPlayerGrid(b, players, caseCount, staggerMs, spinMs, isPlayer, isS
       netHTML = '<div class="case-totals"><div class="lbl">Net</div><div class="val ' + cls2 + '">' + sgn + fmt(nw) + ' FC</div></div>';
     }
 
-    // avatar (CSGO frame) — fluxer pfp, fallback to initial
-    var avSrc = p.avatar || '';
-    var initial = escapeHtml(String(p.tag || p.uid || '?').replace(/^BOT\s+/, '').slice(0, 1).toUpperCase());
-    var avHtml = avSrc
-      ? '<img class="player-av" src="' + escapeHtml(avSrc) + '" alt="" onerror="this.outerHTML=&quot;<div class=\\&quot;player-av ph\\&quot;>' + initial + '</div>&quot;">'
-      : '<div class="player-av ph">' + initial + '</div>';
     if (p.bot) tag = '<span class="badge badge-bot"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Bot</span>' + tag;
     if (b.jackpot && typeof p.winChance === 'number') tag += '<span class="badge badge-chance">' + (p.winChance * 100).toFixed(p.winChance >= 0.1 ? 0 : 1) + '%</span>';
 
-    var reelWrap = '<div class="reel-wrap' + (opening ? ' opening' : '') + '">' + casesHTML +
-      '<div class="reel-av-overlay" aria-hidden="true">' + avHtml + '</div></div>';
-
     el.innerHTML += '<div class="' + cls + '">' +
-      '<div class="player-hdr">' + avHtml +
+      '<div class="player-hdr">' +
         '<div class="player-tag">' + escapeHtml(String(p.tag || p.uid).replace(/^BOT\s+/, '')) + '</div>' + tag +
         '<div class="player-cost">' + fmt(p.cost || b.cost) + ' FC</div></div>' +
-      reelWrap + totalsHTML + netHTML + '</div>';
+      casesHTML + totalsHTML + netHTML + '</div>';
   });
 
   // Now DOM is in place — fire all the spin transitions
@@ -694,11 +685,18 @@ function runJackpotWheel(b){
   for(var s=pool.length-1;s>0;s--){var j=Math.floor(Math.random()*(s+1));var t=pool[s];pool[s]=pool[j];pool[j]=t;}
   var REEL=48;
   var TILE=88; // .jp-tile width(80)+margin(8)
+  var PALETTE=['#22c55e','#3b82f6','#eab308','#a855f7','#ef4444','#06b6d4','#f97316','#ec4899'];
+  function colorFor(p){
+    var s=0,u=String(p.uid||p.tag||'');
+    for(var i=0;i<u.length;i++)s=(s*31+u.charCodeAt(i))>>>0;
+    return PALETTE[s%PALETTE.length];
+  }
   function tileHtml(p){
-    var src=p.avatar||'';
-    var ini=escapeHtml(String(p.tag||'?').replace(/^BOT\s+/,'').slice(0,1).toUpperCase());
-    var inner=src?'<img src="'+escapeHtml(src)+'" alt="" onerror="this.outerHTML=&quot;<span>'+ini+'</span>&quot;">':'<span>'+ini+'</span>';
-    return '<div class="jp-tile">'+inner+'<div class="jp-name">'+escapeHtml(String(p.tag||'').replace(/^BOT\s+/,''))+'</div></div>';
+    var nm=String(p.tag||'').replace(/^BOT\s+/,'');
+    var ini=escapeHtml(nm.slice(0,1).toUpperCase()||'?');
+    var col=colorFor(p);
+    return '<div class="jp-tile"><span style="background:'+col+'22;border-color:'+col+';color:'+col+'">'+ini+'</span>'+
+      '<div class="jp-name">'+escapeHtml(nm)+'</div></div>';
   }
   var html='';
   for(var r=0;r<REEL;r++) html+=tileHtml(pool[Math.floor(Math.random()*pool.length)]);
