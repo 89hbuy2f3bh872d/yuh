@@ -129,7 +129,7 @@ function buildSidebar(a: { active: string; tag: string; avatar: string; bal: num
   let s = SIDEBAR_TPL;
   for (const p of PAGE_IDS) s = s.replace(`__ACTIVE_${p}__`, p === a.active ? "active" : "");
   const adminNav = a.showAdmin
-    ? `<a href="/admin/panel" class="sb-item admin ${a.active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
+    ? `<a href="/admin" class="sb-item admin ${a.active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
     : "";
   return s.replace("__ADMIN_NAV__", adminNav).replace(/__TAG__/g, esc(a.tag)).replace(/__AVATAR__/g, esc(a.avatar)).replace(/__BALANCE__/g, Number(a.bal).toLocaleString());
 }
@@ -410,6 +410,12 @@ const PAGES: [string, string, string][] = [
 for (const [p, f, a] of PAGES) app.get(p, ({ request, set }) => renderPage(request, set, f, a));
 app.get("/case-battle", ({ request, set }) => renderPage(request, set, "case-battle.html", "case-battle", { "__BATTLE_ID__": "" }));
 app.get("/case-battle/:id", ({ request, set, params }) => renderPage(request, set, "case-battle.html", "case-battle", { "__BATTLE_ID__": esc((params as any).id) }));
+// Admin as a seamless in-app tab (embeds /admin/panel in an iframe — CSS-isolated)
+app.get("/admin", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) return redir(set, "/login");
+  if (!(await admin.isAdmin(uid))) return redir(set, "/lobby");
+  return renderPage(request, set, "admin.html", "admin");
+});
 
 // ── Case Battle API (engine: ../src/CaseBattle.mjs; balances via STDB) ───────
 const authed = async (request: Request, set: any) => { const uid = await resolveSession(request); if (!uid) { set.status = 401; } return uid; };

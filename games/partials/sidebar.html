@@ -69,7 +69,7 @@
   var _si=window.setInterval, ints=[];
   window.setInterval=function(f,t){ var id=_si.call(window,f,t); ints.push(id); return id; };
   function clearInts(){ ints.forEach(function(i){ try{clearInterval(i);}catch(e){} }); ints=[]; }
-  function internal(href){ return href && href[0]==='/' && !/^\/(logout|admin|login|oauth|assets)/.test(href); }
+  function internal(href){ return href && href[0]==='/' && href!=='/admin/panel' && !/^\/(logout|login|oauth|assets)/.test(href); }
   function updateActive(path){
     document.querySelectorAll('.sb-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('href')===path); });
   }
