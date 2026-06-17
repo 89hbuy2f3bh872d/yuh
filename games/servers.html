@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Servers — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.srv-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.1rem;align-items:start}
+.svc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md,14px);padding:1.1rem;display:flex;flex-direction:column;gap:.9rem}
+.svc-head{display:flex;align-items:center;gap:.7rem}
+.svc-av{width:42px;height:42px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:1.1rem;flex:none}
+.svc-h-meta{min-width:0;flex:1}
+.svc-name{font-weight:700;font-size:.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.svc-sub{font-size:.66rem;color:var(--text3)}
+.svc-bank{background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:.8rem .9rem;display:flex;align-items:center;justify-content:space-between}
+.svc-bank .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
+.svc-bank .val{font-size:1.5rem;font-weight:800;color:var(--gold);line-height:1.1}
+.svc-bank .val small{font-size:.7rem;color:var(--text3);font-weight:600;margin-left:.2rem}
+.svc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.45rem}
+.svc-st{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.5rem .55rem}
+.svc-st .n{font-size:.92rem;font-weight:700}
+.svc-st .k{font-size:.58rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text3);margin-top:.1rem}
+.svc-tax{display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.55rem .7rem}
+.svc-tax .t-lbl{font-size:.74rem;color:var(--text2)}
+.svc-tax .t-val{font-weight:800;color:var(--text)}
+.svc-shop{display:flex;align-items:center;gap:.5rem;justify-content:center;font-size:.74rem;color:var(--text3);border:1px dashed var(--border2,var(--border));border-radius:10px;padding:.6rem;background:transparent}
+.svc-vote{display:flex;align-items:center;gap:.5rem;font-size:.76rem;color:var(--text2);background:color-mix(in srgb,var(--gold) 10%,transparent);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:10px;padding:.6rem .75rem;margin-bottom:1rem}
+.svc-vote a{color:var(--gold);font-weight:700;text-decoration:underline}
+.svc-vote .icon{width:16px;height:16px;color:var(--gold);flex:none}
+@media(max-width:640px){.srv-cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        Servers
+      </h1>
+      <div class="page-sub">Your servers' banks, taxes &amp; play stats.</div>
+    </div>
+  </div>
+
+  <div id="voteBanner"></div>
+  <div class="srv-cards" id="srvCards"><div class="empty">Loading your servers…</div></div>
+</main>
+</div>
+
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function fmt(n){return Number(n||0).toLocaleString()}
+function initials(n){return String(n||'?').trim().slice(0,1).toUpperCase();}
+
+var SRV = {}; // gid -> server data (for live patches)
+
+function card(s){
+  var st=s.stats||{};
+  return '<div class="svc" id="svc-'+esc(s.id)+'">'
+    + '<div class="svc-head"><div class="svc-av">'+esc(initials(s.name))+'</div>'
+      + '<div class="svc-h-meta"><div class="svc-name">'+esc(s.name)+'</div><div class="svc-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+'You own this</div></div></div>'
+    + '<div class="svc-bank"><div><div class="lbl">Server bank</div><div class="val" id="bank-'+esc(s.id)+'">'+fmt(s.bank)+'<small>FC</small></div></div>'
+      + '<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--gold);opacity:.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg></div>'
+    + '<div class="svc-stats">'
+      + tile(fmt(st.games),'Games') + tile(fmt(st.wagered),'Wagered') + tile(fmt(st.taxed),'Tax earned')
+      + tile(fmt(st.payout),'Paid out') + tile(fmt(st.players),'Players') + tile(fmt(st.big),'Biggest win')
+    + '</div>'
+    + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+(s.tax/100)+'%</span></span>'
+      + '<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button></div>'
+    + '<button class="svc-shop" disabled title="Coming soon"><svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Shop — coming soon</button>'
+  + '</div>';
+}
+function tile(n,k){ return '<div class="svc-st"><div class="n">'+n+'</div><div class="k">'+esc(k)+'</div></div>'; }
+
+function editTax(id){ if(window.sgEditTax) window.sgEditTax(id); }
+
+function load(){
+  fetch('/api/my-servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){
+    var wrap=document.getElementById('srvCards'); if(!d){ wrap.innerHTML='<div class="empty">Failed to load.</div>'; return; }
+    var list=d.servers||[]; SRV={};
+    var vb=document.getElementById('voteBanner');
+    vb.innerHTML = (list.length && !d.voted)
+      ? '<div class="svc-vote"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 4 7v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7Z"/></svg><span>Want to change your tax rate? <a href="'+esc(d.voteUrl||'https://fluxerlist.com')+'" target="_blank" rel="noopener">Vote for the bot on FluxerList</a> to unlock it.</span></div>'
+      : '';
+    if(!list.length){ wrap.innerHTML='<div class="empty">You don\'t own any servers with the bot yet.</div>'; return; }
+    list.forEach(function(s){ SRV[s.id]=s; });
+    wrap.innerHTML=list.map(card).join('');
+  }).catch(function(){ document.getElementById('srvCards').innerHTML='<div class="empty">Failed to load.</div>'; });
+}
+
+// Live updates: server bank (WS push) + tax (edited via the sidebar dialog).
+// Registered once (pjax re-runs this file's script) — handlers re-query the DOM.
+if(!window.__srvDash){ window.__srvDash=1;
+  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='bank')return;
+    var el=document.getElementById('bank-'+d.gid); if(el) el.innerHTML=fmt(d.bal)+'<small>FC</small>';
+    if(SRV[d.gid]) SRV[d.gid].bank=d.bal;
+  });
+  window.addEventListener('sg:tax', function(e){ var d=e.detail; if(!d)return;
+    var el=document.getElementById('tax-'+d.gid); if(el) el.textContent=(d.taxBps/100)+'%';
+    if(SRV[d.gid]) SRV[d.gid].tax=d.taxBps;
+  });
+}
+
+load();
+</script>
+</body>
+</html>

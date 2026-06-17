@@ -125,13 +125,26 @@ function fluxerAvatarUrl(userId: string, hash: string | null, size = 64): string
   const ext = String(hash).startsWith("a_") ? "gif" : "png";
   return `${FLUXER_CDN}/avatars/${userId}/${hash}.${ext}?size=${size}`;
 }
-function buildSidebar(a: { active: string; tag: string; avatar: string; bal: number; showAdmin: boolean }): string {
+function buildSidebar(a: { active: string; tag: string; avatar: string; bal: number; showAdmin: boolean; showServers: boolean }): string {
   let s = SIDEBAR_TPL;
   for (const p of PAGE_IDS) s = s.replace(`__ACTIVE_${p}__`, p === a.active ? "active" : "");
+  const serversNav = a.showServers
+    ? `<a href="/servers" class="sb-item ${a.active === "servers" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg><span>Servers</span></a>`
+    : "";
   const adminNav = a.showAdmin
     ? `<a href="/admin" class="sb-item admin ${a.active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
     : "";
-  return s.replace("__ADMIN_NAV__", adminNav).replace(/__TAG__/g, esc(a.tag)).replace(/__AVATAR__/g, esc(a.avatar)).replace(/__BALANCE__/g, Number(a.bal).toLocaleString());
+  return s.replace("__SERVERS_NAV__", serversNav).replace("__ADMIN_NAV__", adminNav).replace(/__TAG__/g, esc(a.tag)).replace(/__AVATAR__/g, esc(a.avatar)).replace(/__BALANCE__/g, Number(a.bal).toLocaleString());
+}
+// Does this user own at least one bot-guild? (gates the Servers dashboard.)
+const ownsCache = new Map<string, { owns: boolean; until: number }>();
+async function ownsAnyServer(uid: string, gids: string[]): Promise<boolean> {
+  const hit = ownsCache.get(uid);
+  if (hit && hit.until > Date.now()) return hit.owns;
+  let owns = false;
+  if (gids.length) { const gs = await db.getGuildsByIds(gids).catch(() => []); owns = gs.some((g: any) => g.ownerId === uid); }
+  ownsCache.set(uid, { owns, until: Date.now() + 60_000 });
+  return owns;
 }
 async function renderPage(request: Request, set: any, file: string, active: string, extra: Record<string, string> = {}) {
   const uid = await resolveSession(request);
@@ -144,8 +157,9 @@ async function renderPage(request: Request, set: any, file: string, active: stri
   const tag = c.dtag || user?.tag || "Player";
   let avatar = c.dav || user?.av || ""; if (!avatar) avatar = fluxerAvatarUrl(uid, null);
   const showAdmin = await admin.isAdmin(uid).catch(() => OWNERS.includes(uid)); // owner OR holds a permission
+  const showServers = await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []).catch(() => false);
   let html = readFileSync(fp, "utf8")
-    .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin }))
+    .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin, showServers }))
     .replace(/__BALANCE__/g, String(bal)).replace(/__TAG__/g, esc(tag)).replace(/__AVATAR__/g, esc(avatar)).replace(/__UID__/g, esc(uid));
   for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
   html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
@@ -212,7 +226,7 @@ async function hasVoted(userId: string): Promise<boolean> {
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
 // One socket per browser tab. On open we auth via the session cookie, subscribe the
 // user to STDB balance + notification pushes, and stream them down. No polling.
-type WSData = { uid: string | null; offBal?: () => void; offNotif?: () => void };
+type WSData = { uid: string | null; offBal?: () => void; offNotif?: () => void; offBanks?: Array<() => void> };
 
 // Live sockets, for in-process broadcast (tickets). Single web instance assumed; a
 // scale-out would route this through STDB/redis pub-sub instead.
@@ -255,11 +269,28 @@ const app = new Elysia()
       (ws.data as any).offNotif = stdb.onNotification(uid, (n) =>
         ws.send(JSON.stringify({ type: "notification", item: { t: n.kind, m: n.msg, a: Number(n.amount), f: n.fromTag, ts: Number(n.ts) } })));
       (ws.data as any).isAdmin = await admin.isAdmin(uid).catch(() => false);
+      // Live server-bank pushes for any servers this user owns (Servers dashboard).
+      try {
+        const u = await db.getUser(uid).catch(() => null);
+        const gids: string[] = Array.isArray(u?.gids) ? u.gids : [];
+        if (gids.length) {
+          const owned = (await db.getGuildsByIds(gids).catch(() => [])).filter((g: any) => g.ownerId === uid).map((g: any) => g._id);
+          if (owned.length) {
+            const offs: Array<() => void> = [];
+            for (const gid of owned) {
+              ws.send(JSON.stringify({ type: "bank", gid, bal: stdb.getServerBank(gid) }));
+              offs.push(stdb.onBank(gid, (b) => ws.send(JSON.stringify({ type: "bank", gid, bal: b }))));
+            }
+            (ws.data as any).offBanks = offs;
+          }
+        }
+      } catch {}
       wsClients.add(ws);
     },
     close(ws) {
       const d = ws.data as any;
       d.offBal?.(); d.offNotif?.();
+      if (Array.isArray(d.offBanks)) for (const off of d.offBanks) try { off(); } catch {}
       if (d.uid) stdb.unsubscribeNotifs(d.uid);
       wsClients.delete(ws);
     },
@@ -319,6 +350,8 @@ const app = new Elysia()
     try { await stdb.settleWin(uid, cost, result.totalWin, srv.gid, tax); }
     catch (e: any) { return { error: e?.message === "insufficient" ? "Insufficient balance" : "Settle failed" }; }
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
+    (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
+    (db as any).recordServerPayout?.(srv.gid, result.totalWin, tax).catch(() => {});
     return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid) };
   })
 
@@ -335,28 +368,33 @@ const app = new Elysia()
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
     const bal = () => stdb.getBalance(uid);
+    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); };
     // Credit a payout, routing the server's tax on profit (payout − stake) to its bank.
     const payWin = (payout: number, stake: number) => {
+      const tax = payout > 0 ? taxOnProfit(payout - stake, srv.taxBps) : 0;
+      (db as any).recordServerPayout?.(srv.gid, payout, tax).catch(() => {});
       if (!(payout > 0)) return Promise.resolve();
-      const tax = taxOnProfit(payout - stake, srv.taxBps);
       return stdb.creditWin(uid, payout, srv.gid, tax).catch(() => {});
     };
 
     if (sub === "plinko") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
       const r = plinko(bet, d?.risk); await payWin(r.payout, bet); db.recordGame?.(uid, r.payout >= bet, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "coinflip") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
       const r = coinflip(bet, d?.side); await payWin(r.payout, bet); db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "double") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
       const r = doubleOrNothing(bet); await payWin(r.payout, bet); db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
@@ -364,6 +402,7 @@ const app = new Elysia()
       if (!goodBet) return { error: "Invalid bet" };
       house.clearMines(uid);
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
       return Object.assign(house.startMines(uid, bet, d?.mines), { ok: true, balance: bal() });
     }
     if (sub === "mines/reveal") {
@@ -381,6 +420,7 @@ const app = new Elysia()
       if (!goodBet) return { error: "Invalid bet" };
       house.clearHilo(uid);
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
       return Object.assign(house.startHilo(uid, bet), { ok: true, balance: bal() });
     }
     if (sub === "hilo/guess") { return house.hiloGuess(uid, d?.dir); }
@@ -516,6 +556,13 @@ app.get("/admin", async ({ request, set }) => {
   const uid = await resolveSession(request); if (!uid) return redir(set, "/login");
   if (!(await admin.isAdmin(uid))) return redir(set, "/lobby");
   return renderPage(request, set, "admin.html", "admin");
+});
+// Servers dashboard — visible only to users who OWN a bot-guild.
+app.get("/servers", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) return redir(set, "/login");
+  const user = await db.getUser(uid).catch(() => null);
+  if (!(await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []))) return redir(set, "/lobby");
+  return renderPage(request, set, "servers.html", "servers");
 });
 
 // ── Case Battle API (engine: ../src/CaseBattle.mjs; balances via STDB) ───────
@@ -739,6 +786,31 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
   if (saved == null) { set.status = 500; return { error: "Failed to save" }; }
   taxCache.set(gid, { bps: saved, until: Date.now() + 60_000 }); // refresh hot cache immediately
   return { ok: true, taxBps: saved };
+});
+
+// ── Servers dashboard data (owner-only): each owned server's tax, bank + stats ─
+app.get("/api/my-servers", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const user = await db.getUser(uid).catch(() => null);
+  const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+  if (!gids.length) return { servers: [], voted: false };
+  const guilds = await db.getGuildsByIds(gids).catch(() => []);
+  const owned = guilds.filter((g: any) => g.ownerId === uid);
+  if (!owned.length) return { servers: [], voted: false };
+  const stats: any[] = await (db as any).getServerStatsMany(owned.map((g: any) => g._id)).catch(() => []);
+  const statMap = new Map(stats.map((s: any) => [s._id, s]));
+  const voted = await hasVoted(uid);
+  const servers = owned.map((g: any) => {
+    const s: any = statMap.get(g._id) || {};
+    return {
+      id: g._id, name: g.name || "Server", icon: g.icon || null,
+      members: g.memberCount ?? null,
+      tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
+      bank: stdb.getServerBank(g._id),
+      stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
+    };
+  });
+  return { servers, voted, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS, voteUrl: "https://fluxerlist.com/servers/fabrikken" };
 });
 
 // ── user search (send-money picker) ─────────────────────────────────────────

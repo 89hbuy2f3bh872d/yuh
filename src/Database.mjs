@@ -70,6 +70,7 @@ export class Database {
     this._stats   = this._db.collection("stats");
     this._guilds  = this._db.collection("guilds");
     this._tokens  = this._db.collection("logintokens");
+    this._srvStats = this._db.collection("serverstats");
     // Ensure indexes
     try {
       await this._users.createIndex({ "st.e": -1 }); // session expiry TTL
@@ -445,6 +446,37 @@ export class Database {
     const v = clampTaxBps(bps);
     await this._guilds.updateOne({ _id: String(id) }, { $set: { taxBps: v, lastSeen: Date.now() } }, { upsert: true });
     return v;
+  }
+
+  // ─── Per-server economy stats (owner dashboard) ─────────────────────────────
+  // One doc per guild: gp=games, wagered, payout (paid to players), taxed (cut
+  // into the server bank, cumulative), big=biggest single payout, players=unique.
+  /** Count a wager placed on a server (one game). */
+  async recordServerWager(gid, amount, uid) {
+    if (!this._srvStats || !gid) return;
+    const amt = Math.max(0, Math.floor(Number(amount) || 0));
+    const upd = { $inc: { gp: 1, wagered: amt }, $set: { lastPlay: Date.now() } };
+    if (isValidUserId(uid)) upd.$addToSet = { players: uid }; // unique player set
+    await this._srvStats.updateOne({ _id: String(gid) }, upd, { upsert: true }).catch(() => {});
+  }
+  /** Record a payout (and the tax it fed into the server bank). */
+  async recordServerPayout(gid, payout, tax) {
+    if (!this._srvStats || !gid) return;
+    const pay = Math.max(0, Math.floor(Number(payout) || 0));
+    const tx = Math.max(0, Math.floor(Number(tax) || 0));
+    await this._srvStats.updateOne(
+      { _id: String(gid) },
+      { $inc: { payout: pay, taxed: tx }, $max: { big: pay } },
+      { upsert: true }
+    ).catch(() => {});
+  }
+  async getServerStats(gid) {
+    if (!this._srvStats || !gid) return null;
+    return this._srvStats.findOne({ _id: String(gid) }).catch(() => null);
+  }
+  async getServerStatsMany(gids) {
+    if (!this._srvStats || !Array.isArray(gids) || !gids.length) return [];
+    return this._srvStats.find({ _id: { $in: gids.map(String) } }).toArray().catch(() => []);
   }
 
   // ─── Server-scoped login links (created by &web, consumed by the web /s/:token) ──
