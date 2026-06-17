@@ -36,12 +36,12 @@ __SIDEBAR__
     <div class="machine-top">
       <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
       <div class="fs-banner hidden" id="fsBanner"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg> <span id="fsText">Free Spins</span></div>
-      <div class="gmult hidden" id="gmult">Global <b id="gmultVal">×1</b></div>
       <div class="meter right"><span class="meter-lbl">Balance</span><b id="balMeter">0</b> FC</div>
     </div>
 
     <div class="reel-stage">
       <div class="reels" id="reels"></div>
+      <div class="gmult hidden" id="gmult"><span>GLOBAL</span><b id="gmultVal">×1</b></div>
       <div class="stage-msg hidden" id="stageMsg"></div>
     </div>
 
@@ -52,6 +52,7 @@ __SIDEBAR__
         <span class="bet-val" id="betVal">20</span>
         <button class="step-btn" onclick="adjustBet(1)">+</button>
       </div>
+      <button class="turbo-btn" id="turboBtn" onclick="toggleTurbo()" title="Turbo (faster spins)"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></button>
       <button class="spin-btn" id="spinBtn" onclick="doSpin(false)">
         <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.5 1 6 2.5L21 3M21 3v6h-6"/></svg><span>SPIN</span>
       </button>
@@ -87,7 +88,6 @@ __SIDEBAR__
 <!-- Big-win overlay -->
 <div id="winOverlay" class="overlay hidden">
   <div class="bigwin-card">
-    <div class="bigwin-rays" id="bigwinRays"></div>
     <div class="bigwin-label" id="bigwinLabel">BIG WIN</div>
     <div class="bigwin-amt" id="bigwinAmt">0 FC</div>
     <button class="btn btn-primary" id="bwCollect">Collect</button>
@@ -101,8 +101,9 @@ function $(id){return document.getElementById(id);}
 function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 
-var GAMES=[], GAME=null, bal=0, busy=false;
+var GAMES=[], GAME=null, bal=0, busy=false, turbo=false;
 var BET_LEVELS=[1,2,5,10,20,40,80,150,300,600,1000,2000], betIdx=4;
+function toggleTurbo(){ turbo=!turbo; var b=$('turboBtn'); if(b)b.classList.toggle('on',turbo); }
 
 function refreshBal(){ return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&d.bal!==undefined){bal=Number(d.bal);var e=$('sbBal');if(e)e.textContent=fmt(bal);var bm=$('balMeter');if(bm)bm.textContent=fmt(bal);} }).catch(function(){}); }
 refreshBal(); setInterval(function(){ if(!busy)refreshBal(); },8000);
@@ -173,16 +174,23 @@ function setCell(i,s,fall,delay){ var c=$('cell-'+i); if(!c)return; c.className=
 function renderGrid(cells,fall){ for(var i=0;i<cells.length;i++) setCell(i,cells[i],fall, fall?((GAME.H-1-((i/GAME.W)|0))*0):0); }
 function fillIdle(){ var keys=Object.keys(GAME.sym),cells=[]; for(var i=0;i<GAME.W*GAME.H;i++)cells.push(keys[Math.floor(Math.random()*keys.length)]); renderGrid(cells,false); }
 
-// drop the whole grid in (spin entrance) — staggered by row
+// spin entrance: symbols fall in one ROW at a time from the top, left→right within each row
 function dropGrid(cells){
-  for(var i=0;i<cells.length;i++){ var row=(i/GAME.W)|0; setCell(i,cells[i],true,(GAME.H-1-row)*45); }
+  var COL=turbo?10:24, ROWG=turbo?70:150, max=0;
+  for(var i=0;i<cells.length;i++){ var row=(i/GAME.W)|0, col=i%GAME.W; var d=row*ROWG+col*COL; if(d>max)max=d; setCell(i,cells[i],true,d); }
+  return max;
 }
-// tumble: only re-drop columns whose contents changed, staggered top→bottom
+// tumble refill: changed columns drop in, COLUMN at a time from right→left, rows top→bottom
 function applyTumble(prev,next){
+  var COLG=turbo?40:95, ROWS=turbo?16:34, max=0;
   for(var col=0;col<GAME.W;col++){
     var changed=false; for(var row=0;row<GAME.H;row++){ var idx=row*GAME.W+col; if(prev[idx]!==next[idx]){changed=true;break;} }
-    for(var row2=0;row2<GAME.H;row2++){ var i=row2*GAME.W+col; if(changed) setCell(i,next[i],true,(GAME.H-1-row2)*40); else setCell(i,next[i],false,0); }
+    for(var row2=0;row2<GAME.H;row2++){ var i=row2*GAME.W+col;
+      if(changed){ var d=(GAME.W-1-col)*COLG + row2*ROWS; if(d>max)max=d; setCell(i,next[i],true,d); }
+      else setCell(i,next[i],false,0);
+    }
   }
+  return max;
 }
 function clearFx(){ for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.remove('win','dim','pop','mhit'); } }
 
@@ -225,12 +233,11 @@ function freeIntro(count, isSuper){
 
 async function animateRound(d){
   var roundWin=0;
-  var fast = d.spins.length>16;
   var isSuper = d.mode==='super';
   try {
     // base spins (before bonus)
     var bi=0;
-    while(bi<d.spins.length && !d.spins[bi].free){ await animateSpin(d.spins[bi], roundWin, fast, false); roundWin+=d.spins[bi].total; setWin(roundWin); bi++; await sleep(fast?100:260); }
+    while(bi<d.spins.length && !d.spins[bi].free){ await animateSpin(d.spins[bi], roundWin, false); roundWin+=d.spins[bi].total; setWin(roundWin); bi++; await sleep(turbo?90:300); }
     // bonus
     if(d.freeTriggered){
       var freeCount=d.spins.filter(function(s){return s.free;}).length;
@@ -241,9 +248,9 @@ async function animateRound(d){
       var fdone=0;
       for(var i=bi;i<d.spins.length;i++){ var sp=d.spins[i]; fdone++;
         $('fsText').textContent='Free Spin '+fdone+' / '+freeCount;
-        await animateSpin(sp, roundWin, fast, true);
+        await animateSpin(sp, roundWin, true);
         roundWin+=sp.total; setWin(roundWin);
-        await sleep(fast?90:230);
+        await sleep(turbo?70:240);
       }
     }
     if(d.totalWin>0) await bigWin(d.totalWin, d.bet);
@@ -256,11 +263,11 @@ async function animateRound(d){
   }
 }
 
-async function animateSpin(sp, runningBefore, fast, free){
-  var STEP=fast?300:560, POP=fast?170:300;
+async function animateSpin(sp, runningBefore, free){
+  var STEP=turbo?230:700, POP=turbo?120:360, FALL=470;
   clearFx();
-  dropGrid(sp.steps[0].grid);
-  await sleep(fast?260:460);
+  var md=dropGrid(sp.steps[0].grid);
+  await sleep(md+FALL);
   var spinWin=0;
   for(var st=0; st<sp.steps.length; st++){
     var step=sp.steps[st];
@@ -274,8 +281,7 @@ async function animateSpin(sp, runningBefore, fast, free){
     winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('pop');});
     await sleep(POP);
     clearFx();
-    if(sp.steps[st+1]) applyTumble(step.grid, sp.steps[st+1].grid);
-    await sleep(fast?180:330);
+    if(sp.steps[st+1]){ var md2=applyTumble(step.grid, sp.steps[st+1].grid); await sleep(md2+FALL*0.85); }
   }
   // multiplier reveal
   if(sp.super){
