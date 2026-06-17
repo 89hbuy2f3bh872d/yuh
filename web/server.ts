@@ -117,7 +117,7 @@ const REDIRECT_URI = `${BASE_URL}/oauth/callback`;
 const OWNERS: string[] = Array.isArray(cfg.owners) ? cfg.owners.map(String) : [];
 const oauthStates = new Map<string, number>(); // state → expiry
 const SIDEBAR_TPL = (() => { try { return readFileSync(join(GAMES_DIR, "partials", "sidebar.html"), "utf8"); } catch { return ""; } })();
-const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "settings", "misc", "notifications"];
+const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "leaderboard", "settings", "misc", "notifications"];
 
 function esc(s: any): string { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)); }
 function fluxerAvatarUrl(userId: string, hash: string | null, size = 64): string {
@@ -182,8 +182,11 @@ async function guildTax(gid: string): Promise<number> {
   if (!gid) return 0;
   const hit = taxCache.get(gid);
   if (hit && hit.until > Date.now()) return hit.bps;
-  const bps = await (db as any).getGuildTax(gid).catch(() => DEFAULT_TAX_BPS);
-  taxCache.set(gid, { bps, until: Date.now() + 60_000 });
+  // Effective tax = 0 during a bought Tax Holiday, else the server's set rate.
+  const econ: any = await (db as any).getGuildEconomy(gid).catch(() => null);
+  const holiday = econ?.shop?.taxHolidayUntil && econ.shop.taxHolidayUntil > Date.now();
+  const bps = holiday ? 0 : (Number.isFinite(econ?.taxBps) ? econ.taxBps : DEFAULT_TAX_BPS);
+  taxCache.set(gid, { bps, until: Date.now() + 60_000 }); // holiday end may lag ≤60s
   return bps;
 }
 function taxOnProfit(profit: number, bps: number): number {
@@ -222,6 +225,20 @@ async function hasVoted(userId: string): Promise<boolean> {
   voteCache.set(userId, { voted, until: Date.now() + 5 * 60_000 });
   return voted;
 }
+
+// ── server Shop — owners spend their server bank on perks ────────────────────
+// `kind`: "duration" perks extend a `<field>Until` timestamp; "accent" sets a color.
+const DAY = 86_400_000, HOUR = 3_600_000;
+const SHOP_ITEMS = [
+  { id: "featured", label: "Featured Spotlight", icon: "star", kind: "duration", field: "featuredUntil", durationMs: 7 * DAY, price: 50_000,
+    desc: "Pin your server to the top of the global leaderboard with a ✨ badge for 7 days." },
+  { id: "tax_holiday", label: "Tax Holiday", icon: "calendar", kind: "duration", field: "taxHolidayUntil", durationMs: 48 * HOUR, price: 25_000,
+    desc: "Waive your server's winnings tax for 48 hours to pull a crowd. (No tax = no bank income during the holiday.)" },
+  { id: "accent", label: "Custom Accent", icon: "palette", kind: "accent", field: "accent", price: 15_000,
+    desc: "Set a custom accent color shown on your leaderboard entry and Servers dashboard." },
+] as const;
+const shopCatalog = () => SHOP_ITEMS.map(i => ({ id: i.id, label: i.label, icon: i.icon, kind: i.kind, price: i.price, desc: i.desc, durationMs: (i as any).durationMs ?? 0 }));
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
 // One socket per browser tab. On open we auth via the session cookie, subscribe the
@@ -545,6 +562,7 @@ app.get("/s/:token", async ({ params, set, cookie }) => {
 const PAGES: [string, string, string][] = [
   ["/", "lobby.html", "lobby"], ["/lobby", "lobby.html", "lobby"],
   ["/slots", "slots.html", "slots"], ["/house", "house.html", "house"],
+  ["/leaderboard", "leaderboard.html", "leaderboard"],
   ["/settings", "settings.html", "settings"], ["/misc", "misc.html", "misc"],
   ["/notifications", "notifications.html", "notifications"],
 ];
@@ -800,17 +818,78 @@ app.get("/api/my-servers", async ({ request, set }) => {
   const stats: any[] = await (db as any).getServerStatsMany(owned.map((g: any) => g._id)).catch(() => []);
   const statMap = new Map(stats.map((s: any) => [s._id, s]));
   const voted = await hasVoted(uid);
+  const now = Date.now();
   const servers = owned.map((g: any) => {
-    const s: any = statMap.get(g._id) || {};
+    const s: any = statMap.get(g._id) || {}; const shop: any = g.shop || {};
     return {
       id: g._id, name: g.name || "Server", icon: g.icon || null,
       members: g.memberCount ?? null,
       tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
       bank: stdb.getServerBank(g._id),
       stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
+      shop: { featuredUntil: shop.featuredUntil || 0, taxHolidayUntil: shop.taxHolidayUntil || 0, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
+              featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
     };
   });
-  return { servers, voted, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS, voteUrl: "https://fluxerlist.com/servers/fabrikken" };
+  return { servers, voted, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS, voteUrl: "https://fluxerlist.com/servers/fabrikken", shopItems: shopCatalog() };
+});
+
+// ── server Shop: buy a perk with the server bank (owner only) ─────────────────
+app.post("/api/server/shop/buy", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (g.ownerId !== uid) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
+  const item = SHOP_ITEMS.find(i => i.id === String(b?.itemId));
+  if (!item) { set.status = 400; return { error: "Unknown item" }; }
+  // Build the perk patch before spending so a bad request never charges the bank.
+  const econ: any = await (db as any).getGuildEconomy(gid).catch(() => ({ shop: {} }));
+  const shop: any = econ?.shop || {};
+  const patch: any = {};
+  if (item.kind === "duration") {
+    const base = Math.max(Date.now(), Number(shop[item.field]) || 0); // stack onto remaining time
+    patch[item.field] = base + (item as any).durationMs;
+  } else if (item.kind === "accent") {
+    const color = String(b?.color || "");
+    if (!HEX_RE.test(color)) { set.status = 400; return { error: "Provide a hex color like #2ecc71" }; }
+    patch.accent = color;
+  }
+  // Spend first (authoritative); only apply the perk once the bank is actually charged.
+  try { await stdb.bankSpend(gid, item.price); }
+  catch (e: any) { const m = e?.message || ""; set.status = 400; return { error: m === "insufficient" ? "Not enough in the server bank" : m === "no bank" ? "Server bank is empty" : "Purchase failed" }; }
+  await (db as any).mergeGuildShop(gid, patch).catch(() => {});
+  if (item.id === "tax_holiday") taxCache.delete(gid); // holiday must take effect immediately
+  const now = Date.now();
+  return { ok: true, bank: stdb.getServerBank(gid),
+    shop: { featuredUntil: patch.featuredUntil ?? shop.featuredUntil ?? 0, taxHolidayUntil: patch.taxHolidayUntil ?? shop.taxHolidayUntil ?? 0,
+            accent: HEX_RE.test(patch.accent ?? shop.accent ?? "") ? (patch.accent ?? shop.accent) : null,
+            featured: (patch.featuredUntil ?? shop.featuredUntil ?? 0) > now, taxHoliday: (patch.taxHolidayUntil ?? shop.taxHolidayUntil ?? 0) > now } };
+});
+
+// ── global server leaderboard (any logged-in user) ───────────────────────────
+app.get("/api/leaderboard", async ({ request, query, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const sort = String((query as any)?.sort || "wagered");
+  const byBank = sort === "bank";
+  // Mongo can sort by stat fields; for bank we pull a wider pool and sort in-process.
+  const rows: any[] = await (db as any).getTopServerStats(byBank ? "wagered" : sort, byBank ? 100 : 50).catch(() => []);
+  const guilds = await db.getGuildsByIds(rows.map(r => r._id)).catch(() => []);
+  const gmap = new Map(guilds.map((g: any) => [g._id, g]));
+  const now = Date.now();
+  let entries = rows.map(r => {
+    const g: any = gmap.get(r._id) || {}; const shop: any = g.shop || {};
+    return { id: r._id, name: g.name || "Server", members: g.memberCount ?? null,
+      bank: stdb.getServerBank(r._id), wagered: r.wagered || 0, taxed: r.taxed || 0, games: r.gp || 0, payout: r.payout || 0,
+      players: Array.isArray(r.players) ? r.players.length : 0,
+      featured: (shop.featuredUntil || 0) > now, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null };
+  });
+  const metric = byBank ? "bank" : (sort === "taxed" ? "taxed" : sort === "games" ? "games" : "wagered");
+  // Featured servers float to the top; then by the chosen metric.
+  entries.sort((a: any, b: any) => (Number(b.featured) - Number(a.featured)) || (b[metric] - a[metric]));
+  entries = entries.slice(0, 50);
+  return { servers: entries, sort: metric };
 });
 
 // ── user search (send-money picker) ─────────────────────────────────────────

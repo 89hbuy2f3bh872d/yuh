@@ -478,6 +478,27 @@ export class Database {
     if (!this._srvStats || !Array.isArray(gids) || !gids.length) return [];
     return this._srvStats.find({ _id: { $in: gids.map(String) } }).toArray().catch(() => []);
   }
+  /** Top servers by a stat field (global leaderboard). */
+  async getTopServerStats(sortKey, limit = 50) {
+    if (!this._srvStats) return [];
+    const field = { wagered: "wagered", taxed: "taxed", games: "gp", payout: "payout" }[sortKey] || "wagered";
+    return this._srvStats.find({}).sort({ [field]: -1 }).limit(Math.min(200, Math.max(1, limit | 0))).toArray().catch(() => []);
+  }
+
+  // ─── Per-server shop / economy (owner perks bought with the server bank) ─────
+  /** Read a guild's economy bits: tax + shop perk state. */
+  async getGuildEconomy(id) {
+    if (!this._guilds) return { taxBps: DEFAULT_TAX_BPS, shop: {} };
+    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1, shop: 1 } }).catch(() => null);
+    return { taxBps: Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS, shop: g?.shop || {} };
+  }
+  /** Merge fields into a guild's `shop` sub-document (e.g. { featuredUntil: ts }). */
+  async mergeGuildShop(id, patch) {
+    if (!this._guilds || !patch) return;
+    const set = { lastSeen: Date.now() };
+    for (const k of Object.keys(patch)) set[`shop.${k}`] = patch[k];
+    await this._guilds.updateOne({ _id: String(id) }, { $set: set }, { upsert: true }).catch(() => {});
+  }
 
   // ─── Server-scoped login links (created by &web, consumed by the web /s/:token) ──
   async createLoginToken(token, uid, guildId, ttlMs = 600_000) {
