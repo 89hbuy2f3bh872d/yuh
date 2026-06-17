@@ -7,6 +7,7 @@
 .slot-card{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,border-color .15s,box-shadow .2s}
 .slot-card:hover{transform:translateY(-3px);border-color:var(--gc);box-shadow:0 12px 40px -14px var(--gc)}
 .slot-card-art{height:96px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--gc) 34%,transparent),transparent 70%),linear-gradient(160deg,var(--surface-2),var(--bg))}
+.hg-card-ic{width:44px;height:44px;color:var(--gc)}
 .slot-card-body{padding:.8rem 1rem;flex:1}
 .slot-card-name{font-size:1rem;font-weight:800}
 .slot-card-tag{font-size:.72rem;color:var(--text-2);margin-top:.2rem}

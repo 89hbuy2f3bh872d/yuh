@@ -13,7 +13,7 @@ __SIDEBAR__
 <main class="main">
   <div id="view-list">
     <div class="page-head"><div>
-      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> House Games</h1>
+      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg> House Games</h1>
       <div class="page-sub">Quick games vs the house — provably resolved server-side.</div>
     </div></div>
     <div class="slot-grid" id="hgGrid"><div class="empty">Loading…</div></div>
@@ -56,10 +56,17 @@ fetch('/api/house/games').then(function(r){return r.json()}).then(function(d){GA
 
 function renderLobby(){
   var el=$('hgGrid'); el.innerHTML='';
-  var icons={plinko:'🔻',mines:'💣',coinflip:'🪙',hilo:'🃏',double:'✖️'};
+  function ic(p){ return '<svg class="icon hg-card-ic" viewBox="0 0 24 24">'+p+'</svg>'; }
+  var icons={
+    plinko: ic('<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>'),
+    mines:  ic('<circle cx="11" cy="13" r="9"/><path d="m19.5 9.5 1.8-1.8a2.4 2.4 0 0 0 0-3.4l-1.6-1.6a2.41 2.41 0 0 0-3.4 0l-1.8 1.8"/><path d="m22 2-1.5 1.5"/>'),
+    coinflip: ic('<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>'),
+    hilo:   ic('<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>'),
+    double: ic('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
+  };
   GAMES.forEach(function(g){
     var c=document.createElement('div'); c.className='slot-card'; c.style.setProperty('--gc',g.color);
-    c.innerHTML='<div class="slot-card-art">'+(icons[g.id]||'🎲')+'</div><div class="slot-card-body"><div class="slot-card-name">'+g.name+'</div><div class="slot-card-tag">'+g.tag+'</div></div><button class="btn btn-primary slot-play">Play</button>';
+    c.innerHTML='<div class="slot-card-art">'+(icons[g.id]||icons.double)+'</div><div class="slot-card-body"><div class="slot-card-name">'+g.name+'</div><div class="slot-card-tag">'+g.tag+'</div></div><button class="btn btn-primary slot-play">Play</button>';
     c.querySelector('.slot-play').onclick=function(){openGame(g.id);};
     el.appendChild(c);
   });
@@ -79,7 +86,7 @@ var RENDER={};
 
 // ── Coinflip ────────────────────────────────────────────────────────────
 RENDER.coinflip=function(){
-  $('hgBoard').innerHTML='<div class="coin" id="coin"><div class="coin-face">🪙</div></div>';
+  $('hgBoard').innerHTML='<div class="coin" id="coin"><div class="coin-face">FC</div></div>';
   $('hgControls').innerHTML=
     '<div class="seg"><button class="seg-b on" id="cf-h" onclick="cfPick(\'heads\')">Heads</button><button class="seg-b" id="cf-t" onclick="cfPick(\'tails\')">Tails</button></div>'+
     '<button class="play-btn" id="cfGo" onclick="cfPlay()">Flip · win 1.96×</button>';
@@ -93,7 +100,7 @@ function cfPlay(){
     setTimeout(function(){
       coin.classList.remove('spin');
       if(d.error){msg(d.error,'bad');busy=false;return;}
-      coin.querySelector('.coin-face').textContent=d.roll==='heads'?'😎':'⚡';
+      coin.querySelector('.coin-face').textContent=d.roll==='heads'?'H':'T';
       bal=d.balance; setBal();
       if(d.win){msg('+'+fmt(d.payout)+' FC — '+d.roll,'good');sfx('win');} else {msg('Lost — '+d.roll,'bad');sfx('lose');}
       busy=false;
@@ -103,7 +110,7 @@ function cfPlay(){
 
 // ── Double or Nothing ───────────────────────────────────────────────────
 RENDER.double=function(){
-  $('hgBoard').innerHTML='<div class="don">✖️2</div>';
+  $('hgBoard').innerHTML='<div class="don">2×</div>';
   $('hgControls').innerHTML='<button class="play-btn" onclick="donPlay()">Go · 49% to double</button>';
 };
 function donPlay(){
@@ -115,7 +122,7 @@ function donPlay(){
     var b=$('hgBoard').firstChild;
     if(d.win){b.textContent='+'+fmt(d.payout);b.className='don win';msg('Doubled!','good');sfx('win');}
     else{b.textContent='✗';b.className='don lose';msg('Nothing','bad');sfx('lose');}
-    setTimeout(function(){b.className='don';b.textContent='✖️2';},1200);
+    setTimeout(function(){b.className='don';b.textContent='2×';},1200);
     busy=false;
   }).catch(function(){busy=false;});
 }

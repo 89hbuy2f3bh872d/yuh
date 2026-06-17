@@ -309,7 +309,7 @@ function buildPage(data, prefix) {
     })}
     <div class="kpi-grid">${kpiHtml}</div>
     ${miniChartHtml}
-    ${isOwner(uid) ? `
+    ${data.owner ? `
     <div style="margin-top:1.6rem;border:1px solid var(--red);border-radius:var(--r-md);padding:1.1rem;background:rgba(239,68,68,.05)">
       <div style="font-size:.85rem;font-weight:800;color:var(--red);margin-bottom:.3rem">⚠ Danger Zone — Owner only</div>
       <div style="font-size:.74rem;color:var(--text-dim);margin-bottom:.8rem">Permanently erases <b>every</b> collection: balances, tickets, tiers, stats. This cannot be undone.</div>
