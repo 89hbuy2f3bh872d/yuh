@@ -12,496 +12,368 @@
 __SIDEBAR__
 <main class="main">
 
-  <!-- ═══ Lobby list ═════════════════════════════════════════════════════════ -->
+  <!-- ── Lobby ─────────────────────────────────────────────────────────── -->
   <div id="view-list">
     <div class="page-head"><div>
       <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg> 3D Arena</h1>
-      <div class="page-sub">First-person glock duels. Stake FC — winner takes the pot (5% rake). Server-authoritative, so shots &amp; payouts can't be cheated.</div>
-    </div>
-    <div class="page-actions">
-      <button class="btn btn-primary" onclick="showCreate()">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-        Create match
-      </button>
+      <div class="page-sub">First-person glock duels — winner takes the pot. Pure aim.</div>
     </div></div>
 
     <div class="ar-tabs">
-      <button class="ar-tab active" id="tab-pvp" onclick="setTab('pvp')">PvP Battles</button>
-      <button class="ar-tab" id="tab-practice" onclick="setTab('practice')">Practice</button>
+      <button class="ar-tab active" data-tab="pvp" onclick="setTab('pvp')">Staked PvP</button>
+      <button class="ar-tab" data-tab="practice" onclick="setTab('practice')">Practice vs Bot</button>
     </div>
 
-    <!-- PvP list -->
-    <div id="tabPvp">
-      <div class="battle-list" id="arenaList"><div class="empty">Loading…</div></div>
+    <!-- PvP -->
+    <div id="tab-pvp">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;flex-wrap:wrap;gap:.6rem">
+        <div class="page-sub">Open lobbies — join one or create your own. First to your frag limit wins the pot (5% rake).</div>
+        <button class="btn btn-primary" onclick="showCreate()">Create match</button>
+      </div>
+      <div class="battle-list" id="lobbyList"><div class="empty">Loading…</div></div>
     </div>
 
-    <!-- Practice card -->
-    <div id="tabPractice" class="hidden">
+    <!-- Create form -->
+    <div id="tab-create" class="hidden">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem"><button class="btn btn-ghost btn-sm" onclick="showPvp()">← Back</button><b>Create FPS match</b></div>
+      <div class="create-grid">
+        <div class="card">
+          <div class="card-title"><svg class="icon card-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg> Rules</div>
+          <div class="field-label">Mode</div>
+          <div class="toggle-grid">
+            <button class="toggle-btn active" data-mode="1v1" onclick="setMode('1v1')">1v1<span class="sub">Duel · 2 players</span></button>
+            <button class="toggle-btn" data-mode="2v2" onclick="setMode('2v2')">2v2<span class="sub">Teams · 4 players</span></button>
+          </div>
+          <div class="field-label">Frag limit</div>
+          <div class="toggle-grid"><button class="frag-btn" data-frag="3" onclick="setFrag(3)">3</button><button class="frag-btn active" data-frag="5" onclick="setFrag(5)">5</button><button class="frag-btn" data-frag="10" onclick="setFrag(10)">10</button><button class="frag-btn" data-frag="15" onclick="setFrag(15)">15</button></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><svg class="icon card-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9h4.5a2 2 0 0 1 0 4H9"/></svg> Stake</div>
+          <div class="stake-row">
+            <input class="stake-input" id="stakeInput" type="number" min="10" value="100" oninput="updateCost()">
+            <div class="stake-quick"><button onclick="setStake(50)">50</button><button onclick="setStake(100)">100</button><button onclick="setStake(500)">500</button><button onclick="setStake(1000)">1K</button></div>
+          </div>
+          <div class="cost-box" style="margin-top:1rem">
+            <div class="cost-row"><span class="cost-label">Your stake</span><span class="cost-val" id="cStake">100 FC</span></div>
+            <div class="cost-row"><span class="cost-label">Players</span><span class="cost-val" id="cPlayers">2</span></div>
+            <div class="cost-row cost-total"><span class="cost-label">Pot (winner)</span><span class="cost-val" id="cPot">190 FC</span></div>
+            <div class="cost-note">Stake is escrowed when you create/join. Winner takes the pot minus 5% rake. Disconnecting mid-match forfeits.</div>
+          </div>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1rem" onclick="createMatch()">Create &amp; escrow stake</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Practice -->
+    <div id="tab-practice" class="hidden">
       <div class="ar-cards">
         <div class="ar-card">
           <div class="ar-card-art"><svg viewBox="0 0 24 24" class="big"><circle cx="12" cy="12" r="10"/><line x1="22" x2="16" y1="12" y2="12"/><line x1="8" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="8" y2="2"/><line x1="12" x2="12" y1="22" y2="16"/></svg></div>
           <div class="ar-card-name">Practice Duel · vs Bot</div>
-          <div class="ar-card-tag">No stakes — just aim. You vs a local AI gunner. Headshots one-tap.</div>
-          <button class="btn btn-primary" id="playBtn">Enter Arena</button>
+          <div class="ar-card-tag">Warm up your aim. No stake, no payout — just the range.</div>
+          <button class="btn btn-primary" id="practiceBtn">Enter range</button>
         </div>
         <div class="ar-info">
-          <h3>How it works</h3>
+          <h3>Controls</h3>
           <ul>
-            <li><b>Move</b> — WASD &nbsp; <b>Jump</b> — Space</li>
-            <li><b>Aim</b> — Mouse &nbsp; <b>Shoot</b> — Left click</li>
-            <li><b>Reload</b> — R &nbsp; <b>Pause</b> — Esc</li>
-            <li>Body shot 25 dmg · <b>Headshot = instant frag</b></li>
+            <li><b>Move</b> WASD · <b>Jump</b> Space</li>
+            <li><b>Aim</b> Mouse · <b>Shoot</b> Left click</li>
+            <li><b>Reload</b> R · <b>Pause</b> Esc</li>
+            <li>Body 25 dmg · <b>Headshot = instant frag</b></li>
           </ul>
-          <div class="ar-note">Practice is client-side. Real-money PvP is server-authoritative — the server runs physics &amp; hit detection, so a modified client can't fake a kill or steal the pot.</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ═══ Create match ═══════════════════════════════════════════════════════ -->
-  <div id="view-create" class="hidden">
-    <div class="page-head">
-      <div>
-        <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg> New match</h1>
-        <div class="page-sub">Stake FC — winner takes the pot (5% house rake).</div>
-      </div>
-      <div class="page-actions"><button class="btn btn-ghost" onclick="showList()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Back</button></div>
-    </div>
-    <div class="create-grid">
-      <div class="card">
-        <div class="card-title"><svg class="icon card-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> Rules</div>
-        <div class="field-label">Mode</div>
-        <div class="toggle-grid">
-          <button class="toggle-btn active" id="mode-1v1" onclick="setMode('1v1')"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>1v1<span class="sub">Solo duel</span></button>
-          <button class="toggle-btn" id="mode-2v2" onclick="setMode('2v2')"><svg class="icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>2v2<span class="sub">Team battle</span></button>
-        </div>
-        <div class="field-label">First to</div>
-        <div class="toggle-grid">
-          <button class="frag-btn" onclick="setFrag(3)">3</button>
-          <button class="frag-btn active" onclick="setFrag(5)">5</button>
-          <button class="frag-btn" onclick="setFrag(10)">10</button>
-          <button class="frag-btn" onclick="setFrag(15)">15</button>
-        </div>
-        <div class="field-label">Stake (FC)</div>
-        <div class="stake-row">
-          <input type="number" id="stakeInput" class="stake-input" min="10" max="1000000" step="10" value="100">
-          <div class="stake-quick">
-            <button onclick="setStake(100)">100</button>
-            <button onclick="setStake(500)">500</button>
-            <button onclick="setStake(1000)">1K</button>
-            <button onclick="setStake(5000)">5K</button>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title"><svg class="icon card-icon" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Summary</div>
-        <div class="cost-box">
-          <div class="cost-row"><span class="cost-label">Mode</span><span class="cost-val" id="sumMode">1v1</span></div>
-          <div class="cost-row"><span class="cost-label">First to</span><span class="cost-val" id="sumFrag">5 frags</span></div>
-          <div class="cost-row"><span class="cost-label">Your entry</span><span class="cost-val" id="sumEntry">100 FC</span></div>
-          <div class="cost-row cost-total"><span class="cost-label">Total pot</span><span class="cost-val" id="sumPot">200 FC</span></div>
-          <div class="cost-note">5% house rake on winnings · first team to the frag limit wins</div>
-        </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:.7rem;margin-top:1.2rem" onclick="createMatch()">
-          <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Create match
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ Match lobby (waiting room) ════════════════════════════════════════ -->
-  <div id="view-match" class="hidden">
+  <!-- ── Waiting room ──────────────────────────────────────────────────── -->
+  <div id="view-lobby" class="hidden">
     <div class="arena">
       <div class="arena-hdr">
-        <div>
-          <div class="arena-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/></svg> <span id="matchTitle">Match</span></div>
-          <div class="arena-meta" id="matchMeta"></div>
-        </div>
-        <div><button class="btn btn-ghost" id="leaveLobbyBtn" onclick="leaveMatch()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Leave</button></div>
+        <div><div class="arena-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg> <span id="lobMode">1v1</span> · <span id="lobStake">0</span> FC</div>
+          <div class="arena-meta" id="lobMeta"></div></div>
+        <button class="btn btn-ghost" onclick="leaveLobby()">Leave</button>
       </div>
-      <div class="arena-status" id="matchStatus"><span class="live-dot"></span><span>Waiting…</span></div>
-      <div id="matchSlots" class="pcols"></div>
+      <div class="arena-status"><span class="live-dot"></span><span id="lobStatus">Waiting for players…</span></div>
+      <div class="pcols" id="lobTeams"></div>
     </div>
   </div>
 
-  <!-- ═══ Live PvP game (authoritative) ═════════════════════════════════════ -->
+  <!-- ── Game ──────────────────────────────────────────────────────────── -->
   <div id="view-game" class="hidden">
     <div class="ar-stage" id="arStage">
       <canvas id="arCanvas"></canvas>
       <div class="hud">
-        <div class="cross" id="cross"><span></span><span></span><span></span><span></span></div>
-        <div class="hud-top">
-          <div class="score"><b id="scoreA">0</b><small id="scoreALabel">TEAM A</small></div>
-          <div class="score-sep">FT <span id="scoreFrag">5</span></div>
-          <div class="score"><b id="scoreB">0</b><small id="scoreBLabel">TEAM B</small></div>
-        </div>
-        <div class="hud-bottom">
-          <div class="hp"><div class="hp-bar"><i id="hpFill"></i></div><span id="hpNum">100</span></div>
-          <div class="ammo"><span id="ammoNum">17</span><small>/17</small></div>
-        </div>
+        <div class="cross"><span></span><span></span><span></span><span></span></div>
+        <div class="hud-top"><div class="score"><b id="scoreYou">0</b><small>YOU</small></div><div class="score-sep" id="scoreLimit">FIRST TO 5</div><div class="score"><b id="scoreFoe">0</b><small>ENEMY</small></div></div>
+        <div class="hud-bottom"><div class="hp"><div class="hp-bar"><i id="hpFill"></i></div><span id="hpNum">100</span></div><div class="ammo"><span id="ammoNum">17</span><small>/17</small></div></div>
         <div class="hitmark hidden" id="hitmark"></div>
         <div class="dmg-vignette" id="dmgVig"></div>
         <div class="ar-msg hidden" id="arMsg"></div>
       </div>
-      <div class="lock-overlay" id="lockOverlay">
-        <div class="lock-card">
-          <div class="lock-title" id="lockTitle">Click to play</div>
-          <div class="lock-sub" id="lockSub">Mouse to aim · WASD to move · R to reload</div>
-          <button class="btn btn-ghost btn-sm" id="quitBtn">Forfeit &amp; leave</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ Result ═════════════════════════════════════════════════════════════ -->
-  <div id="resultOverlay" class="overlay hidden">
-    <div class="result-card">
-      <div class="result-icon" id="resultIcon"></div>
-      <div id="resultTitle" class="result-title"></div>
-      <div id="resultSub" class="result-sub"></div>
-      <div class="result-actions">
-        <button class="btn btn-ghost" onclick="showList()">Back to lobby</button>
-      </div>
+      <div class="lock-overlay" id="lockOverlay"><div class="lock-card">
+        <div class="lock-title" id="lockTitle">Click to play</div>
+        <div class="lock-sub" id="lockSub">Mouse to aim · WASD · R reload</div>
+        <button class="btn btn-ghost btn-sm" id="quitBtn">Leave</button>
+      </div></div>
     </div>
   </div>
 
 </main>
 </div>
 
+<!-- Result -->
+<div id="resultOverlay" class="overlay hidden">
+  <div class="result-card">
+    <div class="result-icon" id="rIcon"></div>
+    <div class="result-title" id="rTitle"></div>
+    <div class="result-sub" id="rSub"></div>
+    <div class="result-actions"><button class="btn btn-primary" onclick="backToList()">Back to arena</button></div>
+  </div>
+</div>
+
 <script>
-var MY_UID = "__UID__";
-function $(id){return document.getElementById(id);}
-function fmt(n){return Number(n||0).toLocaleString();}
-function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
-function showView(id){['view-list','view-create','view-match','view-game'].forEach(function(v){$(v).classList.add('hidden')});$(id).classList.remove('hidden');}
-var navBal=document.getElementById('sbBal');
-function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined&&navBal)navBal.textContent=fmt(d.bal)}).catch(function(){});}
+(function(){
+var $=function(id){return document.getElementById(id);};
+function show(id){['view-list','view-lobby','view-game'].forEach(function(v){$(v).classList.add('hidden');});$(id).classList.remove('hidden');}
+function api(url,body){return fetch(url,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined,credentials:'same-origin'}).then(function(r){return r.json();});}
+function sfx(n){if(window.SG)SG.sfx(n);}
+var MY_UID="__UID__";
 
-/* ═══ Tab switching (PvP / practice) ═══════════════════════════════════════ */
-var tab='pvp';
-function setTab(t){tab=t;$('tab-pvp').classList.toggle('active',t==='pvp');$('tab-practice').classList.toggle('active',t==='practice');$('tabPvp').classList.toggle('hidden',t!=='pvp');$('tabPractice').classList.toggle('hidden',t!=='practice');}
+// ── Tabs / create form ───────────────────────────────────────────────────
+var cmode='1v1', cfrag=5;
+function setTab(t){ document.querySelectorAll('.ar-tab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);}); $('tab-pvp').classList.toggle('hidden',t!=='pvp'); $('tab-practice').classList.toggle('hidden',t!=='practice'); $('tab-create').classList.add('hidden'); if(t==='pvp')$('tab-pvp').classList.remove('hidden'); }
+window.setTab=setTab;
+window.showCreate=function(){ $('tab-pvp').classList.add('hidden'); $('tab-create').classList.remove('hidden'); updateCost(); };
+window.showPvp=function(){ $('tab-create').classList.add('hidden'); $('tab-pvp').classList.remove('hidden'); };
+window.setMode=function(m){ cmode=m; document.querySelectorAll('[data-mode]').forEach(function(b){b.classList.toggle('active',b.dataset.mode===m);}); updateCost(); };
+window.setFrag=function(f){ cfrag=f; document.querySelectorAll('[data-frag]').forEach(function(b){b.classList.toggle('active',+b.dataset.frag===f);}); };
+window.setStake=function(v){ $('stakeInput').value=v; updateCost(); };
+function updateCost(){ var s=Math.max(10,Math.floor(+$('stakeInput').value||0)); var pl=cmode==='2v2'?4:2; $('cStake').textContent=s.toLocaleString()+' FC'; $('cPlayers').textContent=pl; $('cPot').textContent=Math.floor(s*pl*0.95).toLocaleString()+' FC'; }
+window.updateCost=updateCost;
+window.createMatch=function(){ var s=Math.max(10,Math.floor(+$('stakeInput').value||0)); api('/api/arena/create',{mode:cmode,fragLimit:cfrag,stake:s}).then(function(d){ if(d.error){alert(d.error);return;} enterLobby(d.matchId); }).catch(function(){alert('Failed');}); };
 
-/* ═══ Lobby list ══════════════════════════════════════════════════════════ */
+// ── Lobby list ───────────────────────────────────────────────────────────
 var listTimer=null;
-function showList(){
-  stopListPoll(); currentMatchId=null; closeSocket();
-  $('resultOverlay').classList.add('hidden');
-  showView('view-list'); startListPoll();
-}
-function startListPoll(){stopListPoll();listTimer=setInterval(loadList,2500);loadList();}
-function stopListPoll(){if(listTimer){clearInterval(listTimer);listTimer=null;}}
-function loadList(){
-  fetch('/api/arena/list').then(function(r){return r.json()}).then(function(d){
-    var list=d.lobbies||[]; var el=$('arenaList');
-    if(!list.length){el.innerHTML='<div class="empty"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>No open matches. Create one!</div>';return;}
-    el.innerHTML='';
-    list.forEach(function(b){
-      var full=b.players.length>=b.maxPlayers;
-      var inMatch=b.players.some(function(p){return p.uid===MY_UID;});
-      var card=document.createElement('div');card.className='battle-card';
-      var slots='';
-      for(var i=0;i<b.maxPlayers;i++){
-        var p=b.players[i];
-        slots+='<div class="player-slot'+(p?' filled'+(p.uid===b.creatorUid?' creator':'')+'':'')+'"'+(p?(' title="'+esc(p.tag)+'"'):'')+'></div>';
-      }
-      var btn=inMatch?'<button class="btn btn-ghost btn-sm" onclick="resumeMatch(\''+b.id+'\')">Re-enter</button>'
-              :(full?'<button class="btn btn-ghost btn-sm" disabled>Full</button>'
-                    :'<button class="btn btn-primary btn-sm" onclick="joinMatch(\''+b.id+'\')">Join</button>');
-      card.innerHTML='<div class="battle-info"><div class="battle-title"><span class="mode-pill '+(b.mode==='2v2'?'shared':'regular')+'">'+b.mode.toUpperCase()+'</span> · FT'+b.fragLimit+' <div class="flags"></div></div>'+
-        '<div class="battle-meta"><span>'+fmt(b.stake)+' FC stake</span><span>'+b.players.length+'/'+b.maxPlayers+' players</span><span>pot '+fmt(b.pot)+' FC</span></div>'+
-        '<div class="player-row">'+slots+'</div></div><div>'+btn+'</div>';
-      el.appendChild(card);
-    });
-  }).catch(function(){});
-}
+function loadLobbies(){ api('/api/arena/list').then(function(d){ var L=d.lobbies||[]; var el=$('lobbyList'); if(!L.length){el.innerHTML='<div class="empty">No open lobbies. Create one!</div>';return;} el.innerHTML=''; L.forEach(function(m){
+  var full=m.players.length>=m.maxPlayers, mine=m.players.some(function(p){return p.uid===MY_UID;});
+  var slots=''; for(var i=0;i<m.maxPlayers;i++){ var p=m.players[i]; slots+='<div class="player-slot'+(p?' filled':'')+(p&&p.uid===m.creatorUid?' creator':'')+'"></div>'; }
+  var card=document.createElement('div'); card.className='battle-card';
+  card.innerHTML='<div class="battle-info"><div class="battle-title"><span class="mode-pill regular">'+m.mode+'</span> · First to '+m.fragLimit+'</div>'+
+    '<div class="battle-meta"><span>'+m.stake.toLocaleString()+' FC stake</span><span>Pot '+Math.floor(m.pot*0.95).toLocaleString()+' FC</span><span>'+m.players.length+'/'+m.maxPlayers+'</span></div>'+
+    '<div class="player-row">'+slots+'</div></div><div>'+
+    (mine?'<button class="btn btn-ghost btn-sm" onclick="enterLobby(\''+m.id+'\')">Open</button>':(full?'<button class="btn btn-ghost btn-sm" disabled>Full</button>':'<button class="btn btn-primary btn-sm" onclick="joinMatch(\''+m.id+'\')">Join</button>'))+'</div>';
+  el.appendChild(card);
+}); }).catch(function(){}); }
+window.joinMatch=function(id){ api('/api/arena/'+id+'/join',{}).then(function(d){ if(d.error){alert(d.error);return;} enterLobby(id); }).catch(function(){}); };
+function startListPoll(){ stopListPoll(); loadLobbies(); listTimer=setInterval(loadLobbies,2500); }
+function stopListPoll(){ if(listTimer){clearInterval(listTimer);listTimer=null;} }
 
-/* ═══ Create match ═════════════════════════════════════════════════════════ */
-var cMode='1v1', cFrag=5;
-function showCreate(){stopListPoll();showView('view-create');updateCreateSummary();}
-function setMode(m){cMode=m;$('mode-1v1').classList.toggle('active',m==='1v1');$('mode-2v2').classList.toggle('active',m==='2v2');updateCreateSummary();}
-function setFrag(f){cFrag=f;[].forEach.call(document.querySelectorAll('.frag-btn'),function(b){b.classList.toggle('active',Number(b.textContent)===f);});updateCreateSummary();}
-function setStake(s){$('stakeInput').value=s;updateCreateSummary();}
-function updateCreateSummary(){
-  var stake=Math.max(10,Math.floor(Number($('stakeInput').value)||0));
-  var max=cMode==='2v2'?4:2;
-  $('sumMode').textContent=cMode.toUpperCase();
-  $('sumFrag').textContent=cFrag+' frags';
-  $('sumEntry').textContent=fmt(stake)+' FC';
-  $('sumPot').textContent=fmt(stake*max)+' FC';
-}
-$('stakeInput').addEventListener('input',updateCreateSummary);
-function createMatch(){
-  var stake=Math.max(10,Math.floor(Number($('stakeInput').value)||0));
-  if(stake>1000000){alert('Max stake is 1,000,000 FC.');return;}
-  fetch('/api/arena/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:cMode,fragLimit:cFrag,stake:stake})})
-    .then(function(r){return r.json()}).then(function(d){
-      if(d.error){alert(d.error);return;}
-      currentMatchId=d.matchId;enterMatchLobby();
-    }).catch(function(e){console.error(e)});
-}
+// ── Waiting room ─────────────────────────────────────────────────────────
+var curMatch=null, lobbyTimer=null;
+window.enterLobby=function(id){ curMatch=id; stopListPoll(); show('view-lobby'); pollLobby(); lobbyTimer=setInterval(pollLobby,1200); };
+function pollLobby(){ if(!curMatch)return; api('/api/arena/'+curMatch).then(function(m){
+  if(m.notFound){ stopLobby(); backToList(); return; }
+  $('lobMode').textContent=m.mode; $('lobStake').textContent=m.stake.toLocaleString();
+  $('lobMeta').textContent='First to '+m.fragLimit+' · Pot '+Math.floor(m.pot*0.95).toLocaleString()+' FC';
+  var filled=m.slots.filter(function(s){return s;}).length;
+  if(m.phase==='pending') $('lobStatus').textContent='Waiting for players… ('+filled+'/'+m.maxPlayers+')';
+  else if(m.phase==='countdown'){ $('lobStatus').textContent='Match starting…'; connectWs(); }
+  else if(m.phase==='live'){ $('lobStatus').textContent='Live'; connectWs(); }
+  else if(m.phase==='done'){ stopLobby(); }
+  // teams
+  var half=m.maxPlayers/2, t=$('lobTeams'); t.innerHTML='';
+  [0,1].forEach(function(team){
+    var col='<div class="team-col"><div class="team-label">'+(m.mode==='1v1'?(team?'Opponent':'You side'):'Team '+(team+1))+'</div>';
+    for(var i=team*half;i<team*half+half;i++){ var s=m.slots[i];
+      if(s) col+='<div class="pcol'+(s.uid===MY_UID?' me':'')+'"><div class="pcol-hdr"><span class="player-tag">'+esc(s.tag||'Player').replace(/^BOT /,'')+'</span>'+(s.uid===MY_UID?'<span class="badge badge-you">You</span>':'')+'</div></div>';
+      else col+='<div class="pcol waiting"><div class="pcol-hdr"><span class="player-tag muted">Open slot</span></div></div>';
+    }
+    t.innerHTML+=col+'</div>';
+  });
+}).catch(function(){}); }
+function stopLobby(){ if(lobbyTimer){clearInterval(lobbyTimer);lobbyTimer=null;} }
+window.leaveLobby=function(){ if(!curMatch)return; api('/api/arena/'+curMatch+'/leave',{}).then(function(){}).catch(function(){}); stopLobby(); curMatch=null; backToList(); };
 
-/* ═══ Match lobby (waiting room) ══════════════════════════════════════════ */
-var currentMatchId=null, matchPollTimer=null, inMatchPlayers=[];
-function joinMatch(id){
-  fetch('/api/arena/'+id+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-    .then(function(r){return r.json()}).then(function(d){
-      if(d.error){alert(d.error);return;}
-      currentMatchId=d.matchId;enterMatchLobby();
-    }).catch(function(e){console.error(e)});
-}
-function resumeMatch(id){currentMatchId=id;enterMatchLobby();}
-function enterMatchLobby(){stopListPoll();showView('view-match');startMatchPoll();openSocket();}
-function leaveMatch(){
-  if(!currentMatchId)return;
-  fetch('/api/arena/'+currentMatchId+'/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-    .then(function(){showList();});
-}
-function abandonMatch(){
-  if(!currentMatchId){showList();return;}
-  fetch('/api/arena/'+currentMatchId+'/abandon',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-    .catch(function(){}).finally(function(){showList();});
-}
-function startMatchPoll(){stopMatchPoll();matchPollTimer=setInterval(pollMatch,400);pollMatch();}
-function stopMatchPoll(){if(matchPollTimer){clearInterval(matchPollTimer);matchPollTimer=null;}}
-function pollMatch(){
-  if(!currentMatchId)return;
-  fetch('/api/arena/'+currentMatchId).then(function(r){return r.json()}).then(function(d){
-    if(d.notFound){stopMatchPoll();showList();return;}
-    renderMatchLobby(d);
-    if(d.phase==='live'&&!gameStarted){ startPvpGame(d); }
-    if(d.phase==='done'){ stopMatchPoll(); showResult(d); }
-  }).catch(function(){});
-}
-function renderMatchLobby(d){
-  var max=d.maxPlayers;
-  $('matchTitle').textContent=d.mode.toUpperCase()+' · First to '+d.fragLimit;
-  $('matchMeta').textContent=fmt(d.stake)+' FC entry · pot '+fmt(d.pot)+' FC · 5% rake';
-  var st=$('matchStatus');
-  if(d.phase==='pending'){var need=max-(d.slots||[]).filter(function(s){return s;}).length;st.innerHTML='<span class="live-dot"></span><span>Waiting for '+need+' more player'+(need!==1?'s':'')+'…</span>';}
-  else if(d.phase==='countdown'){var s=Math.max(0,Math.ceil((d.startsAt-Date.now())/1000));st.innerHTML='<span class="live-dot"></span><span>Starting in '+s+'s</span>';}
-  else if(d.phase==='live'){st.innerHTML='<span class="live-dot"></span><span>Live</span>';}
-  else {st.innerHTML='<span>Match complete</span>';}
+window.backToList=function(){ $('resultOverlay').classList.add('hidden'); stopLobby(); teardownGame(); show('view-list'); setTab('pvp'); startListPoll(); refreshBal(); };
 
-  // Render slots (teams split: first half = team A, second half = team B)
-  var slots=d.slots||[]; var half=max/2; var html='<div class="team-col"><div class="team-label">Team A</div>';
-  for(var i=0;i<half;i++){html+=slotHtml(slots[i],i);}
-  html+='</div><div class="team-col"><div class="team-label">Team B</div>';
-  for(var j=half;j<max;j++){html+=slotHtml(slots[j],j);}
-  html+='</div>';
-  $('matchSlots').innerHTML=html;
-}
-function slotHtml(s,i){
-  if(!s)return '<div class="pcol waiting"><div class="pcol-hdr"><div class="player-tag muted">Open slot</div></div><div class="pcol-reel"><div class="pcol-cover"><div class="wait-label">Waiting…</div></div></div></div>';
-  var isMe=s.uid===MY_UID;
-  return '<div class="pcol'+(isMe?' me':'')+'"><div class="pcol-hdr"><div class="player-tag">'+esc(s.tag)+(isMe?' <span class="badge badge-you">You</span>':'')+'</div>'+(s.connected?'<span class="live-dot sm"></span>':'')+'</div><div class="pcol-foot"><div class="pcol-total">Frags <b id="lf-'+i+'">'+(s.frags||0)+'</b></div></div></div>';
-}
+// ── 3D engine (shared by practice + pvp) ─────────────────────────────────
+var loading=false;
+function ensureThree(cb){ if(window.THREE){cb();return;} if(loading){var t=setInterval(function(){if(window.THREE){clearInterval(t);cb();}},80);return;} loading=true; var s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'; s.onload=cb; s.onerror=function(){alert('Failed to load 3D engine');}; document.head.appendChild(s); }
+$('practiceBtn').onclick=function(){ ensureThree(function(){ startGame('practice'); }); };
+$('quitBtn').onclick=function(){ if(GS&&GS.mode==='pvp'&&curMatch){ if(confirm('Leaving forfeits the match. Continue?')) api('/api/arena/'+curMatch+'/abandon',{}); else return; } backToList(); };
 
-/* ═══ WebSocket (authoritative live game) ═════════════════════════════════ */
-var ws=null, wsSendTimer=null, gameStarted=false;
-function wsUrl(){
-  var loc=location; return (loc.protocol==='https:'?'wss:':'ws:')+'//'+loc.host+'/arena/ws';
-}
-function openSocket(){
-  closeSocket();
-  try{ws=new WebSocket(wsUrl());}catch(e){return;}
-  ws.onopen=function(){};
-  ws.onmessage=function(ev){
-    var m;try{m=JSON.parse(ev.data);}catch{return;}
-    handleWsMsg(m);
-  };
-  ws.onclose=function(){ /* reconnect attempts handled by lobby poll re-opening */ setTimeout(function(){ if(currentMatchId&&document.getElementById('view-match')&&!document.getElementById('view-match').classList.contains('hidden')) openSocket(); },1500); };
-  ws.onerror=function(){};
-}
-function closeSocket(){if(wsSendTimer){clearInterval(wsSendTimer);wsSendTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}}
-function wsSend(obj){if(ws&&ws.readyState===1){try{ws.send(JSON.stringify(obj));}catch(e){}}}
-function handleWsMsg(m){
-  if(m.t==='live'&&currentMatchId){ /* server says go live — poll will call startPvpGame */ }
-}
+var GS=null; // game state
+function teardownGame(){ if(GS){ GS.alive=false; if(GS.raf)cancelAnimationFrame(GS.raf); if(GS.cleanup)GS.cleanup(); if(GS.ws){try{GS.ws.close();}catch(e){}} document.exitPointerLock&&document.exitPointerLock(); GS=null; } }
 
-/* ═══ Live PvP game (render authoritative server state, send only inputs) ═ */
-var G=null; // game runtime
-var gameStarted=false;
-function startPvpGame(match){
-  gameStarted=true;
-  showView('view-game');
-  $('scoreFrag').textContent=match.fragLimit;
-  ensureThree(function(){ initPvpGame(match); });
-}
-function ensureThree(cb){
-  if(window.THREE){cb();return;}
-  var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-  s.onload=cb;s.onerror=function(){alert('Failed to load 3D engine.');};
-  document.head.appendChild(s);
-}
-function initPvpGame(match){
-  var THREE=window.THREE;
+// World constants — MUST match ArenaServer.mjs
+var ROOM=30, HALF=15, EYE=1.7;
+var CRATES=[[3,4,-6,-5],[3,4,6,5],[4,2.8,0,0],[2.6,2.6,-8,7],[2.6,2.6,8,-7]];
+var COLLIDERS=[]; (function(){ COLLIDERS=[{minX:-HALF,maxX:HALF,minZ:-HALF-0.5,maxZ:-HALF+0.5},{minX:-HALF,maxX:HALF,minZ:HALF-0.5,maxZ:HALF+0.5},{minX:-HALF-0.5,maxX:-HALF+0.5,minZ:-HALF,maxZ:HALF},{minX:HALF-0.5,maxX:HALF+0.5,minZ:-HALF,maxZ:HALF}]; CRATES.forEach(function(c){COLLIDERS.push({minX:c[2]-c[0]/2,maxX:c[2]+c[0]/2,minZ:c[3]-c[1]/2,maxZ:c[3]+c[1]/2});}); })();
+function blockedAt(x,z){ for(var i=0;i<COLLIDERS.length;i++){var c=COLLIDERS[i]; if(x>c.minX-0.5&&x<c.maxX+0.5&&z>c.minZ-0.5&&z<c.maxZ+0.5)return true;} return false; }
+
+function buildWorld(THREE){
   var canvas=$('arCanvas');
   var W=function(){return $('arStage').clientWidth;}, H=function(){return $('arStage').clientHeight;};
-  var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(W(),H());
-  var scene=new THREE.Scene();scene.background=new THREE.Color(0x0a0c12);scene.fog=new THREE.Fog(0x0a0c12,22,55);
-  var camera=new THREE.PerspectiveCamera(80,W()/H(),0.05,200);
-  scene.add(new THREE.HemisphereLight(0x9bb0ff,0x202028,0.7));
-  var dir=new THREE.DirectionalLight(0xffffff,0.8);dir.position.set(8,18,6);scene.add(dir);
+  var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(W(),H());
+  var scene=new THREE.Scene(); scene.background=new THREE.Color(0x0a0c12); scene.fog=new THREE.Fog(0x0a0c12,22,55);
+  var camera=new THREE.PerspectiveCamera(80,W()/H(),0.05,200); camera.rotation.order='YXZ';
+  scene.add(new THREE.HemisphereLight(0x9bb0ff,0x202028,0.75));
+  var dir=new THREE.DirectionalLight(0xffffff,0.8); dir.position.set(8,18,6); scene.add(dir);
+  var floor=new THREE.Mesh(new THREE.PlaneGeometry(ROOM,ROOM),new THREE.MeshStandardMaterial({color:0x1a1f2b,roughness:.95})); floor.rotation.x=-Math.PI/2; scene.add(floor);
+  scene.add(function(){var g=new THREE.GridHelper(ROOM,30,0x2b3550,0x1f2738);g.position.y=0.02;return g;}());
+  var wmat=new THREE.MeshStandardMaterial({color:0x232a3a,roughness:.9}), cmat=new THREE.MeshStandardMaterial({color:0x3a4663,roughness:.7});
+  function box(w,h,d,x,y,z,m){var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);scene.add(b);return b;}
+  box(ROOM,4,1,0,2,-HALF,wmat); box(ROOM,4,1,0,2,HALF,wmat); box(1,4,ROOM,-HALF,2,0,wmat); box(1,4,ROOM,HALF,2,0,wmat);
+  CRATES.forEach(function(c){ box(c[0],2.8,c[1],c[2],1.4,c[3],cmat); });
+  // glock viewmodel
+  var gun=new THREE.Group(); var gm=new THREE.MeshStandardMaterial({color:0x16181d,roughness:.45,metalness:.5}), gm2=new THREE.MeshStandardMaterial({color:0x26282e,roughness:.5,metalness:.4});
+  function gp(w,h,d,x,y,z,m){var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m||gm);b.position.set(x,y,z);gun.add(b);return b;}
+  gp(0.11,0.12,0.5,0,0,-0.18,gm); gp(0.10,0.10,0.46,0,-0.005,-0.16,gm2); gp(0.05,0.05,0.16,0,-0.01,-0.46,gm);
+  var grip=gp(0.10,0.26,0.13,0,-0.20,-0.02,gm2); grip.rotation.x=0.32; gp(0.085,0.05,0.10,0,-0.07,-0.05,gm);
+  var mflash=new THREE.PointLight(0xffb050,0,4); mflash.position.set(0,-0.01,-0.56); gun.add(mflash);
+  gun.position.set(0.22,-0.20,-0.45); camera.add(gun); scene.add(camera);
+  function onResize(){camera.aspect=W()/H();camera.updateProjectionMatrix();renderer.setSize(W(),H());}
+  window.addEventListener('resize',onResize);
+  return {THREE:THREE,canvas:canvas,renderer:renderer,scene:scene,camera:camera,gun:gun,mflash:mflash,onResize:onResize};
+}
 
-  // world (matches server colliders)
-  var ROOM=30, WALL=4, hr=ROOM/2;
-  var matFloor=new THREE.MeshStandardMaterial({color:0x1a1f2b,roughness:.95});
-  var floor=new THREE.Mesh(new THREE.PlaneGeometry(ROOM,ROOM),matFloor);floor.rotation.x=-Math.PI/2;scene.add(floor);
-  scene.add(new THREE.GridHelper(ROOM,30,0x2b3550,0x1f2738));
-  var matWall=new THREE.MeshStandardMaterial({color:0x232a3a,roughness:.9});
-  function box(w,h,d,x,y,z){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),matWall);m.position.set(x,y,z);scene.add(m);return m;}
-  box(ROOM,WALL,1,0,WALL/2,-hr);box(ROOM,WALL,1,0,WALL/2,hr);box(1,WALL,ROOM,-hr,WALL/2,0);box(1,WALL,ROOM,hr,WALL/2,0);
-  var matCrate=new THREE.MeshStandardMaterial({color:0x3a4663,roughness:.7,metalness:.1});
-  [[3,4,-6,-5],[3,4,6,5],[4,2.8,0,0],[2.6,2.6,-8,7],[2.6,2.6,8,-7]].forEach(function(c){var m=new THREE.Mesh(new THREE.BoxGeometry(c[0],2.8,c[1]),matCrate);m.position.set(c[2],1.4,c[3]);scene.add(m);});
+function makeFighter(THREE,color){
+  var g=new THREE.Group();
+  var bodyGeo=THREE.CapsuleGeometry?new THREE.CapsuleGeometry(0.45,1.0,4,8):new THREE.CylinderGeometry(0.45,0.45,1.6,12);
+  var body=new THREE.Mesh(bodyGeo,new THREE.MeshStandardMaterial({color:color,roughness:.5})); body.position.y=1.0; g.add(body);
+  var head=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,16),new THREE.MeshStandardMaterial({color:0xffe0d0,roughness:.4})); head.position.y=1.85; g.add(head);
+  return {group:g,body:body,head:head};
+}
 
-  // other-player avatars keyed by uid
-  var avatars={};
-  function avatarColor(team){return team===0?0xff5555:0x55aaff;}
-  function makeAvatar(team){
-    var g=new THREE.Group();
-    var bodyMat=new THREE.MeshStandardMaterial({color:avatarColor(team),roughness:.5});
-    var headMat=new THREE.MeshStandardMaterial({color:team===0?0xffd1d1:0xd1e8ff,roughness:.4});
-    var bodyGeo=(typeof THREE.CapsuleGeometry==='function')?new THREE.CapsuleGeometry(0.45,1.0,4,8):new THREE.CylinderGeometry(0.45,0.45,1.6,10);
-    var body=new THREE.Mesh(bodyGeo,bodyMat);body.position.y=1.0;g.add(body);
-    var head=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,16),headMat);head.position.y=1.85;g.add(head);
-    scene.add(g);return g;
-  }
-  // viewmodel glock
-  var gun=new THREE.Group();
-  var gm=new THREE.MeshStandardMaterial({color:0x16181d,roughness:.45,metalness:.5});
-  function gp(w,h,d,x,y,z){var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),gm);b.position.set(x,y,z);gun.add(b);return b;}
-  gp(0.11,0.12,0.5,0,0,-0.18);gp(0.10,0.10,0.46,0,-0.005,-0.16);gp(0.05,0.05,0.16,0,-0.01,-0.46);
-  var grip=gp(0.10,0.26,0.13,0,-0.20,-0.02);grip.rotation.x=0.32;
-  gp(0.085,0.05,0.10,0,-0.07,-0.05);
-  var muzzle=new THREE.Mesh(new THREE.PlaneGeometry(0.22,0.22),new THREE.MeshBasicMaterial({color:0xffd070,transparent:true,opacity:0,depthTest:false}));
-  muzzle.position.set(0,-0.01,-0.56);gun.add(muzzle);
-  gun.position.set(0.22,-0.20,-0.45);camera.add(gun);scene.add(camera);
+function hudSet(hp,ammo,you,foe,lim){ $('hpFill').style.width=Math.max(0,hp)+'%'; $('hpNum').textContent=Math.max(0,Math.round(hp)); $('ammoNum').textContent=ammo; $('scoreYou').textContent=you; $('scoreFoe').textContent=foe; if(lim)$('scoreLimit').textContent='FIRST TO '+lim; }
+function arMsg(t,ms){ var m=$('arMsg'); m.textContent=t; m.classList.remove('hidden'); if(ms)setTimeout(function(){m.classList.add('hidden');},ms); }
+function hitmark(){ var h=$('hitmark'); h.classList.remove('hidden'); setTimeout(function(){h.classList.add('hidden');},90); }
+function muzzle(W){ W.mflash.intensity=2.2; setTimeout(function(){W.mflash.intensity=0;},45); }
 
-  // local view state (for sending inputs)
-  var view={yaw:0,pitch:0};
-  var keys={}, sens=0.0022;
-  var myHp=100, myAmmo=17, myReloading=false;
-  function kd(e){keys[e.code]=true;if(e.code==='KeyR')wsSend({t:'input',wantReload:true});}
-  function ku(e){keys[e.code]=false;}
-  document.addEventListener('keydown',kd);document.addEventListener('keyup',ku);
-  function onMove(e){if(document.pointerLockElement!==canvas)return;view.yaw-=e.movementX*sens;view.pitch-=e.movementY*sens;view.pitch=Math.max(-1.45,Math.min(1.45,view.pitch));}
-  document.addEventListener('mousemove',onMove);
-  canvas.addEventListener('mousedown',function(e){if(document.pointerLockElement!==canvas){canvas.requestPointerLock();return;}if(e.button===0)wsSend({t:'input',wantShoot:true});});
+function startGame(mode){
+  show('view-game'); var THREE=window.THREE; var W=buildWorld(THREE);
+  GS={mode:mode,alive:true,raf:0,W:W,ws:null,recoil:0};
+  var canvas=W.canvas, camera=W.camera;
+  var keys={}, yaw=Math.PI, pitch=0, sens=0.0022;
+  var kd=function(e){keys[e.code]=true; if(e.code==='KeyR')wantReload=true;}, ku=function(e){keys[e.code]=false;};
+  document.addEventListener('keydown',kd); document.addEventListener('keyup',ku);
+  function mm(e){ if(document.pointerLockElement!==canvas)return; yaw-=e.movementX*sens; pitch-=e.movementY*sens; pitch=Math.max(-1.45,Math.min(1.45,pitch)); }
+  document.addEventListener('mousemove',mm);
+  var wantShoot=false, wantReload=false;
+  canvas.addEventListener('mousedown',function(e){ if(document.pointerLockElement!==canvas){canvas.requestPointerLock();return;} if(e.button===0)wantShoot=true; });
   $('lockOverlay').addEventListener('click',function(){canvas.requestPointerLock();});
-  function lockChange(){var locked=document.pointerLockElement===canvas;$('lockOverlay').classList.toggle('hidden',locked);}
-  document.addEventListener('pointerlockchange',lockChange);
+  function lc(){ $('lockOverlay').classList.toggle('hidden',document.pointerLockElement===canvas); }
+  document.addEventListener('pointerlockchange',lc);
+  GS.cleanup=function(){ document.removeEventListener('keydown',kd);document.removeEventListener('keyup',ku);document.removeEventListener('mousemove',mm);document.removeEventListener('pointerlockchange',lc);window.removeEventListener('resize',W.onResize); };
 
-  // send inputs at ~30Hz
-  wsSendTimer=setInterval(function(){
-    wsSend({t:'input',yaw:view.yaw,pitch:view.pitch,keys:keys});
-  },33);
+  if(mode==='practice') startPractice(THREE,W,{getKeys:function(){return keys;},getYaw:function(){return yaw;},getPitch:function(){return pitch;},pullShoot:function(){var s=wantShoot;wantShoot=false;return s;},pullReload:function(){var r=wantReload;wantReload=false;return r;}});
+  else startPvp(THREE,W,{getKeys:function(){return keys;},getYaw:function(){return yaw;},getPitch:function(){return pitch;},pullShoot:function(){var s=wantShoot;wantShoot=false;return s;},pullReload:function(){var r=wantReload;wantReload=false;return r;},setYaw:function(v){yaw=v;}});
+}
 
-  // server state messages
-  var onMsg=function(orig){ws.removeEventListener.apply?null:null;};
-  function wsHandler(ev){
-    var m;try{m=JSON.parse(ev.data);}catch{return;}
-    if(m.t==='state'){
-      // update avatars + HUD from authoritative state
-      var me=null;
-      (m.players||[]).forEach(function(p){
-        if(p.uid===MY_UID){me=p;myHp=p.hp;myAmmo=p.ammo;myReloading=p.reloading;}
-        else{
-          var a=avatars[p.uid];
-          if(!a){a=makeAvatar(p.team);avatars[p.uid]=a;}
-          a.position.set(p.x,p.y-1.7,p.z);
-          a.visible=!p.dead;
-          a.rotation.y=p.yaw;
-        }
-      });
-      // hide avatars not in latest state
-      var present={};(m.players||[]).forEach(function(p){present[p.uid]=1;});
-      Object.keys(avatars).forEach(function(u){if(!present[u]){scene.remove(avatars[u]);delete avatars[u];}});
-      // HUD
-      $('hpFill').style.width=Math.max(0,myHp)+'%';$('hpNum').textContent=Math.max(0,Math.round(myHp));
-      $('ammoNum').textContent=myReloading?'…':myAmmo;
-      // team scores
-      var ta=0,tb=0;(m.players||[]).forEach(function(p){if(p.team===0)ta=Math.max(ta,p.frags);else tb=Math.max(tb,p.frags);});
-      // actually sum team frags: server sends per-player frags; sum per team
-      ta=0;tb=0;(m.players||[]).forEach(function(p){if(p.team===0)ta+=p.frags;if(p.team===1)tb+=p.frags;});
-      $('scoreA').textContent=ta;$('scoreB').textContent=tb;
-      // events: hitmark, dmg vignette, frag messages
-      (m.events||[]).forEach(function(ev){
-        if(ev.t==='hit'&&ev.victim===MY_UID){$('dmgVig').classList.add('on');setTimeout(function(){$('dmgVig').classList.remove('on');},120);}
-        if(ev.t==='hit'&&ev.by===MY_UID){var h=$('hitmark');h.classList.remove('hidden');setTimeout(function(){h.classList.add('hidden');},90);}
-        if(ev.t==='frag'){msg(ev.by===MY_UID?'Frag!':(ev.victim===MY_UID?'You died':''),700);}
-        if(ev.t==='shot'&&ev.uid===MY_UID){muzzle.material.opacity=0.9;setTimeout(function(){muzzle.material.opacity=0;},45);}
-      });
+// ── PRACTICE (local bot, no money) ───────────────────────────────────────
+function startPractice(THREE,W,IN){
+  var camera=W.camera, scene=W.scene;
+  var P={x:0,y:EYE,z:HALF-3,vy:0,onG:true,hp:100,ammo:17,reloading:false,score:0};
+  var foe=makeFighter(THREE,0xff5555); foe.group.position.set(-2,0,-HALF+4); scene.add(foe.group);
+  var B={hp:100,score:0,fireT:0,strafe:1,strafeT:0,respawn:0};
+  var ray=new THREE.Raycaster(); var last=performance.now();
+  hudSet(100,17,0,0,5); $('scoreFoe').parentNode.querySelector('small').textContent='BOT';
+  function shoot(){ if(P.reloading||B.respawn>0)return; if(P.ammo<=0){sfx('empty');return;} P.ammo--; GS.recoil=1; sfx('gun'); muzzle(W);
+    ray.setFromCamera({x:0,y:0},camera); var hits=ray.intersectObjects([foe.head,foe.body],false);
+    var walls=ray.intersectObjects(scene.children.filter(function(o){return o.isMesh&&o!==foe.head&&o!==foe.body;}),true);
+    if(hits.length&&!(walls.length&&walls[0].distance<hits[0].distance-0.05)){ var head=hits[0].object===foe.head; B.hp-=head?100:25; hitmark(); sfx('hitmark'); if(B.hp<=0){P.score++;arMsg('Frag!',600);sfx('frag');B.hp=100;B.respawn=1.2;} }
+    hudSet(P.hp,P.ammo,P.score,B.score,5);
+  }
+  function loop(now){ if(!GS||!GS.alive)return; if(!document.body.contains(W.canvas)){teardownGame();return;} var dt=Math.min(0.05,(now-last)/1000); last=now;
+    if(document.pointerLockElement===W.canvas){ var k=IN.getKeys(),yaw=IN.getYaw(),fx=Math.sin(yaw),fz=Math.cos(yaw),mx=0,mz=0;
+      if(k['KeyW']){mx-=fx;mz-=fz;}if(k['KeyS']){mx+=fx;mz+=fz;}if(k['KeyA']){mx-=fz;mz+=fx;}if(k['KeyD']){mx+=fz;mz-=fx;}
+      var l=Math.hypot(mx,mz); if(l>0){mx/=l;mz/=l;} var nx=P.x+mx*6*dt,nz=P.z+mz*6*dt; nx=Math.max(-HALF+0.6,Math.min(HALF-0.6,nx));nz=Math.max(-HALF+0.6,Math.min(HALF-0.6,nz)); if(!blockedAt(nx,P.z))P.x=nx; if(!blockedAt(P.x,nz))P.z=nz;
+      if(k['Space']&&P.onG){P.vy=5.2;P.onG=false;} P.vy-=16*dt;P.y+=P.vy*dt; if(P.y<=EYE){P.y=EYE;P.vy=0;P.onG=true;}
+      if(IN.pullReload()&&!P.reloading&&P.ammo<17){P.reloading=true;sfx('reload');setTimeout(function(){P.ammo=17;P.reloading=false;hudSet(P.hp,P.ammo,P.score,B.score,5);},1100);}
+      if(IN.pullShoot())shoot();
     }
-    if(m.t==='end'){ showResult({phase:'done',winnerTeam:m.winnerTeam,reason:m.reason}); }
+    if(B.respawn>0)B.respawn-=dt; else { B.strafeT-=dt; if(B.strafeT<=0){B.strafeT=0.7+Math.random();B.strafe*=-1;} var bp=foe.group.position; var tox=P.x-bp.x,toz=P.z-bp.z,d=Math.hypot(tox,toz)||1;tox/=d;toz/=d; var want=d>7?1:(d<4?-0.6:0); var nx2=bp.x+(tox*want-toz*B.strafe)*3.2*dt,nz2=bp.z+(toz*want+tox*B.strafe)*3.2*dt; nx2=Math.max(-HALF+0.8,Math.min(HALF-0.8,nx2));nz2=Math.max(-HALF+0.8,Math.min(HALF-0.8,nz2)); if(!blockedAt(nx2,bp.z))bp.x=nx2; if(!blockedAt(bp.x,nz2))bp.z=nz2; foe.group.lookAt(P.x,1,P.z);
+      B.fireT-=dt; if(B.fireT<=0){B.fireT=0.5+Math.random()*0.4; sfx('gun'); var spread=Math.min(0.85,0.18+d*0.02); if(Math.random()>spread){P.hp-=16;$('dmgVig').classList.add('on');setTimeout(function(){$('dmgVig').classList.remove('on');},120);sfx('hurt'); if(P.hp<=0){B.score++;arMsg('You died',800);sfx('frag');P.hp=100;P.x=(Math.random()<.5?-1:1)*(HALF-3);P.z=(Math.random()<.5?-1:1)*(HALF-3);} hudSet(P.hp,P.ammo,P.score,B.score,5);} }
+    }
+    if(P.score>=5||B.score>=5){ endLocal(P.score>B.score); return; }
+    camera.position.set(P.x,P.y,P.z); camera.rotation.y=IN.getYaw(); camera.rotation.x=IN.getPitch();
+    GS.recoil*=Math.pow(0.0001,dt); W.gun.position.set(0.22,-0.20+Math.sin(now*0.006)*0.004,-0.45+GS.recoil*0.05); W.gun.rotation.x=GS.recoil*0.18;
+    W.renderer.render(scene,camera); GS.raf=requestAnimationFrame(loop);
   }
-  if(ws)ws.addEventListener('message',wsHandler);
-  function msg(t,ms){var mm=$('arMsg');mm.textContent=t;mm.classList.remove('hidden');if(ms)setTimeout(function(){mm.classList.add('hidden');},ms);}
+  last=performance.now(); GS.raf=requestAnimationFrame(loop);
+}
+function endLocal(win){ document.exitPointerLock&&document.exitPointerLock(); $('lockTitle').textContent=win?'You win 🏆':'Defeat'; $('lockSub').textContent='Practice over — back to arena from the lobby'; $('lockOverlay').classList.remove('hidden'); setTimeout(backToList,2200); }
 
-  // render loop — camera follows our last-known authoritative position
-  var lastState=null;
-  // store latest state for camera
-  var origHandler=wsHandler;
-  // patch to capture me
-  // (simpler: re-find me each frame from a stored map)
-  var mePos={x:0,y:1.7,z:0};
-  function storeMe(ev){var mm;try{mm=JSON.parse(ev.data);}catch{return;}if(mm.t==='state'){var f=(mm.players||[]).find(function(p){return p.uid===MY_UID;});if(f){mePos.x=f.x;mePos.y=f.y;mePos.z=f.z;}}}
-  if(ws)ws.addEventListener('message',storeMe);
-
-  G={alive:true,raf:0,onResize:function(){camera.aspect=W()/H();camera.updateProjectionMatrix();renderer.setSize(W(),H());}};
-  window.addEventListener('resize',G.onResize);
-  var last=performance.now();
-  function loop(now){
-    if(!G||!G.alive)return;
-    var dt=(now-last)/1000;last=now;
-    camera.position.set(mePos.x,mePos.y,mePos.z);
-    camera.rotation.set(0,0,0,'YXZ');camera.rotation.order='YXZ';
-    camera.rotation.y=view.yaw;camera.rotation.x=view.pitch;
-    gun.position.set(0.22,-0.20+(Math.sin(now*0.006)*0.004),-0.45);
-    renderer.render(scene,camera);
-    G.raf=requestAnimationFrame(loop);
-  }
-  G.raf=requestAnimationFrame(loop);
-
-  $('quitBtn').onclick=function(){ if(confirm('Forfeit this match? You will lose your stake.')){abandonMatch();} };
-  // cleanup hook
-  G._cleanup=function(){
-    document.removeEventListener('keydown',kd);document.removeEventListener('keyup',ku);
-    document.removeEventListener('mousemove',onMove);document.removeEventListener('pointerlockchange',lockChange);
-    closeSocket();
+// ── PvP (server-authoritative over WebSocket) ────────────────────────────
+function wsUrl(){ return (location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/arena/ws'; }
+var wsConn=null;
+function connectWs(){ if(wsConn&&(wsConn.readyState===0||wsConn.readyState===1))return; ensureThree(function(){ openWs(); }); }
+function openWs(){
+  try{ wsConn=new WebSocket(wsUrl()); }catch(e){ return; }
+  wsConn.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;} handleWs(d); };
+  wsConn.onclose=function(){ wsConn=null; };
+}
+var pvpReady=false;
+function handleWs(d){
+  if(d.t==='hello'){ if(d.match&&d.you){ GS_you=d.you; } return; }
+  if(d.t==='live'){ stopLobby(); if(!GS||GS.mode!=='pvp'){ ensureThree(function(){ startGame('pvp'); GS.ws=wsConn; }); } return; }
+  if(d.t==='state'){ if(GS&&GS.onState)GS.onState(d); return; }
+  if(d.t==='end'){ pvpEnd(d); return; }
+}
+var GS_you=null;
+function startPvp(THREE,W,IN){
+  var camera=W.camera, scene=W.scene; GS.ws=wsConn;
+  var foes={}; // uid -> fighter
+  var myState=null, target=null, lastState=0;
+  hudSet(100,17,0,0,5);
+  // send inputs ~30Hz
+  var sendT=setInterval(function(){ if(!wsConn||wsConn.readyState!==1)return; var k=IN.getKeys();
+    wsConn.send(JSON.stringify({t:'input',keys:{KeyW:!!k['KeyW'],KeyS:!!k['KeyS'],KeyA:!!k['KeyA'],KeyD:!!k['KeyD'],Space:!!k['Space']},yaw:IN.getYaw(),pitch:IN.getPitch(),wantShoot:IN.pullShoot(),wantReload:IN.pullReload()}));
+  },33);
+  var prevCleanup=GS.cleanup; GS.cleanup=function(){ clearInterval(sendT); if(prevCleanup)prevCleanup(); };
+  GS.onState=function(d){
+    var me=null, foeList=[]; (d.players||[]).forEach(function(p){ if(p.uid===MY_UID)me=p; else foeList.push(p); });
+    if(me){ target={x:me.x,y:me.y,z:me.z}; if(myState===null){myState={x:me.x,y:me.y,z:me.z};} var foeFrags=0; (d.players||[]).forEach(function(p){if(p.team!==me.team)foeFrags+=p.frags;}); hudSet(me.hp,me.ammo,me.frags,foeFrags,d.fragLimit); if(me.reloading)$('ammoNum').textContent='R'; }
+    // foes
+    var seen={}; foeList.forEach(function(p){ seen[p.uid]=1; var f=foes[p.uid]; if(!f){f=makeFighter(THREE,0xff5555);scene.add(f.group);foes[p.uid]=f;f.tx=p.x;f.tz=p.z;} f.tx=p.x;f.tz=p.z;f.ty=p.y;f.tyaw=p.yaw; f.group.visible=!p.dead; });
+    for(var u in foes){ if(!seen[u]){ scene.remove(foes[u].group); delete foes[u]; } }
+    // events → sfx/effects
+    (d.events||[]).forEach(function(e){ if(e.t==='shot'){ if(e.uid===MY_UID){muzzle(W);GS.recoil=1;sfx('gun');} else sfx('gun'); } else if(e.t==='hit'){ if(e.by===MY_UID){hitmark();sfx('hitmark');} if(e.victim===MY_UID){$('dmgVig').classList.add('on');setTimeout(function(){$('dmgVig').classList.remove('on');},120);sfx('hurt');} } else if(e.t==='frag'){ sfx('frag'); if(e.by===MY_UID)arMsg('Frag!',600); else if(e.victim===MY_UID)arMsg('You died',800); } else if(e.t==='reload'&&e.uid===MY_UID){sfx('reload');} });
   };
+  var last=performance.now();
+  function loop(now){ if(!GS||!GS.alive)return; if(!document.body.contains(W.canvas)){teardownGame();return;} var dt=Math.min(0.05,(now-last)/1000); last=now;
+    // interpolate my position toward server target (aim is local/instant)
+    if(target){ if(!myState)myState={x:target.x,y:target.y,z:target.z}; myState.x+=(target.x-myState.x)*Math.min(1,dt*14); myState.y+=(target.y-myState.y)*Math.min(1,dt*18); myState.z+=(target.z-myState.z)*Math.min(1,dt*14); camera.position.set(myState.x,myState.y,myState.z); }
+    camera.rotation.y=IN.getYaw(); camera.rotation.x=IN.getPitch();
+    for(var u in foes){ var f=foes[u]; var p=f.group.position; p.x+=((f.tx||p.x)-p.x)*Math.min(1,dt*14); p.z+=((f.tz||p.z)-p.z)*Math.min(1,dt*14); f.group.rotation.y=(f.tyaw||0); }
+    GS.recoil*=Math.pow(0.0001,dt); W.gun.position.set(0.22,-0.20+Math.sin(now*0.006)*0.004,-0.45+GS.recoil*0.05); W.gun.rotation.x=GS.recoil*0.18;
+    W.renderer.render(scene,camera); GS.raf=requestAnimationFrame(loop);
+  }
+  last=performance.now(); GS.raf=requestAnimationFrame(loop);
+}
+function pvpEnd(d){
+  document.exitPointerLock&&document.exitPointerLock();
+  var win=false; // determine from our team — server sends winnerTeam; we know our team via last state — fallback: query match
+  api('/api/arena/'+curMatch).then(function(m){ var meSlot=(m.slots||[]).find(function(s){return s&&s.uid===MY_UID;}); var myTeam=meSlot?meSlot.team:0; win=(d.winnerTeam===myTeam); finishPvp(win,d); }).catch(function(){ finishPvp(false,d); });
+}
+function finishPvp(win,d){
+  teardownGame(); curMatch=null;
+  $('rIcon').className='result-icon '+(d.winnerTeam===-1?'tie':(win?'win':'lose'));
+  $('rIcon').innerHTML=win?'<svg class="icon" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>':'<svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  $('rTitle').className='result-title '+(d.winnerTeam===-1?'tie':(win?'win':'lose'));
+  $('rTitle').textContent=d.winnerTeam===-1?'Draw':(win?'Victory!':'Defeat');
+  $('rSub').textContent=d.winnerTeam===-1?'Stakes refunded ('+d.reason+').':(win?('You won the pot of '+Math.floor((d.pot||0)*0.95).toLocaleString()+' FC!'):'Better luck next duel.'+(d.reason==='forfeit'?' (forfeit)':''));
+  $('resultOverlay').classList.remove('hidden'); refreshBal();
 }
 
-function stopGame(){
-  if(G){G.alive=false;if(G.raf)cancelAnimationFrame(G.raf);if(G._cleanup)G._cleanup();document.exitPointerLock&&document.exitPointerLock();window.removeEventListener('resize',G.onResize);G=null;}
-  gameStarted=false;
-}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString();}).catch(function(){});}
 
-/* ═══ Result ═══════════════════════════════════════════════════════════════ */
-function showResult(d){
-  stopGame();
-  var myTeam=0; // determined from match slots earlier — fallback team A
-  // Determine our team from the last lobby render
-  // (server doesn't return team in done; infer from index parity via active poll)
-  var won = (d.winnerTeam===myTeam);
-  if(d.winnerTeam===-1){ won=null; } // tie
-  var ic=document.getElementById('resultIcon'),tt=document.getElementById('resultTitle'),ss=document.getElementById('resultSub');
-  if(won===null){ic.className='result-icon tie';ic.innerHTML='<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>';tt.className='result-title tie';tt.textContent='Tie';ss.textContent='Time up with equal frags — stake refunded.';}
-  else if(won){ic.className='result-icon win';ic.innerHTML='<svg class="icon" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/></svg>';tt.className='result-title win';tt.textContent='Victory';ss.textContent=d.reason==='forfeit'?'Opponent bailed — pot is yours.':'You took the pot (5% rake).';}
-  else{ic.className='result-icon lose';ic.innerHTML='<svg class="icon" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>';tt.className='result-title lose';tt.textContent='Defeat';ss.textContent=d.reason==='forfeit'?'You forfeited the match.':'Better aim next time.';}
-  document.getElementById('resultOverlay').classList.remove('hidden');
-  refreshBal();
-  stopMatchPoll();
-}
-
-/* ═══ Resume an active match on page load ═════════════════════════════════ */
-fetch('/api/arena/active').then(function(r){return r.json()}).then(function(d){
-  if(d&&d.matchId){currentMatchId=d.matchId;enterMatchLobby();}
-  else { showList(); }
-}).catch(function(){showList();});
-
-refreshBal();setInterval(refreshBal,8000);
+// boot: resume active match if any, else show lobby list
+api('/api/arena/active').then(function(d){ if(d&&d.matchId){ enterLobby(d.matchId); } else { startListPoll(); } }).catch(function(){ startListPoll(); });
+refreshBal();
+})();
 </script>
 </body>
 </html>

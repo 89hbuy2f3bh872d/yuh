@@ -1581,7 +1581,8 @@ export class WebServer {
       .replace("__SIDEBAR__", sidebar)
       .replace(/__BALANCE__/g, String(bal))
       .replace(/__TAG__/g, esc(tag))
-      .replace(/__AVATAR__/g, esc(avatar));
+      .replace(/__AVATAR__/g, esc(avatar))
+      .replace(/__UID__/g, esc(uid));
     for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
     // Cache-bust local CSS/JS so deployed changes load immediately.
     html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
