@@ -1,0 +1,20 @@
+# Standalone workspace root so cargo doesn't walk up into unrelated parent manifests.
+[workspace]
+
+[package]
+name = "sirgreen-module"
+version = "0.1.0"
+edition = "2021"
+
+# SpacetimeDB modules compile to a WASM cdylib.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spacetimedb = "1.0"
+log = "0.4"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

@@ -1,0 +1,2 @@
+std::string::String: spacetimedb::table::IndexScanRangeBounds<(std::string::String,), spacetimedb::table::SingleBound>
+spacetimedb::table::IndexScanRangeBounds<(std::string::String,), spacetimedb::table::SingleBound>

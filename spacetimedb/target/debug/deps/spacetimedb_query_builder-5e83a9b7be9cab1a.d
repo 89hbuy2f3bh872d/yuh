@@ -1,0 +1,8 @@
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\spacetimedb_query_builder-5e83a9b7be9cab1a.d: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\expr.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\join.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\table.rs
+
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\libspacetimedb_query_builder-5e83a9b7be9cab1a.rmeta: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\expr.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\join.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\table.rs
+
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\lib.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\expr.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\join.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-query-builder-1.12.0\src\table.rs:

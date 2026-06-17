@@ -1,0 +1,11 @@
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\decorum-2f825caf23b084c9.d: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\canonical.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\cmp.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\constraint.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\hash.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\primitive.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\proxy.rs
+
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\libdecorum-2f825caf23b084c9.rmeta: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\canonical.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\cmp.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\constraint.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\hash.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\primitive.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\proxy.rs
+
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\lib.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\canonical.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\cmp.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\constraint.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\hash.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\primitive.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\decorum-0.3.1\src\proxy.rs:

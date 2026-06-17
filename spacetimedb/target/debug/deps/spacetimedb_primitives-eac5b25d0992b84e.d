@@ -1,0 +1,9 @@
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\spacetimedb_primitives-eac5b25d0992b84e.d: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\attr.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\col_list.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\errno.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\ids.rs
+
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\libspacetimedb_primitives-eac5b25d0992b84e.rmeta: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\attr.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\col_list.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\errno.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\ids.rs
+
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\lib.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\attr.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\col_list.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\errno.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-primitives-1.12.0\src\ids.rs:

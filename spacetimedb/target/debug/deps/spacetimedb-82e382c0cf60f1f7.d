@@ -1,0 +1,11 @@
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\spacetimedb-82e382c0cf60f1f7.d: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\log_stopwatch.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\logger.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rng.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rt.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\table.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\../README.md
+
+E:\![Windows-Things]\Downloads\Casino\fluxer-casino-bot\spacetimedb\target\debug\deps\libspacetimedb-82e382c0cf60f1f7.rmeta: C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\lib.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\log_stopwatch.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\logger.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rng.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rt.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\table.rs C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\../README.md
+
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\lib.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\log_stopwatch.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\logger.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rng.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\rt.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\table.rs:
+C:\Users\felix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spacetimedb-1.12.0\src\../README.md:
