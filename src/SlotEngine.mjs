@@ -21,7 +21,7 @@ function payRows(a, b, c, d) { return [[15, d], [10, c], [8, b], [5, a]]; }
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 3.7,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.05,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
     reel: [["blue", 46], ["green", 40], ["purple", 34], ["red", 28], ["apple", 20], ["grape", 13], ["melon", 8]],
     pays: {
@@ -29,12 +29,12 @@ const GAMES = {
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
       apple: payRows(0.6, 1.5, 3, 10), grape: payRows(0.9, 2.2, 5, 15), melon: payRows(1.5, 4, 9, 25),
     },
-    scatter: { id: "SC", emoji: "🍭", chance: 0.0255, count: 4, regular: 10, super: 14, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
-    mult: { emoji: "🍬", chance: 0.07, table: [[2, 40], [3, 30], [5, 20], [10, 12], [25, 6], [50, 2], [100, 1]] },
+    scatter: { id: "SC", emoji: "🍭", chance: 0.0263, count: 4, regular: 12, super: 18, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
+    mult: { emoji: "🍬", chance: 0.12, table: [[2, 36], [3, 27], [5, 18], [10, 12], [25, 7], [50, 3], [100, 2], [250, 1]] },
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 3.34,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.0,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
     reel: [["ring", 46], ["glass", 40], ["chalice", 34], ["crown", 27], ["blue", 20], ["green", 13], ["red", 8]],
     pays: {
@@ -42,20 +42,20 @@ const GAMES = {
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
       blue: payRows(0.6, 1.5, 3, 10), green: payRows(0.9, 2.4, 5.5, 16), red: payRows(1.6, 4.5, 10, 30),
     },
-    scatter: { id: "SC", emoji: "⚡", chance: 0.0238, count: 4, regular: 12, super: 16, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
-    mult: { emoji: "🪙", chance: 0.06, table: [[2, 42], [3, 30], [5, 20], [10, 12], [20, 7], [50, 3], [100, 2], [250, 1]] },
+    scatter: { id: "SC", emoji: "⚡", chance: 0.0252, count: 4, regular: 14, super: 20, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
+    mult: { emoji: "🪙", chance: 0.125, table: [[2, 40], [3, 28], [5, 19], [10, 12], [20, 8], [50, 4], [100, 2], [250, 1]] },
   },
   bandit: {
     id: "bandit", name: "Wild Bandit", tag: "Cluster pays · heist multipliers", color: "#f59e0b",
-    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.97,
+    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.45,
     sym: { ten: "🔟", j: "🅹", q: "🆀", k: "🅺", a: "🅰️", gold: "🪙", bandit: "💰" },
     reel: [["ten", 44], ["j", 40], ["q", 34], ["k", 28], ["a", 21], ["gold", 13], ["bandit", 8]],
     pays: {
       ten: payRows(0.25, 0.6, 1.2, 3), j: payRows(0.3, 0.7, 1.4, 3.5), q: payRows(0.35, 0.9, 1.8, 4.5),
       k: payRows(0.45, 1.1, 2.4, 6), a: payRows(0.6, 1.5, 3.2, 9), gold: payRows(1, 2.6, 6, 18), bandit: payRows(1.8, 5, 11, 32),
     },
-    scatter: { id: "SC", emoji: "⭐", chance: 0.0255, count: 3, regular: 10, super: 14, retrig: 3, retrigAdd: 4, payX: { 3: 3, 4: 10, 5: 50 } },
-    mult: { emoji: "💵", chance: 0.08, table: [[2, 40], [3, 30], [5, 20], [10, 12], [25, 5], [50, 2], [100, 1]] },
+    scatter: { id: "SC", emoji: "⭐", chance: 0.0222, count: 3, regular: 12, super: 18, retrig: 3, retrigAdd: 4, payX: { 3: 3, 4: 10, 5: 50 } },
+    mult: { emoji: "💵", chance: 0.16, table: [[2, 36], [3, 27], [5, 18], [10, 12], [25, 7], [50, 3], [100, 2], [250, 1]] },
   },
 };
 
