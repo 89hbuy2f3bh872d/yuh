@@ -132,10 +132,23 @@ export class ArenaServer {
   attach(httpServer) {
     this._wss = new WebSocketServer({ noServer: true });
     httpServer.on("upgrade", (req, socket, head) => {
-      const u = new URL(req.url, "http://localhost");
-      if (u.pathname !== "/arena/ws") return;     // no other WS endpoints exist
-      this._wss.handleUpgrade(req, socket, head, (ws) => this._onWs(ws, req));
+      let u; try { u = new URL(req.url, "http://localhost"); } catch { try { socket.destroy(); } catch {} return; }
+      if (u.pathname !== "/arena/ws") { try { socket.destroy(); } catch {} return; } // don't leave stray upgrades hanging
+      try {
+        this._wss.handleUpgrade(req, socket, head, (ws) => this._onWs(ws, req));
+      } catch (e) {
+        console.error("[Arena] upgrade failed:", e?.message ?? e);
+        try { socket.destroy(); } catch {}
+      }
     });
+    // Heartbeat: drop dead sockets so ghosts don't hold match slots.
+    this._hb = setInterval(() => {
+      if (!this._wss) return;
+      this._wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) { try { ws.terminate(); } catch {} return; }
+        ws.isAlive = false; try { ws.ping(); } catch {}
+      });
+    }, 30000);
   }
 
   // ── Authenticated connection ──────────────────────────────────────────────
