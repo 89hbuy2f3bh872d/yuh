@@ -71,30 +71,23 @@ export class Stdb {
 
   getBalance(owner: string): number { return this.balances.get(owner) ?? 0; }
 
-  // ── reducer calls (fire; reconcile from the cache) ─────────────────────────
-  async ensureAccount(owner: string) { await this.ready(); this.conn.reducers.ensureAccount(owner); }
-  async credit(owner: string, amount: number) { await this.ready(); this.conn.reducers.credit(owner, BigInt(Math.floor(amount))); await this.#waitChange(owner); }
-  async deduct(owner: string, amount: number) {
+  // ── reducer calls — args as an OBJECT (camelCase keys, matching the codegen).
+  //    The call returns a Promise: resolves on commit, rejects (SenderError) on a
+  //    server-side error (e.g. "insufficient"). We await it for the authoritative
+  //    result; the `account` subscription keeps getBalance fresh for reads/WS.
+  async #call(name: string, args: Record<string, any>): Promise<void> {
     await this.ready();
-    if (this.getBalance(owner) < amount) throw new Error("insufficient");
-    this.conn.reducers.deduct(owner, BigInt(Math.floor(amount)));
-    await this.#waitChange(owner);
+    try { await this.conn.reducers[name](args); }
+    catch (e: any) { throw new Error(e?.message || String(e)); }
   }
-  async settle(owner: string, bet: number, payout: number) {
-    await this.ready();
-    if (this.getBalance(owner) < bet) throw new Error("insufficient");
-    this.conn.reducers.settle(owner, BigInt(Math.floor(bet)), BigInt(Math.floor(payout)));
-    await this.#waitChange(owner);
-  }
-  async transfer(from: string, to: string, amount: number, fromTag: string) {
-    await this.ready();
-    if (this.getBalance(from) < amount) throw new Error("insufficient");
-    this.conn.reducers.transfer(from, to, BigInt(Math.floor(amount)), fromTag);
-    await this.#waitChange(from);
-  }
-  async setExact(owner: string, balance: number) { await this.ready(); this.conn.reducers.setExact(owner, BigInt(Math.floor(balance))); await this.#waitChange(owner); }
-  async addNotification(owner: string, kind: string, amount: number, fromTag: string, msg: string) { await this.ready(); this.conn.reducers.addNotification(owner, kind, BigInt(Math.floor(amount)), fromTag, msg); }
-  async markRead(owner: string) { await this.ready(); this.conn.reducers.markRead(owner); }
+  async ensureAccount(owner: string) { await this.#call("ensureAccount", { owner }).catch(() => {}); }
+  async credit(owner: string, amount: number) { return this.#call("credit", { owner, amount: BigInt(Math.floor(amount)) }); }
+  async deduct(owner: string, amount: number) { return this.#call("deduct", { owner, amount: BigInt(Math.floor(amount)) }); }
+  async settle(owner: string, bet: number, payout: number) { return this.#call("settle", { owner, bet: BigInt(Math.floor(bet)), payout: BigInt(Math.floor(payout)) }); }
+  async transfer(from: string, to: string, amount: number, fromTag: string) { return this.#call("transfer", { from, to, amount: BigInt(Math.floor(amount)), fromTag }); }
+  async setExact(owner: string, balance: number) { return this.#call("setExact", { owner, balance: BigInt(Math.floor(balance)) }); }
+  async addNotification(owner: string, kind: string, amount: number, fromTag: string, msg: string) { return this.#call("addNotification", { owner, kind, amount: BigInt(Math.floor(amount)), fromTag, msg }).catch(() => {}); }
+  async markRead(owner: string) { return this.#call("markRead", { owner }).catch(() => {}); }
 
   // ── balance push listeners (for WS) ────────────────────────────────────────
   onBalance(owner: string, cb: BalCb): () => void {
