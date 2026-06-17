@@ -32,15 +32,12 @@ __SIDEBAR__
     </div>
   </div>
 
-  <div class="machine-row">
-  <aside class="gmult-panel hidden" id="gmultPanel">
-    <div class="gmp-title">GLOBAL<br>MULTIPLIER</div>
-    <div class="gmp-val" id="gmultVal">×1</div>
-    <div class="gmp-sub">Super Bonus</div>
-  </aside>
   <div class="machine">
     <div class="machine-top">
-      <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
+      <div class="meter-grp">
+        <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
+        <div class="gmult hidden" id="gmult"><span class="meter-lbl">Global</span><b id="gmultVal">×1</b></div>
+      </div>
       <div class="fs-banner hidden" id="fsBanner"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg> <span id="fsText">Free Spins</span></div>
       <div class="meter right"><span class="meter-lbl">Balance</span><b id="balMeter">0</b> FC</div>
     </div>
@@ -68,7 +65,6 @@ __SIDEBAR__
     </div>
     <div class="quick-bets" id="quickBets"></div>
     <div class="slot-toast hidden" id="slotToast"></div>
-  </div>
   </div>
 </div>
 
@@ -176,27 +172,48 @@ function symHtml(s){
 }
 function isMult(s){ return typeof s==='string'&&s.indexOf('M:')===0; }
 function multVal(s){ return parseInt(s.slice(2),10)||0; }
-function setCell(i,s,fall,delay){ var c=$('cell-'+i); if(!c)return; c.className='cell'+(fall?' fall':''); if(fall&&delay!=null)c.style.setProperty('--fd',delay+'ms'); c.innerHTML='<div class="sym">'+symHtml(s)+'</div>'; }
-function renderGrid(cells,fall){ for(var i=0;i<cells.length;i++) setCell(i,cells[i],fall, fall?((GAME.H-1-((i/GAME.W)|0))*0):0); }
-function fillIdle(){ var keys=Object.keys(GAME.sym),cells=[]; for(var i=0;i<GAME.W*GAME.H;i++)cells.push(keys[Math.floor(Math.random()*keys.length)]); renderGrid(cells,false); }
+function setContent(i,s){ var c=$('cell-'+i); if(!c)return; c.style.transition='none'; c.style.transform='translateY(0)'; c.innerHTML='<div class="sym">'+symHtml(s)+'</div>'; }
+function renderGrid(cells){ for(var i=0;i<cells.length;i++) setContent(i,cells[i]); }
+function fillIdle(){ var keys=Object.keys(GAME.sym),cells=[]; for(var i=0;i<GAME.W*GAME.H;i++)cells.push(keys[Math.floor(Math.random()*keys.length)]); renderGrid(cells); }
+function unitPx(){ var c=$('cell-0'); if(!c)return 56; var g=parseFloat(getComputedStyle($('reels')).gap)||6; return c.offsetHeight+g; }
 
-// spin entrance: symbols fall in one ROW at a time from the top, left→right within each row
-function dropGrid(cells){
-  var COL=turbo?10:24, ROWG=turbo?70:150, max=0;
-  for(var i=0;i<cells.length;i++){ var row=(i/GAME.W)|0, col=i%GAME.W; var d=row*ROWG+col*COL; if(d>max)max=d; setCell(i,cells[i],true,d); }
-  return max;
-}
-// tumble refill: changed columns drop in, COLUMN at a time from right→left, rows top→bottom
-function applyTumble(prev,next){
-  var COLG=turbo?40:95, ROWS=turbo?16:34, max=0;
-  for(var col=0;col<GAME.W;col++){
-    var changed=false; for(var row=0;row<GAME.H;row++){ var idx=row*GAME.W+col; if(prev[idx]!==next[idx]){changed=true;break;} }
-    for(var row2=0;row2<GAME.H;row2++){ var i=row2*GAME.W+col;
-      if(changed){ var d=(GAME.W-1-col)*COLG + row2*ROWS; if(d>max)max=d; setCell(i,next[i],true,d); }
-      else setCell(i,next[i],false,0);
-    }
+// Drop cells into place. fall[i] = how many rows ABOVE its final spot the cell starts
+// (0 = doesn't move). Each cell slides straight down from its origin; rows settle
+// bottom→top (one row at a time, vertical — never sideways).
+function animateFall(cells, fall, dur, rowStep){
+  var unit=unitPx(), maxd=0, i, c, fr, row;
+  for(i=0;i<cells.length;i++){
+    c=$('cell-'+i); if(!c)continue;
+    c.innerHTML='<div class="sym">'+symHtml(cells[i])+'</div>';
+    fr=fall[i]||0;
+    c.style.transition='none';
+    c.style.transform = fr>0 ? 'translateY('+(-fr*unit)+'px)' : 'translateY(0)';
   }
-  return max;
+  void $('reels').offsetHeight; // commit start positions
+  for(i=0;i<cells.length;i++){
+    c=$('cell-'+i); if(!c)continue; fr=fall[i]||0; if(fr<=0)continue;
+    row=(i/GAME.W)|0; var d=(GAME.H-1-row)*rowStep; if(d>maxd)maxd=d;
+    c.style.transition='transform '+dur+'ms cubic-bezier(.34,1.28,.5,1) '+d+'ms';
+    c.style.transform='translateY(0)';
+  }
+  return maxd+dur;
+}
+// spin entrance: whole grid falls from the top
+function dropGrid(cells){
+  var f=new Array(cells.length); for(var i=0;i<cells.length;i++) f[i]=((i/GAME.W)|0)+2;
+  return animateFall(cells, f, turbo?240:430, turbo?26:64);
+}
+// tumble: survivors fall into the holes, new symbols fall from above — only moved cells animate
+function tumbleFall(nextCells, removed){
+  var W=GAME.W,H=GAME.H, f=new Array(W*H).fill(0);
+  for(var col=0; col<W; col++){
+    var rc=0; for(var r=0;r<H;r++) if(removed.has(r*W+col)) rc++;
+    if(!rc) continue;
+    var surv=[]; for(var r2=0;r2<H;r2++) if(!removed.has(r2*W+col)) surv.push(r2);
+    for(var i=0;i<surv.length;i++){ var nr=rc+i; f[nr*W+col]=nr-surv[i]; }       // survivors drop
+    for(var n=0;n<rc;n++) f[n*W+col]=rc+2;                                        // new from above
+  }
+  return animateFall(nextCells, f, turbo?230:420, turbo?22:56);
 }
 function clearFx(){ for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.remove('win','dim','pop','mhit'); } }
 
@@ -211,7 +228,7 @@ function doSpin(buy){
   if(busy||!GAME)return;
   var b=bet(); var cost = buy==='super'?b*(GAME.buy.super||0) : buy==='regular'?b*(GAME.buy.regular||0) : b;
   if(cost>bal){ toast('Not enough balance'); return; }
-  busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmultPanel').classList.add('hidden'); stageMsg('');
+  busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden'); stageMsg('');
   if(window.SG)SG.sfx(buy?'coin':'spin');
   bal-=cost; $('balMeter').textContent=fmt(bal);
   fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:buy||false})})
@@ -250,7 +267,7 @@ async function animateRound(d){
       await freeIntro(d.freeAwarded||freeCount, isSuper);
       if(window.SG&&SG.music)SG.music.play(GAME.id+'B');
       $('fsBanner').classList.remove('hidden');
-      if(isSuper){ $('gmultPanel').classList.remove('hidden'); $('gmultVal').textContent='×1'; }
+      if(isSuper){ $('gmult').classList.remove('hidden'); $('gmultVal').textContent='×1'; }
       var fdone=0;
       for(var i=bi;i<d.spins.length;i++){ var sp=d.spins[i]; fdone++;
         $('fsText').textContent='Free Spin '+fdone+' / '+freeCount;
@@ -258,22 +275,24 @@ async function animateRound(d){
         roundWin+=sp.total; setWin(roundWin);
         await sleep(turbo?70:240);
       }
+      // Super: apply the collected global multiplier to the whole bonus win at the end
+      if(isSuper && d.superMult>1){ await sleep(300); await endMultiply(d.superPre!=null?d.superPre:roundWin, d.superMult, d.totalWin); roundWin=d.totalWin; }
     }
     if(d.totalWin>0) await bigWin(d.totalWin, d.bet);
     bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
   } catch(e){ console.error('animateRound',e); }
   finally {
-    $('fsBanner').classList.add('hidden'); $('gmultPanel').classList.add('hidden');
+    $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden');
     if(window.SG&&SG.music&&GAME)SG.music.play(GAME.id);
     busy=false; setControls(true);
   }
 }
 
 async function animateSpin(sp, runningBefore, free){
-  var STEP=turbo?230:700, POP=turbo?120:360, FALL=470;
+  var STEP=turbo?230:700, POP=turbo?120:360;
   clearFx();
   var md=dropGrid(sp.steps[0].grid);
-  await sleep(md+FALL);
+  await sleep(md+60);
   var spinWin=0;
   for(var st=0; st<sp.steps.length; st++){
     var step=sp.steps[st];
@@ -287,7 +306,7 @@ async function animateSpin(sp, runningBefore, free){
     winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('pop');});
     await sleep(POP);
     clearFx();
-    if(sp.steps[st+1]){ var md2=applyTumble(step.grid, sp.steps[st+1].grid); await sleep(md2+FALL*0.85); }
+    if(sp.steps[st+1]){ var removed=new Set(winPos); var md2=tumbleFall(sp.steps[st+1].grid, removed); await sleep(md2+60); }
   }
   // multiplier reveal
   if(sp.super){
@@ -309,7 +328,7 @@ function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(
 
 // fly each x-value from its cell to the global-multiplier meter, then bump it
 function flyMults(mults, newGlobal){
-  var meter=$('gmultPanel'); if(!meter) return Promise.resolve();
+  var meter=$('gmult'); if(!meter) return Promise.resolve();
   var mr=meter.getBoundingClientRect(), tx=mr.left+mr.width/2, ty=mr.top+mr.height/2;
   var proms=[];
   mults.forEach(function(m,k){
@@ -329,6 +348,32 @@ function flyMults(mults, newGlobal){
   return Promise.all(proms).then(function(){
     var gv=$('gmultVal'); if(gv)gv.textContent='×'+newGlobal;
     meter.classList.remove('bump'); void meter.offsetWidth; meter.classList.add('bump');
+  });
+}
+
+// end of super bonus: the global multiplier flies to the WIN meter and multiplies the total
+function endMultiply(pre, mult, final){
+  return new Promise(function(resolve){
+    var g=$('gmult'), w=$('winMeter');
+    if(!g||!w){ setWin(final); resolve(); return; }
+    var gr=g.getBoundingClientRect(), wr=w.getBoundingClientRect();
+    var sx=gr.left+gr.width/2, sy=gr.top+gr.height/2, tx=wr.left+wr.width/2, ty=wr.top+wr.height/2;
+    var fly=document.createElement('div'); fly.className='mult-fly big'; fly.textContent='×'+mult;
+    fly.style.left=sx+'px'; fly.style.top=sy+'px'; fly.style.transform='translate(-50%,-50%) scale(1)';
+    document.body.appendChild(fly);
+    if(window.SG)SG.sfx('mult');
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      fly.style.transition='transform .85s cubic-bezier(.4,0,.2,1),opacity .85s';
+      fly.style.transform='translate(calc(-50% + '+(tx-sx)+'px), calc(-50% + '+(ty-sy)+'px)) scale(1.5)';
+      fly.style.opacity='0';
+    });});
+    setTimeout(function(){
+      if(fly.parentNode)fly.parentNode.removeChild(fly);
+      if(window.SG)SG.sfx('bigwin');
+      w.classList.remove('mult-pop'); void w.offsetWidth; w.classList.add('mult-pop');
+      var t0=performance.now(), dur=1100;
+      (function tick(now){ var p=Math.min(1,(now-t0)/dur); var s=p*p*(3-2*p); setWin(Math.round(pre+(final-pre)*s)); if(p<1)requestAnimationFrame(tick); else { setWin(final); resolve(); } })(performance.now());
+    },860);
   });
 }
 

@@ -29,7 +29,7 @@ const GAMES = {
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
       apple: payRows(0.6, 1.5, 3, 10), grape: payRows(0.9, 2.2, 5, 15), melon: payRows(1.5, 4, 9, 25),
     },
-    scatter: { id: "SC", emoji: "🍭", chance: 0.0263, count: 4, regular: 12, super: 18, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
+    scatter: { id: "SC", emoji: "🍭", chance: 0.0315, count: 4, regular: 8, super: 12, retrig: 3, retrigAdd: 0, payX: { 4: 3, 5: 5, 6: 100 } },
     mult: { emoji: "🍬", chance: 0.12, table: [[2, 36], [3, 27], [5, 18], [10, 12], [25, 7], [50, 3], [100, 2], [250, 1]] },
   },
   olympus: {
@@ -42,7 +42,7 @@ const GAMES = {
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
       blue: payRows(0.6, 1.5, 3, 10), green: payRows(0.9, 2.4, 5.5, 16), red: payRows(1.6, 4.5, 10, 30),
     },
-    scatter: { id: "SC", emoji: "⚡", chance: 0.0252, count: 4, regular: 14, super: 20, retrig: 3, retrigAdd: 5, payX: { 4: 3, 5: 5, 6: 100 } },
+    scatter: { id: "SC", emoji: "⚡", chance: 0.0315, count: 4, regular: 8, super: 12, retrig: 3, retrigAdd: 0, payX: { 4: 3, 5: 5, 6: 100 } },
     mult: { emoji: "🪙", chance: 0.125, table: [[2, 40], [3, 28], [5, 19], [10, 12], [20, 8], [50, 4], [100, 2], [250, 1]] },
   },
   bandit: {
@@ -54,7 +54,7 @@ const GAMES = {
       ten: payRows(0.25, 0.6, 1.2, 3), j: payRows(0.3, 0.7, 1.4, 3.5), q: payRows(0.35, 0.9, 1.8, 4.5),
       k: payRows(0.45, 1.1, 2.4, 6), a: payRows(0.6, 1.5, 3.2, 9), gold: payRows(1, 2.6, 6, 18), bandit: payRows(1.8, 5, 11, 32),
     },
-    scatter: { id: "SC", emoji: "⭐", chance: 0.0222, count: 3, regular: 12, super: 18, retrig: 3, retrigAdd: 4, payX: { 3: 3, 4: 10, 5: 50 } },
+    scatter: { id: "SC", emoji: "⭐", chance: 0.0258, count: 3, regular: 8, super: 12, retrig: 3, retrigAdd: 0, payX: { 3: 3, 4: 10, 5: 50 } },
     mult: { emoji: "💵", chance: 0.16, table: [[2, 36], [3, 27], [5, 18], [10, 12], [25, 7], [50, 3], [100, 2], [250, 1]] },
   },
 };
@@ -151,31 +151,30 @@ function runRound(cfg, bet, buy) {
     if (pushBase()) { mode = "regular"; freeTriggered = true; freeLeft = cfg.scatter.regular; freeAwarded = freeLeft; }
   }
 
-  let guard = 0;
+  let guard = 0, superSum = 0; // super: accumulate base wins; global mult applied ONCE at the end
   while (freeTriggered && freeLeft > 0 && guard++ < 400) {
     freeLeft--;
     const s = runSpin(cfg, bet, true);
     const multSum = s.mults.reduce((a, m) => a + m.val, 0);
-    let total, applied = 0, added = 0;
+    let displayTotal = 0, added = 0;
     if (mode === "super") {
-      // X only counts toward the global multiplier when this spin actually HIT
-      // (a winning cluster) AND an x landed.
+      // X only counts toward the global multiplier when this spin HIT and an x landed.
       if (s.baseWin > 0 && multSum > 0) { globalMult += multSum; added = multSum; }
-      applied = globalMult;
-      total = (s.baseWin > 0 ? s.baseWin * globalMult : 0) + s.scatterWin;
+      displayTotal = s.baseWin + s.scatterWin;   // shown pre-global; multiplied at the end
+      superSum += displayTotal;
     } else {
-      applied = (s.baseWin > 0 && multSum > 0) ? multSum : 0;     // per-spin only
-      total = (applied ? s.baseWin * applied : s.baseWin) + s.scatterWin;
+      const applied = (s.baseWin > 0 && multSum > 0) ? multSum : 0; // per-spin in regular
+      displayTotal = (applied ? s.baseWin * applied : s.baseWin) + s.scatterWin;
+      totalWin += displayTotal;
     }
-    totalWin += total;
-    let retrig = false;
-    if (s.scatters >= cfg.scatter.retrig) { freeLeft += cfg.scatter.retrigAdd; freeAwarded += cfg.scatter.retrigAdd; retrig = true; }
-    spins.push({ free: true, super: mode === "super", steps: s.steps, baseWin: s.baseWin, mults: s.mults, multApplied: applied, multAdded: added, globalMult: mode === "super" ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(total), retrigger: retrig, freeLeft });
-    if (totalWin > cfg.maxWinX * bet) break;
+    spins.push({ free: true, super: mode === "super", steps: s.steps, baseWin: s.baseWin, mults: s.mults, multAdded: added, globalMult: mode === "super" ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(displayTotal), freeLeft });
+    if (mode !== "super" && totalWin > cfg.maxWinX * bet) break;
   }
 
+  let superMult = 1, superPre = 0;
+  if (mode === "super") { superMult = globalMult; superPre = Math.round(superSum); totalWin += superSum * globalMult; }
   if (totalWin > cfg.maxWinX * bet) totalWin = cfg.maxWinX * bet;
-  return { spins, totalWin: Math.round(totalWin), freeTriggered, freeAwarded, mode };
+  return { spins, totalWin: Math.round(totalWin), freeTriggered, freeAwarded, mode, superMult, superPre };
 }
 
 export function listGames() {

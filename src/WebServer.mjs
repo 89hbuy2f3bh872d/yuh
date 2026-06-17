@@ -918,6 +918,9 @@ export class WebServer {
         totalWin: result.totalWin,
         freeTriggered: result.freeTriggered,
         freeAwarded: result.freeAwarded,
+        mode: result.mode,
+        superMult: result.superMult,
+        superPre: result.superPre,
         balance: Number(user?.bal ?? 0),
       });
     }

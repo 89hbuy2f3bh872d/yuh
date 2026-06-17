@@ -111,7 +111,7 @@ input,select,textarea{font:inherit;color:inherit}
 .sb-signout:hover{background:var(--surface);color:var(--red)}
 
 /* ── Main content ─────────────────────────────────────────────────────── */
-.main{min-width:0;padding:1.75rem 2rem 3rem;max-width:1180px}
+.main{min-width:0;padding:1.75rem 2rem 3rem;max-width:1180px;margin-inline:auto;width:100%}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
 .page-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.1;display:flex;align-items:center;gap:.55rem}
 .page-title .icon{width:24px;height:24px;color:var(--accent)}
