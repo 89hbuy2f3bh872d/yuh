@@ -108,7 +108,7 @@ var BET_LEVELS=[1,2,5,10,20,40,80,150,300,600,1000,2000], betIdx=4;
 function toggleTurbo(){ turbo=!turbo; var b=$('turboBtn'); if(b)b.classList.toggle('on',turbo); }
 
 function refreshBal(){ return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&d.bal!==undefined){bal=Number(d.bal);var e=$('sbBal');if(e)e.textContent=fmt(bal);var bm=$('balMeter');if(bm)bm.textContent=fmt(bal);} }).catch(function(){}); }
-refreshBal(); setInterval(function(){ if(!busy)refreshBal(); },8000);
+refreshBal(); /* balance kept live via WS */
 
 function bet(){ return BET_LEVELS[betIdx]; }
 function setBetMeters(){ $('betVal').textContent=fmt(bet()); if(GAME&&GAME.buy){ $('costReg').textContent=fmt(bet()*(GAME.buy.regular||0))+' FC'; $('costSup').textContent=fmt(bet()*(GAME.buy.super||0))+' FC'; } }

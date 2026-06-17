@@ -50,7 +50,7 @@ function adjustBet(d){ bi=Math.max(0,Math.min(BET.length-1,bi+d)); $('betVal').t
 function refreshBal(){return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined){bal=Number(d.bal);setBal();}});}
 function setBal(){var e=$('sbBal');if(e)e.textContent=fmt(bal);var b=$('balMeter');if(b)b.textContent=fmt(bal);}
 function msg(t,cls){var m=$('hgMsg');m.textContent=t||'';m.className='hg-msg'+(cls?' '+cls:'');}
-refreshBal(); setInterval(function(){if(!busy)refreshBal();},8000);
+refreshBal(); /* balance kept live via WS */
 
 fetch('/api/house/games').then(function(r){return r.json()}).then(function(d){GAMES=d.games||[];PLINKO=d.plinko;renderLobby();}).catch(function(){$('hgGrid').innerHTML='<div class="empty">Failed to load.</div>';});
 

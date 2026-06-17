@@ -227,15 +227,16 @@
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function badge(n){ var b=document.getElementById('sbNotifBadge'); if(!b)return; if(n>0){b.textContent=n>99?'99+':n;b.classList.remove('hidden');}else{b.classList.add('hidden');} }
   function badgeBump(){ var b=document.getElementById('sbNotifBadge'); var n=(b&&!b.classList.contains('hidden'))?(parseInt(b.textContent,10)||0):0; badge(n+1); }
-  function setBal(v){ var e=document.getElementById('sbBal'); if(e)e.textContent=Number(v).toLocaleString(); }
+  // single source of truth for the balance display — sidebar + in-game meter + global var
+  function setBal(v){ v=Number(v)||0; var s=document.getElementById('sbBal'); if(s)s.textContent=v.toLocaleString(); var m=document.getElementById('balMeter'); if(m)m.textContent=v.toLocaleString(); try{ window.bal=v; }catch(e){} }
   function toast(it){
     var t=document.createElement('div'); t.className='notif-toast';
-    t.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg>'+
-      '<div><b>'+esc(it.f||'Someone')+'</b> sent you <b>'+Number(it.a).toLocaleString()+' FC</b></div>';
+    var inner = it.t==='pay' ? '<b>'+esc(it.f||'Someone')+'</b> sent you <b>'+Number(it.a).toLocaleString()+' FC</b>' : esc(it.m||'Notification');
+    t.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg><div>'+inner+'</div>';
     document.body.appendChild(t);
     requestAnimationFrame(function(){ t.classList.add('show'); });
     setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ if(t.parentNode)t.parentNode.removeChild(t); },300); }, 4500);
-    if(window.SG)SG.sfx('coins');
+    if(window.SG)SG.sfx(it.t==='ticket'?'click':'coins');
   }
 
   var ws=null, pollT=null, tries=0;
@@ -245,7 +246,7 @@
     fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
       if(!d)return; if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0);
       var last=seen(), mx=last;
-      (d.items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; if(it.ts>last&&it.t==='pay')toast(it); });
+      (d.items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; if(it.ts>last)toast(it); });
       setSeen(mx);
     }).catch(function(){});
   }
@@ -257,7 +258,7 @@
     ws.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;}
       if(d.type==='init'){ if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0); recordSeen(d.items); }
       else if(d.type==='balance'){ setBal(d.bal); }
-      else if(d.type==='notification'){ var it=d.item; if(it){ if(it.t==='pay')toast(it); badgeBump(); if(it.ts>seen())setSeen(it.ts); } }
+      else if(d.type==='notification'){ var it=d.item; if(it){ toast(it); badgeBump(); if(it.ts>seen())setSeen(it.ts); } }
       else if(d.type==='auth'&&!d.ok){ stopPoll(); } // not logged in
     };
     ws.onerror=function(){ try{ws.close();}catch(e){} };

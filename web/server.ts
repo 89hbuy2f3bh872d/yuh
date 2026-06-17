@@ -103,8 +103,8 @@ async function resolveSession(req: Request): Promise<string | null> {
 const FLUXER_AUTH_URL = "https://web.canary.fluxer.app/oauth2/authorize";
 const FLUXER_TOKEN_URL = "https://api.fluxer.app/v1/oauth2/token";
 const FLUXER_ME_URL = "https://api.fluxer.app/v1/users/@me";
-const FLUXER_CDN = "https://cdn.fluxer.app";
-const FLUXER_STATIC_CDN = "https://web.fluxer.app/static";
+const FLUXER_CDN = "https://fluxerusercontent.com";
+const FLUXER_STATIC_CDN = "https://fluxerstatic.com";
 const CLIENT_ID = cfg.fluxerClientId ?? "";
 const CLIENT_SECRET = cfg.fluxerClientSecret ?? "";
 const BASE_URL = (cfg.webBaseUrl ?? "").replace(/\/$/, "");
@@ -138,8 +138,9 @@ async function renderPage(request: Request, set: any, file: string, active: stri
   const bal = stdb.getBalance(uid);
   const tag = c.dtag || user?.tag || "Player";
   let avatar = c.dav || user?.av || ""; if (!avatar) avatar = fluxerAvatarUrl(uid, null);
+  const showAdmin = await admin.isAdmin(uid).catch(() => OWNERS.includes(uid)); // owner OR holds a permission
   let html = readFileSync(fp, "utf8")
-    .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin: OWNERS.includes(uid) }))
+    .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin }))
     .replace(/__BALANCE__/g, String(bal)).replace(/__TAG__/g, esc(tag)).replace(/__AVATAR__/g, esc(avatar)).replace(/__UID__/g, esc(uid));
   for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
   html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
@@ -239,8 +240,10 @@ const app = new Elysia()
   // ── house games (Plinko / Coinflip / Double = stateless; Mines / HiLo = stateful)
   .post("/api/house/*", async ({ request, params, body, set }) => {
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
-    if (rl(rlMoney, uid, 120)) { set.status = 429; return { error: "Slow down a moment" }; }
     const sub = (params as any)["*"] as string;
+    // Plinko is multi-ball (up to 10 rapid drops, client-capped) — exempt it from the
+    // per-op throttle; everything else stays rate-limited.
+    if (sub !== "plinko" && rl(rlMoney, uid, 120)) { set.status = 429; return { error: "Slow down a moment" }; }
     const d = body as any;
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
@@ -437,9 +440,14 @@ app.post("/api/admin/users/:id/perms", ({ request, params, body, set }) => admin
 app.post("/api/admin/users/:id/balance", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
   if (!(await admin.can(uid, "balances"))) { set.status = 403; return { error: "Missing permission" }; }
   const target = (params as any).id, b = body as any;
-  if (typeof b.set === "number") { await stdb.setExact(target, Math.floor(b.set)).catch(() => {}); return { bal: stdb.getBalance(target) }; }
-  if (typeof b.delta === "number") { const d = Math.floor(b.delta); await (d >= 0 ? stdb.credit(target, d) : stdb.deduct(target, -d)).catch(() => {}); return { bal: stdb.getBalance(target) }; }
-  return { error: "Provide delta or set" };
+  let changed = false;
+  if (typeof b.set === "number") { await stdb.setExact(target, Math.floor(b.set)).catch(() => {}); changed = true; }
+  else if (typeof b.delta === "number") { const d = Math.floor(b.delta); await (d >= 0 ? stdb.credit(target, d) : stdb.deduct(target, -d)).catch(() => {}); changed = true; }
+  else return { error: "Provide delta or set" };
+  const bal = stdb.getBalance(target);
+  // notify the user their balance changed (live, with the new value)
+  stdb.addNotification(target, "balance", bal, "Admin", `An admin set your balance to ${bal.toLocaleString()} FC`).catch(() => {});
+  return { bal };
 }));
 app.get("/api/admin/cases", ({ request, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return { tiers: cb.allTiers() }; }));
 app.post("/api/admin/cases", ({ request, body, set }) => adminApi(request, set, async (uid) => {
@@ -464,7 +472,14 @@ app.delete("/api/admin/battles/:id", ({ request, params, set }) => adminApi(requ
   cb.active.delete((params as any).id); return { ok: true };
 }));
 app.get("/api/admin/tickets", ({ request, set }) => adminApi(request, set, async () => ({ tickets: await db.listTickets({}).catch(() => []) })));
-app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adminApi(request, set, async (uid) => { const msg = String((body as any).body || "").trim().slice(0, 2000); if (!msg) return { error: "Message required" }; await db.addTicketMessage((params as any).id, { from: "admin", uid, body: msg, at: Date.now() }).catch(() => {}); return { ok: true }; }));
+app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
+  const id = (params as any).id;
+  const msg = String((body as any).body || "").trim().slice(0, 2000); if (!msg) return { error: "Message required" };
+  const t = await db.getTicket(id).catch(() => null);
+  await db.addTicketMessage(id, { from: "admin", uid, body: msg, at: Date.now() }).catch(() => {});
+  if (t?.uid) stdb.addNotification(t.uid, "ticket", 0, "Support", `Support replied to your ticket: ${t.subject || ""}`.trim()).catch(() => {}); // realtime ping
+  return { ok: true };
+}));
 app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async () => { const a = (params as any).action; if (a !== "close" && a !== "open") { set.status = 404; return { error: "?" }; } await db.setTicketStatus((params as any).id, a === "close" ? "closed" : "open").catch(() => {}); return { ok: true }; }));
 app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, async (uid) => {
   if (uid !== (AdminPanel as any).OWNER_ID) { set.status = 403; return { error: "Owner only" }; }
@@ -474,6 +489,37 @@ app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, a
   if (d.ack !== true) return { error: "Acknowledgement required" };
   const ok = await db.wipeAll().catch(() => false); return { ok };
 }));
+
+// ── support tickets (Mongo storage; realtime pings via STDB notifications) ───
+const rlTicket = new Map<string, number>();
+app.get("/api/tickets", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  return { tickets: await db.listTickets({ uid }).catch(() => []) };
+});
+app.post("/api/tickets", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (rl(rlTicket, uid, 8000)) { set.status = 429; return { error: "Please wait before opening another ticket" }; }
+  const tag = parseCookies(request).dtag || uid, b = body as any;
+  const subject = String(b?.subject || "").trim().slice(0, 120);
+  const msg = String(b?.body || "").trim().slice(0, 2000);
+  if (!subject || !msg) return { error: "Subject and message required" };
+  const now = Date.now();
+  const t = { _id: crypto.randomBytes(8).toString("hex"), uid, tag, subject, status: "open", createdAt: now, updatedAt: now, messages: [{ from: "user", uid, body: msg, at: now }] };
+  await db.createTicket(t).catch(() => {});
+  for (const o of OWNERS) stdb.addNotification(o, "ticket", 0, tag, `New ticket: ${subject}`).catch(() => {});
+  return { ticket: t };
+});
+app.post("/api/tickets/:id/reply", async ({ request, params, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const id = (params as any).id;
+  const t = await db.getTicket(id).catch(() => null);
+  if (!t || t.uid !== uid) { set.status = 404; return { error: "Not found" }; }
+  const msg = String((body as any)?.body || "").trim().slice(0, 2000);
+  if (!msg) return { error: "Message required" };
+  await db.addTicketMessage(id, { from: "user", uid, body: msg, at: Date.now() }).catch(() => {});
+  for (const o of OWNERS) stdb.addNotification(o, "ticket", 0, t.tag || uid, `Reply on: ${t.subject || ""}`.trim()).catch(() => {});
+  return { ok: true };
+});
 
 // ── user search (send-money picker) ─────────────────────────────────────────
 app.get("/api/users/search", async ({ request, query, set }) => {

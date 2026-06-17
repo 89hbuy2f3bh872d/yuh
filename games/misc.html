@@ -84,7 +84,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function fmt(n){return Number(n||0).toLocaleString()}
 
 function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=document.getElementById('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=fmt(d.bal)}).catch(function(){})}
-refreshBal();setInterval(refreshBal,8000);
+refreshBal(); /* balance kept live via WS */
 
 qEl.addEventListener('input', function(){
   clearTimeout(searchTimer);

@@ -232,7 +232,7 @@ function showCreate(){
 }
 function showArena(){stopListPoll();showView('view-arena');}
 function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)}).catch(function(){});}
-refreshBal();setInterval(refreshBal,8000);
+refreshBal(); /* balance kept live via WS */
 
 fetch('/api/case-battle/tiers').then(function(r){return r.json()}).then(function(d){
   TIERS=d.tiers||[];

@@ -74,7 +74,7 @@ __SIDEBAR__
 <script>
 (function(){
   function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=document.getElementById('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){})}
-  rb();setInterval(rb,8000);
+  rb(); /* balance kept live via WS */
 })();
 </script>
 </body>
