@@ -18,7 +18,7 @@
 /* ── Machine ───────────────────────────────────────────────────────── */
 #gameTitle{--gc:#22c55e}
 #gameTitle span{color:var(--gc)}
-.machine{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.1rem;max-width:680px;margin:0 auto;position:relative;overflow:hidden}
+.machine{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:.9rem;max-width:600px;margin:0 auto;position:relative;overflow:hidden}
 .machine::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0%, color-mix(in srgb,var(--gc) 14%, transparent), transparent 60%)}
 .machine-top{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.8rem;position:relative}
 .meter{font-size:.72rem;color:var(--text-2);font-variant-numeric:tabular-nums}
@@ -30,7 +30,8 @@
 @keyframes fsPulse{50%{box-shadow:0 0 18px -2px var(--gc)}}
 
 .reel-stage{position:relative;border-radius:12px;background:linear-gradient(180deg,var(--bg),#05060a);border:1px solid var(--border);padding:.5rem;overflow:hidden}
-.reels{display:grid;grid-template-columns:repeat(var(--w),1fr);gap:.3rem}
+/* cap reel size to the viewport so the machine never needs scrolling */
+.reels{display:grid;grid-template-columns:repeat(var(--w),1fr);gap:.3rem;width:100%;max-width:min(540px, calc((100vh - 350px) * var(--w) / var(--h)));margin-inline:auto}
 .cell{aspect-ratio:1;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;justify-content:center;position:relative;transition:opacity .18s}
 .cell .sym{font-size:clamp(1.3rem,5.4vw,2.3rem);line-height:1;position:relative;display:flex;align-items:center;justify-content:center}
 /* falling symbols land with a bounce; --fd staggers per row so a column fills top→bottom */
@@ -119,6 +120,7 @@
 @keyframes spinPop{0%{transform:scale(0) rotate(-40deg)}70%{transform:scale(1.2) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
 .fsi-title{font-size:1.7rem;font-weight:900;letter-spacing:.04em;color:var(--gc);margin:.3rem 0;text-shadow:0 0 20px var(--gc)}
 .fsi-title.super{background:linear-gradient(90deg,#c084fc,#f0abfc,#c084fc);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none}
+.fsi-title.hidden{background:linear-gradient(90deg,#f59e0b,#fde68a,#f59e0b);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none}
 .fsi-count{font-size:1.1rem;color:var(--text)}.fsi-count b{font-size:1.8rem;font-weight:900}
 .fsi-sub{font-size:.78rem;color:var(--text-2);line-height:1.5;margin:.7rem 0 1.2rem}
 .fsi-sub b{color:var(--text)}

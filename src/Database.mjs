@@ -272,7 +272,7 @@ export class Database {
    * Only succeeds if sender has sufficient funds AND both documents
    * are updated atomically. Returns true on success, false on failure.
    */
-  async transfer(fromId, toId, amount) {
+  async transfer(fromId, toId, amount, fromTag) {
     const fId = this._uid(fromId);
     const tId = this._uid(toId);
     if (fId === tId) return false;
@@ -307,10 +307,38 @@ export class Database {
         ], { session });
         success = true;
       }, { readPreference: "primary", readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
+      if (success) {
+        await this.addNotification(tId, { type: "pay", amount: amt, fromTag: fromTag || fId, msg: `received ${amt.toLocaleString()} FC` }).catch(() => {});
+      }
       return success;
     } finally {
       await session.endSession();
     }
+  }
+
+  // ─── Notifications (per-user inbox; capped at 50 newest) ──────────────────────
+  async addNotification(userId, notif = {}) {
+    const id = this._uid(userId);
+    const n = {
+      t: String(notif.type || "info").slice(0, 16),
+      m: String(notif.msg || "").slice(0, 200),
+      a: Number(notif.amount) || 0,
+      f: String(notif.fromTag || "").slice(0, 64),
+      ts: Date.now(),
+    };
+    await this._users.updateOne(
+      { _id: id },
+      { $push: { nt: { $each: [n], $slice: -50 } }, $inc: { nu: 1 } },
+      { upsert: true }
+    ).catch(() => {});
+    return n;
+  }
+  async getNotifications(userId) {
+    const u = await this._users.findOne({ _id: this._uid(userId) }, { projection: { nt: 1, nu: 1 } });
+    return { items: (u?.nt || []).slice().reverse(), unread: Math.max(0, Number(u?.nu || 0)) };
+  }
+  async markNotificationsRead(userId) {
+    await this._users.updateOne({ _id: this._uid(userId) }, { $set: { nu: 0 } }).catch(() => {});
   }
 
   async getLeaderboard(field, limit) {

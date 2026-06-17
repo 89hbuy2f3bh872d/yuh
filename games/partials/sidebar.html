@@ -29,6 +29,11 @@
   </a>
 
   <span class="sb-section">Account</span>
+  <a href="/notifications" class="sb-item __ACTIVE_notifications__">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span>Notifications</span>
+    <span class="sb-badge sb-notif-badge hidden" id="sbNotifBadge">0</span>
+  </a>
   <a href="/misc" class="sb-item __ACTIVE_misc__">
     <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     <span>Send Money</span>
@@ -95,7 +100,7 @@
     doc.querySelectorAll('body script').forEach(function(s){
       var txt=s.textContent||'';
       if(s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
-      if(!s.src && /__pjax|__bgHex/.test(txt)) return;
+      if(!s.src && /__pjax|__bgHex|__notif/.test(txt)) return;
       var n=document.createElement('script');
       if(s.src)n.src=s.src; else n.textContent=txt;
       document.body.appendChild(n);
@@ -208,5 +213,42 @@
   size();
   if(prefersReduced){ frame(); /* one static paint */ }
   else kick();
+})();
+</script>
+<script>
+/* Real-time balance + notifications. Polls the DB; updates the sidebar balance,
+   shows the unread badge, and toasts incoming payments (with a coin sound). */
+(function(){
+  if(window.__notif)return; window.__notif=1;
+  var SEEN='sgNotifSeen';
+  function seen(){ try{return +localStorage.getItem(SEEN)||0;}catch(e){return 0;} }
+  function setSeen(v){ try{localStorage.setItem(SEEN,String(v));}catch(e){} }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function badge(n){ var b=document.getElementById('sbNotifBadge'); if(!b)return; if(n>0){b.textContent=n>99?'99+':n;b.classList.remove('hidden');}else{b.classList.add('hidden');} }
+  function setBal(v){ var e=document.getElementById('sbBal'); if(e)e.textContent=Number(v).toLocaleString(); }
+  function toast(it){
+    var t=document.createElement('div'); t.className='notif-toast';
+    t.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg>'+
+      '<div><b>'+esc(it.f||'Someone')+'</b> sent you <b>'+Number(it.a).toLocaleString()+' FC</b></div>';
+    document.body.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ if(t.parentNode)t.parentNode.removeChild(t); },300); }, 4500);
+    if(window.SG)SG.sfx('coins');
+  }
+  var first=true;
+  function poll(){
+    fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(!d)return;
+      if(d.bal!==undefined) setBal(d.bal);
+      badge(d.unread||0);
+      var last=seen(), maxTs=last;
+      (d.items||[]).forEach(function(it){
+        if(it.ts>maxTs)maxTs=it.ts;
+        if(!first && it.ts>last && it.t==='pay') toast(it); // only live payments while on-site
+      });
+      setSeen(maxTs); first=false;
+    }).catch(function(){});
+  }
+  poll(); setInterval(poll,4000);
 })();
 </script>

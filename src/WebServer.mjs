@@ -207,7 +207,7 @@ function loadSidebar() {
  */
 function buildSidebar({ active, uid, tag, avatar, bal, showAdmin }) {
   let s = loadSidebar();
-  const pages = ["lobby", "case-battle", "slots", "house", "settings", "misc"];
+  const pages = ["lobby", "case-battle", "slots", "house", "settings", "misc", "notifications"];
   for (const p of pages) s = s.replace(`__ACTIVE_${p}__`, p === active ? "active" : "");
   const adminNav = showAdmin
     ? `<a href="/admin/panel" class="sb-item admin ${active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
@@ -858,6 +858,8 @@ export class WebServer {
       return this._renderPage(req, res, "settings.html", "settings");
     if (p === "/misc" && req.method === "GET")
       return this._renderPage(req, res, "misc.html", "misc");
+    if (p === "/notifications" && req.method === "GET")
+      return this._renderPage(req, res, "notifications.html", "notifications");
 
     // ── Case Battle page ─────────────────────────────────────────────────────
     if ((p === "/case-battle" || p.startsWith("/case-battle/")) && req.method === "GET") {
@@ -1066,10 +1068,27 @@ export class WebServer {
       if (toId === uid) return this._json(res, 200, { error: "Can't send to yourself" });
       if (!Number.isFinite(amount) || amount <= 0) return this._json(res, 200, { error: "Invalid amount" });
       let ok = false;
-      try { ok = await this.db.transfer(uid, toId, amount); } catch (e) { console.error("[transfer]", e); }
+      const meBefore = await this.db.getUser(uid).catch(() => null);
+      const myTag = meBefore?.tag || "Someone";
+      try { ok = await this.db.transfer(uid, toId, amount, myTag); } catch (e) { console.error("[transfer]", e); }
       if (!ok) return this._json(res, 200, { error: "Insufficient balance" });
       const me = await this.db.getUser(uid);
       return this._json(res, 200, { ok: true, newBal: Number(me?.bal ?? 0) });
+    }
+
+    // ── Notifications ──────────────────────────────────────────────────────────
+    if (p === "/api/notifications" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const n = await this.db.getNotifications(uid).catch(() => ({ items: [], unread: 0 }));
+      const me = await this.db.getUser(uid).catch(() => null);
+      return this._json(res, 200, { items: n.items, unread: n.unread, bal: Number(me?.bal ?? 0) });
+    }
+    if (p === "/api/notifications/read" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      await this.db.markNotificationsRead(uid).catch(() => {});
+      return this._json(res, 200, { ok: true });
     }
 
     // ── Case Battle API ──────────────────────────────────────────────────────

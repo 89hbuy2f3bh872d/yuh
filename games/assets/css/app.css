@@ -97,6 +97,17 @@ input,select,textarea{font:inherit;color:inherit}
 .sb-item.admin .icon{color:var(--gold)}
 .sb-badge{margin-left:auto;font-size:.55rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:.1rem .35rem;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
 .sb-badge.soon{background:var(--surface2);color:var(--text3)}
+.sb-notif-badge{background:var(--red);color:#fff;min-width:18px;text-align:center;border-radius:99px;padding:.1rem .3rem}
+.sb-notif-badge.hidden{display:none!important}
+
+/* incoming-payment toast (global, top-right) */
+.notif-toast{position:fixed;top:18px;right:18px;z-index:9999;display:flex;align-items:center;gap:.6rem;
+  background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:.7rem .9rem;max-width:320px;
+  box-shadow:0 14px 40px -12px rgba(0,0,0,.6);transform:translateX(120%);opacity:0;transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .3s}
+.notif-toast.show{transform:translateX(0);opacity:1}
+.notif-toast .icon{width:26px;height:26px;color:var(--accent);flex-shrink:0}
+.notif-toast div{font-size:.84rem;line-height:1.35}
+.notif-toast b{color:var(--text);font-weight:800}
 
 .sb-spacer{flex:1}
 .sb-foot{border-top:1px solid var(--border);padding-top:.6rem;margin-top:.5rem}

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notifications — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.ntf-list{display:flex;flex-direction:column;gap:.55rem;max-width:680px}
+.ntf{display:flex;align-items:center;gap:.85rem;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:.8rem 1rem}
+.ntf-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:color-mix(in srgb,var(--gc,#22c55e) 16%,transparent);color:var(--gc,#22c55e)}
+.ntf-ic .icon{width:20px;height:20px}
+.ntf-body{flex:1;min-width:0}
+.ntf-msg{font-size:.9rem;font-weight:600}
+.ntf-msg b{color:var(--text)}
+.ntf-time{font-size:.7rem;color:var(--text3);margin-top:.15rem}
+.ntf-amt{font-size:.95rem;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ntf-empty{color:var(--text3);text-align:center;padding:3rem 1rem;font-size:.9rem}
+.ntf.pay{--gc:#22c55e}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        Notifications
+      </h1>
+      <div class="page-sub">Payments and casino activity. Balance updates in real time.</div>
+    </div>
+  </div>
+  <div class="ntf-list" id="ntfList"><div class="ntf-empty">Loading…</div></div>
+</main>
+</div>
+
+<script>
+(function(){
+  function $(id){return document.getElementById(id);}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function ago(ts){
+    var s=Math.max(0,Math.floor((Date.now()-ts)/1000));
+    if(s<60)return s+'s ago'; var m=Math.floor(s/60); if(m<60)return m+'m ago';
+    var h=Math.floor(m/60); if(h<24)return h+'h ago'; var d=Math.floor(h/24); return d+'d ago';
+  }
+  var ICONS={
+    pay:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg>',
+    info:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'
+  };
+  function render(items){
+    var el=$('ntfList'); if(!el)return;
+    if(!items||!items.length){ el.innerHTML='<div class="ntf-empty">No notifications yet.</div>'; return; }
+    el.innerHTML='';
+    items.forEach(function(it){
+      var row=document.createElement('div'); row.className='ntf '+(it.t||'info');
+      var msg = it.t==='pay'
+        ? '<b>'+esc(it.f||'Someone')+'</b> sent you money'
+        : esc(it.m||'Notification');
+      row.innerHTML='<div class="ntf-ic">'+(ICONS[it.t]||ICONS.info)+'</div>'+
+        '<div class="ntf-body"><div class="ntf-msg">'+msg+'</div><div class="ntf-time">'+ago(it.ts)+'</div></div>'+
+        (it.a?'<div class="ntf-amt">+'+Number(it.a).toLocaleString()+' FC</div>':'');
+      el.appendChild(row);
+    });
+  }
+  fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(!d){ $('ntfList').innerHTML='<div class="ntf-empty">Please sign in.</div>'; return; }
+    render(d.items||[]);
+    var sb=$('sbBal'); if(sb&&d.bal!==undefined)sb.textContent=Number(d.bal).toLocaleString();
+    // mark read → clear the sidebar badge
+    fetch('/api/notifications/read',{method:'POST',credentials:'same-origin'}).then(function(){
+      var b=$('sbNotifBadge'); if(b)b.classList.add('hidden');
+      try{ localStorage.setItem('sgNotifSeen', String(Date.now())); }catch(e){}
+    }).catch(function(){});
+  }).catch(function(){ $('ntfList').innerHTML='<div class="ntf-empty">Failed to load.</div>'; });
+})();
+</script>
+</body>
+</html>

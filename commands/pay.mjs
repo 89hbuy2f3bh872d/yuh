@@ -65,7 +65,7 @@ export default {
     // Transfer is atomic (MongoDB transaction) \u2014 balance check happens inside it.
     // We pass amount here even though the shorthand already resolved against u.bal
     // because the transaction re-checks the live balance before deducting.
-    const ok = await db.transfer(uid, target.id, amount);
+    const ok = await db.transfer(uid, target.id, amount, message.author.tag ?? message.author.username ?? uid);
     if (!ok) {
       return message.channel.send({ embeds: [embed(COLORS.error).setDescription("\u274c Insufficient FC.")] });
     }

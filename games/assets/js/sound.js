@@ -62,6 +62,13 @@
     bigwin: function () { [523, 659, 784, 1046, 1318].forEach(function (f, i) { setTimeout(function () { tone({ type: "triangle", f0: f, dur: 0.3, gain: 0.45 }); }, i * 110); }); },
     lose: function () { tone({ type: "sine", f0: 300, f1: 150, dur: 0.4, gain: 0.3 }); },
     coin: function () { tone({ type: "square", f0: 880, f1: 1320, dur: 0.08, gain: 0.3 }); },
+    coins: function () { // coin rattle — a quick scatter of bright metallic pings
+      for (var i = 0; i < 6; i++) (function (k) { setTimeout(function () {
+        var f = 1000 + Math.round((typeof Math!=='undefined'?(k*173%7):0)) * 70 + (k % 2 ? 180 : 0);
+        tone({ type: "square", f0: f, f1: f + 260, dur: 0.06, gain: 0.26 });
+        noise({ filter: "highpass", cut: 5000, q: 2, dur: 0.025, gain: 0.12 });
+      }, k * 55); })(i);
+    },
     caseLand: function () { tone({ type: "triangle", f0: 180, f1: 90, dur: 0.18, gain: 0.5 }); noise({ cut: 1200, q: 1, dur: 0.1, gain: 0.3 }); },
     reveal: function () { tone({ type: "sine", f0: 660, f1: 990, dur: 0.14, gain: 0.4 }); },
     // ── FPS arena ──
