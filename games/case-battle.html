@@ -693,6 +693,19 @@ function finishReels(){
       var cover = card.querySelector('.pcol-cover'); if (cover && cover.parentNode) cover.parentNode.removeChild(cover);
       fillStatic(b, p, N); // rewards now revealed by the server
     }
+  });
+  // Jackpot: DON'T reveal winner/net yet — the wheel decides it on screen.
+  if (!b.jackpot) applyOutcome(b);
+  if (currentBattle) currentBattle.resultShown = true;
+  var gen = currentBattle ? currentBattle.gen : -1;
+  if (b.jackpot && (b.players || []).length) setTimeout(function () { if (currentBattle && currentBattle.gen === gen) runJackpotWheel(b, gen); }, 700);
+  else setTimeout(function () { if (currentBattle && currentBattle.gen === gen) showResult(); }, 700);
+}
+
+// Mark winner/loser cards + per-player net. For jackpot this runs only after the wheel.
+function applyOutcome(b){
+  (b.players || []).forEach(function (p){
+    var pid = pidOf(p), card = document.getElementById('pcard-' + pid);
     if (card && b.winnerUid && b.winnerUid !== 'shared' && b.winnerUid !== 'tie') {
       card.classList.add(b.winnerUid === p.uid ? 'winner' : 'loser');
     }
@@ -701,10 +714,6 @@ function finishReels(){
       if (nEl) { var nw = p.netWin; nEl.textContent = (nw > 0 ? '+' : '') + fmt(nw) + ' FC'; nEl.className = 'pcol-net ' + (nw > 0 ? 'pos' : (nw < 0 ? 'neg' : 'neu')); }
     }
   });
-  if (currentBattle) currentBattle.resultShown = true;
-  var gen = currentBattle ? currentBattle.gen : -1;
-  if (b.jackpot && (b.players || []).length) setTimeout(function () { if (currentBattle && currentBattle.gen === gen) runJackpotWheel(b, gen); }, 700);
-  else setTimeout(function () { if (currentBattle && currentBattle.gen === gen) showResult(); }, 700);
 }
 
 function showResult() {
@@ -878,6 +887,7 @@ function runJackpotWheel(b, gen){
   setTimeout(function(){
     if(gen!=null && (!currentBattle || currentBattle.gen!==gen)){ $('jackpotOverlay').classList.add('hidden'); return; }
     $('jackpotOverlay').classList.add('hidden');
+    applyOutcome(lastData);   // reveal the winning card + net only now that the wheel landed
     showResult();
   },4700);
 }

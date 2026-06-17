@@ -32,6 +32,12 @@ __SIDEBAR__
     </div>
   </div>
 
+  <div class="machine-row">
+  <aside class="gmult-panel hidden" id="gmultPanel">
+    <div class="gmp-title">GLOBAL<br>MULTIPLIER</div>
+    <div class="gmp-val" id="gmultVal">×1</div>
+    <div class="gmp-sub">Super Bonus</div>
+  </aside>
   <div class="machine">
     <div class="machine-top">
       <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
@@ -41,7 +47,6 @@ __SIDEBAR__
 
     <div class="reel-stage">
       <div class="reels" id="reels"></div>
-      <div class="gmult hidden" id="gmult"><span>GLOBAL</span><b id="gmultVal">×1</b></div>
       <div class="stage-msg hidden" id="stageMsg"></div>
     </div>
 
@@ -63,6 +68,7 @@ __SIDEBAR__
     </div>
     <div class="quick-bets" id="quickBets"></div>
     <div class="slot-toast hidden" id="slotToast"></div>
+  </div>
   </div>
 </div>
 
@@ -205,7 +211,7 @@ function doSpin(buy){
   if(busy||!GAME)return;
   var b=bet(); var cost = buy==='super'?b*(GAME.buy.super||0) : buy==='regular'?b*(GAME.buy.regular||0) : b;
   if(cost>bal){ toast('Not enough balance'); return; }
-  busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden'); stageMsg('');
+  busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmultPanel').classList.add('hidden'); stageMsg('');
   if(window.SG)SG.sfx(buy?'coin':'spin');
   bal-=cost; $('balMeter').textContent=fmt(bal);
   fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:buy||false})})
@@ -244,7 +250,7 @@ async function animateRound(d){
       await freeIntro(d.freeAwarded||freeCount, isSuper);
       if(window.SG&&SG.music)SG.music.play(GAME.id+'B');
       $('fsBanner').classList.remove('hidden');
-      if(isSuper){ $('gmult').classList.remove('hidden'); $('gmultVal').textContent='×1'; }
+      if(isSuper){ $('gmultPanel').classList.remove('hidden'); $('gmultVal').textContent='×1'; }
       var fdone=0;
       for(var i=bi;i<d.spins.length;i++){ var sp=d.spins[i]; fdone++;
         $('fsText').textContent='Free Spin '+fdone+' / '+freeCount;
@@ -257,7 +263,7 @@ async function animateRound(d){
     bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
   } catch(e){ console.error('animateRound',e); }
   finally {
-    $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden');
+    $('fsBanner').classList.add('hidden'); $('gmultPanel').classList.add('hidden');
     if(window.SG&&SG.music&&GAME)SG.music.play(GAME.id);
     busy=false; setControls(true);
   }
@@ -303,7 +309,7 @@ function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(
 
 // fly each x-value from its cell to the global-multiplier meter, then bump it
 function flyMults(mults, newGlobal){
-  var meter=$('gmult'); if(!meter) return Promise.resolve();
+  var meter=$('gmultPanel'); if(!meter) return Promise.resolve();
   var mr=meter.getBoundingClientRect(), tx=mr.left+mr.width/2, ty=mr.top+mr.height/2;
   var proms=[];
   mults.forEach(function(m,k){
