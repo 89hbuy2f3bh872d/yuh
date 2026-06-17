@@ -18,7 +18,6 @@
 // Reducer/table names below follow STDB's codegen (snake_case reducer → camelCase method).
 
 import { DbConnection, type ReducerEventContext } from "./module_bindings";
-import { Identity } from "@clockworklabs/spacetimedb-sdk";
 
 type Waiter = { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 type BalCb = (balance: number) => void;
@@ -31,7 +30,7 @@ function num(v: number | bigint): number { return typeof v === "bigint" ? Number
 
 export class Stdb {
   private conn!: DbConnection;
-  private identity?: Identity;
+  private identity?: any;
   private connected = false;
   private balances = new Map<string, number>();
   private notifs = new Map<string, NotifRow[]>();
@@ -53,7 +52,7 @@ export class Stdb {
     return new Promise((resolve, reject) => {
       let b = DbConnection.builder()
         .withUri(this.uri)
-        .withModuleName(this.moduleName)
+        .withDatabaseName(this.moduleName)
         .onConnect((conn, identity, _token) => {
           this.identity = identity;
           this.connected = true;
