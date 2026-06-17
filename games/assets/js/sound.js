@@ -64,6 +64,13 @@
     coin: function () { tone({ type: "square", f0: 880, f1: 1320, dur: 0.08, gain: 0.3 }); },
     caseLand: function () { tone({ type: "triangle", f0: 180, f1: 90, dur: 0.18, gain: 0.5 }); noise({ cut: 1200, q: 1, dur: 0.1, gain: 0.3 }); },
     reveal: function () { tone({ type: "sine", f0: 660, f1: 990, dur: 0.14, gain: 0.4 }); },
+    // ── FPS arena ──
+    gun: function () { noise({ filter: "highpass", cut: 1400, q: 0.7, dur: 0.11, gain: 0.55 }); tone({ type: "square", f0: 150, f1: 55, dur: 0.1, gain: 0.45 }); },
+    reload: function () { noise({ cut: 2600, q: 4, dur: 0.04, gain: 0.3 }); setTimeout(function () { noise({ cut: 1500, q: 4, dur: 0.05, gain: 0.35 }); }, 200); setTimeout(function () { tone({ type: "square", f0: 320, f1: 200, dur: 0.05, gain: 0.3 }); }, 420); },
+    hitmark: function () { tone({ type: "square", f0: 1300, f1: 1700, dur: 0.045, gain: 0.4 }); },
+    hurt: function () { noise({ filter: "lowpass", cut: 650, q: 1, dur: 0.2, gain: 0.45 }); },
+    empty: function () { tone({ type: "square", f0: 420, f1: 300, dur: 0.04, gain: 0.25 }); },
+    frag: function () { [400, 300, 200].forEach(function (f, i) { setTimeout(function () { tone({ type: "sawtooth", f0: f, f1: f * 0.5, dur: 0.18, gain: 0.4 }); }, i * 60); }); },
   };
 
   // CS:GO-style case spin: ticks that start fast and decelerate over `dur` ms.

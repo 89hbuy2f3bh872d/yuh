@@ -207,7 +207,7 @@ function loadSidebar() {
  */
 function buildSidebar({ active, uid, tag, avatar, bal, showAdmin }) {
   let s = loadSidebar();
-  const pages = ["lobby", "case-battle", "slots", "house", "settings", "misc"];
+  const pages = ["lobby", "case-battle", "slots", "house", "arena", "settings", "misc"];
   for (const p of pages) s = s.replace(`__ACTIVE_${p}__`, p === active ? "active" : "");
   const adminNav = showAdmin
     ? `<a href="/admin/panel" class="sb-item admin ${active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
@@ -854,6 +854,8 @@ export class WebServer {
       return this._renderPage(req, res, "slots.html", "slots");
     if (p === "/house" && req.method === "GET")
       return this._renderPage(req, res, "house.html", "house");
+    if (p === "/arena" && req.method === "GET")
+      return this._renderPage(req, res, "arena.html", "arena");
     if (p === "/settings" && req.method === "GET")
       return this._renderPage(req, res, "settings.html", "settings");
     if (p === "/misc" && req.method === "GET")

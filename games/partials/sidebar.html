@@ -27,6 +27,11 @@
     <span>House Games</span>
     <span class="sb-badge">Live</span>
   </a>
+  <a href="/arena" class="sb-item __ACTIVE_arena__">
+    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
+    <span>3D Arena</span>
+    <span class="sb-badge">Beta</span>
+  </a>
 
   <span class="sb-section">Account</span>
   <a href="/misc" class="sb-item __ACTIVE_misc__">
@@ -75,6 +80,11 @@
         var n=document.createElement('link'); n.rel='stylesheet'; n.href=href; document.head.appendChild(n);
       }
     });
+    // mirror any page-level inline <style> from the fetched head (one managed node)
+    var styles=''; doc.querySelectorAll('head style').forEach(function(s){ styles+=s.textContent+'\n'; });
+    var holder=document.getElementById('pjax-style');
+    if(!holder){ holder=document.createElement('style'); holder.id='pjax-style'; document.head.appendChild(holder); }
+    holder.textContent=styles;
   }
   function swap(html,url,push){
     var doc; try{ doc=new DOMParser().parseFromString(html,'text/html'); }catch(e){ location.href=url; return; }

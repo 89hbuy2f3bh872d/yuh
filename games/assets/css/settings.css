@@ -1,0 +1,32 @@
+/* Settings page — loaded after app.css. */
+.set-wrap{display:flex;flex-direction:column;gap:1.1rem;max-width:640px}
+.set-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1.1rem 1.2rem}
+.set-card h2{font-size:.95rem;font-weight:800;margin-bottom:.2rem}
+.set-card .sub{font-size:.74rem;color:var(--text2);margin-bottom:.9rem}
+.row{display:flex;align-items:center;gap:.8rem;margin-bottom:.9rem}
+.row label{flex:0 0 90px;font-size:.78rem;color:var(--text2);font-weight:600}
+.row input[type=range]{flex:1;accent-color:var(--accent)}
+.row .val{width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem}
+.muterow{display:flex;align-items:center;gap:.6rem;margin-top:.4rem}
+.field{margin-bottom:.7rem}
+.field label{display:block;font-size:.72rem;color:var(--text3);font-weight:600;margin-bottom:.25rem}
+.field input,.field textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;color:var(--text);font-size:.85rem}
+.field textarea{min-height:90px;resize:vertical}
+.tk{border:1px solid var(--border);border-radius:10px;padding:.7rem .8rem;margin-bottom:.6rem;background:var(--surface2)}
+.tk-head{display:flex;align-items:center;gap:.5rem;cursor:pointer}
+.tk-subj{font-weight:700;font-size:.84rem;flex:1}
+.tk-status{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.12rem .45rem;border-radius:99px}
+.tk-status.open{background:#0a1a2e;color:var(--blue);border:1px solid #3b82f633}
+.tk-status.answered{background:var(--accent-soft);color:var(--accent);border:1px solid #22c55e33}
+.tk-status.closed{background:#1a0808;color:var(--text3);border:1px solid var(--border)}
+.tk-thread{margin-top:.6rem;display:none;flex-direction:column;gap:.4rem}
+.tk.open-thread .tk-thread{display:flex}
+.msg{font-size:.78rem;padding:.45rem .6rem;border-radius:8px;max-width:90%}
+.msg.user{background:var(--surface3);align-self:flex-end}
+.msg.admin{background:var(--accent-soft);border:1px solid #22c55e33;align-self:flex-start}
+.msg .who{font-size:.6rem;color:var(--text3);font-weight:700;margin-bottom:.15rem}
+.tk-reply{display:flex;gap:.4rem;margin-top:.4rem}
+.tk-reply input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem .65rem;color:var(--text);font-size:.82rem}
+.tk-reply input::placeholder{color:var(--text3)}
+.tk-reply input:focus{outline:none;border-color:var(--accent)}
+.empty{color:var(--text3);font-size:.82rem;padding:1rem;text-align:center}

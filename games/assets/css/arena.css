@@ -1,0 +1,52 @@
+/* 3D Arena — loaded after app.css. */
+:root{--surface-2:var(--surface2);--text-2:var(--text2);--text-3:var(--text3)}
+
+/* lobby */
+.ar-cards{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem;align-items:start;max-width:760px}
+.ar-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.2rem;text-align:center}
+.ar-card-art{height:120px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,rgba(239,68,68,.22),transparent 70%);border-radius:12px;margin-bottom:.9rem}
+.ar-card-art .big{width:64px;height:64px;fill:none;stroke:var(--red);stroke-width:1.6}
+.ar-card-name{font-size:1.05rem;font-weight:800}
+.ar-card-tag{font-size:.78rem;color:var(--text-2);margin:.3rem 0 1rem}
+.ar-info{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.1rem 1.2rem}
+.ar-info h3{font-size:.9rem;font-weight:800;margin-bottom:.6rem}
+.ar-info ul{list-style:none;display:flex;flex-direction:column;gap:.45rem;font-size:.8rem;color:var(--text-2)}
+.ar-info b{color:var(--text)}
+.ar-note{margin-top:1rem;font-size:.72rem;color:var(--text-3);line-height:1.5;border-top:1px solid var(--border);padding-top:.8rem}
+
+/* stage */
+.ar-stage{position:relative;width:100%;height:min(78vh,720px);border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#0a0c12}
+#arCanvas{display:block;width:100%;height:100%;cursor:crosshair}
+.hud{position:absolute;inset:0;pointer-events:none;font-variant-numeric:tabular-nums}
+.cross{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%)}
+.cross span{position:absolute;background:#fff;box-shadow:0 0 2px rgba(0,0,0,.8);opacity:.85}
+.cross span:nth-child(1){left:50%;top:0;width:2px;height:7px;margin-left:-1px}
+.cross span:nth-child(2){left:50%;bottom:0;width:2px;height:7px;margin-left:-1px}
+.cross span:nth-child(3){top:50%;left:0;height:2px;width:7px;margin-top:-1px}
+.cross span:nth-child(4){top:50%;right:0;height:2px;width:7px;margin-top:-1px}
+.hud-top{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:1.2rem}
+.score{text-align:center;line-height:1}
+.score b{font-size:1.7rem;font-weight:900}
+.score small{display:block;font-size:.55rem;letter-spacing:.12em;color:var(--text-3)}
+.score-sep{font-size:.6rem;font-weight:700;letter-spacing:.1em;color:var(--text-3);align-self:center}
+.hud-bottom{position:absolute;bottom:16px;left:18px;right:18px;display:flex;align-items:flex-end;justify-content:space-between}
+.hp{display:flex;align-items:center;gap:.5rem}
+.hp-bar{width:180px;height:12px;border-radius:7px;background:rgba(255,255,255,.12);overflow:hidden}
+.hp-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ef4444,#22c55e);transition:width .12s}
+.hp span{font-size:1.1rem;font-weight:800}
+.ammo{font-size:1.6rem;font-weight:900}
+.ammo small{font-size:.8rem;color:var(--text-3);font-weight:700}
+.hitmark{position:absolute;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%) rotate(45deg)}
+.hitmark::before,.hitmark::after{content:'';position:absolute;background:#fff}
+.hitmark::before{left:50%;top:0;width:2px;height:100%;margin-left:-1px}
+.hitmark::after{top:50%;left:0;height:2px;width:100%;margin-top:-1px}
+.dmg-vignette{position:absolute;inset:0;box-shadow:inset 0 0 90px 20px rgba(239,68,68,0);transition:box-shadow .1s}
+.dmg-vignette.on{box-shadow:inset 0 0 100px 30px rgba(239,68,68,.55)}
+.ar-msg{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:2rem;font-weight:900;color:#fff;text-shadow:0 3px 16px rgba(0,0,0,.8)}
+.lock-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(8,10,16,.74);backdrop-filter:blur(3px);pointer-events:auto;cursor:pointer}
+.lock-card{text-align:center}
+.lock-title{font-size:1.6rem;font-weight:900;margin-bottom:.4rem}
+.lock-sub{font-size:.85rem;color:var(--text-2);margin-bottom:1rem}
+.hidden{display:none!important}
+
+@media(max-width:760px){ .ar-cards{grid-template-columns:1fr} .ar-stage{height:64vh} }
