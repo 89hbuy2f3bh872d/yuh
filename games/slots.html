@@ -296,7 +296,7 @@ async function animateSpin(sp, runningBefore, free){
     mpos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('mhit');});
     if(window.SG)SG.sfx('mult');
     stageMsg('×'+sp.multApplied);
-    await sleep(fast?450:850); stageMsg(''); clearFx();
+    await sleep(turbo?450:850); stageMsg(''); clearFx();
   }
 }
 function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.toggle('dim',!set[i]); } }
