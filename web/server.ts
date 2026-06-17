@@ -159,6 +159,17 @@ const rlMoney = new Map<string, number>();
 // user to STDB balance + notification pushes, and stream them down. No polling.
 type WSData = { uid: string | null; offBal?: () => void; offNotif?: () => void };
 
+// Live sockets, for in-process broadcast (tickets). Single web instance assumed; a
+// scale-out would route this through STDB/redis pub-sub instead.
+const wsClients = new Set<any>();
+function broadcastTicket(ownerUid: string, payload: any) {
+  const msg = JSON.stringify(payload);
+  for (const ws of wsClients) {
+    const d = ws.data as any;
+    if (d.uid && (d.uid === ownerUid || d.isAdmin)) { try { ws.send(msg); } catch {} }
+  }
+}
+
 const app = new Elysia()
   // make the upgrade request's cookie available inside the ws context (ws.data)
   .derive(({ request }) => ({ cookieHeader: request.headers.get("cookie") || "" }))
@@ -175,11 +186,14 @@ const app = new Elysia()
       (ws.data as any).offBal = stdb.onBalance(uid, (bal) => ws.send(JSON.stringify({ type: "balance", bal })));
       (ws.data as any).offNotif = stdb.onNotification(uid, (n) =>
         ws.send(JSON.stringify({ type: "notification", item: { t: n.kind, m: n.msg, a: Number(n.amount), f: n.fromTag, ts: Number(n.ts) } })));
+      (ws.data as any).isAdmin = await admin.isAdmin(uid).catch(() => false);
+      wsClients.add(ws);
     },
     close(ws) {
       const d = ws.data as any;
       d.offBal?.(); d.offNotif?.();
       if (d.uid) stdb.unsubscribeNotifs(d.uid);
+      wsClients.delete(ws);
     },
     message() { /* server push only */ },
   })
@@ -478,9 +492,17 @@ app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adm
   const t = await db.getTicket(id).catch(() => null);
   await db.addTicketMessage(id, { from: "admin", uid, body: msg, at: Date.now() }).catch(() => {});
   if (t?.uid) stdb.addNotification(t.uid, "ticket", 0, "Support", `Support replied to your ticket: ${t.subject || ""}`.trim()).catch(() => {}); // realtime ping
+  const upd = await db.getTicket(id).catch(() => null);
+  if (t?.uid) broadcastTicket(t.uid, { type: "ticket", action: "reply", ticket: upd || t }); // live thread update
   return { ok: true };
 }));
-app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async () => { const a = (params as any).action; if (a !== "close" && a !== "open") { set.status = 404; return { error: "?" }; } await db.setTicketStatus((params as any).id, a === "close" ? "closed" : "open").catch(() => {}); return { ok: true }; }));
+app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async () => {
+  const a = (params as any).action, id = (params as any).id; if (a !== "close" && a !== "open") { set.status = 404; return { error: "?" }; }
+  await db.setTicketStatus(id, a === "close" ? "closed" : "open").catch(() => {});
+  const upd = await db.getTicket(id).catch(() => null);
+  if (upd?.uid) broadcastTicket(upd.uid, { type: "ticket", action: "status", ticket: upd });
+  return { ok: true };
+}));
 app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, async (uid) => {
   if (uid !== (AdminPanel as any).OWNER_ID) { set.status = 403; return { error: "Owner only" }; }
   const d = body as any;
@@ -507,6 +529,7 @@ app.post("/api/tickets", async ({ request, body, set }) => {
   const t = { _id: crypto.randomBytes(8).toString("hex"), uid, tag, subject, status: "open", createdAt: now, updatedAt: now, messages: [{ from: "user", uid, body: msg, at: now }] };
   await db.createTicket(t).catch(() => {});
   for (const o of OWNERS) stdb.addNotification(o, "ticket", 0, tag, `New ticket: ${subject}`).catch(() => {});
+  broadcastTicket(uid, { type: "ticket", action: "new", ticket: t }); // live to owner + admins
   return { ticket: t };
 });
 app.post("/api/tickets/:id/reply", async ({ request, params, body, set }) => {
@@ -518,6 +541,8 @@ app.post("/api/tickets/:id/reply", async ({ request, params, body, set }) => {
   if (!msg) return { error: "Message required" };
   await db.addTicketMessage(id, { from: "user", uid, body: msg, at: Date.now() }).catch(() => {});
   for (const o of OWNERS) stdb.addNotification(o, "ticket", 0, t.tag || uid, `Reply on: ${t.subject || ""}`.trim()).catch(() => {});
+  const upd = await db.getTicket(id).catch(() => null);
+  broadcastTicket(uid, { type: "ticket", action: "reply", ticket: upd || t });
   return { ok: true };
 });
 

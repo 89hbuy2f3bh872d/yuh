@@ -260,6 +260,7 @@
       else if(d.type==='balance'){ setBal(d.bal); }
       else if(d.type==='notification'){ var it=d.item; if(it){ toast(it); badgeBump(); if(it.ts>seen())setSeen(it.ts); } }
       else if(d.type==='auth'&&!d.ok){ stopPoll(); } // not logged in
+      try{ window.dispatchEvent(new CustomEvent('sg:ws',{detail:d})); }catch(e){} // pages subscribe to live events (tickets etc)
     };
     ws.onerror=function(){ try{ws.close();}catch(e){} };
     ws.onclose=function(){ ws=null; startPoll(); tries++; setTimeout(connect, Math.min(15000, 1000*tries)); };

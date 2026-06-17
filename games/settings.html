@@ -64,6 +64,10 @@ initAudio();
 function loadTickets(){
   fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){
     var list=d.tickets||[]; var el=$('tkList');
+    // preserve which threads are open + any half-typed reply across the live re-render
+    var openSet={}, repVals={};
+    el.querySelectorAll('.tk.open-thread').forEach(function(x){ if(x.dataset.id)openSet[x.dataset.id]=1; });
+    el.querySelectorAll('.tk-reply input').forEach(function(i){ if(i.value)repVals[i.id]=i.value; });
     if(!list.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
     el.innerHTML='';
     list.forEach(function(t){
@@ -72,7 +76,7 @@ function loadTickets(){
       }).join('');
       var reply = t.status==='closed' ? '' :
         '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
-      var div=document.createElement('div'); div.className='tk';
+      var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
       div.innerHTML=
         '<div class="tk-head" onclick="this.parentNode.classList.toggle(\'open-thread\')">'+
           '<div class="tk-subj">'+esc(t.subject)+'</div>'+
@@ -81,6 +85,7 @@ function loadTickets(){
         '<div class="tk-thread">'+msgs+reply+'</div>';
       el.appendChild(div);
     });
+    Object.keys(repVals).forEach(function(id){ var i=$(id); if(i)i.value=repVals[id]; }); // restore typed replies
   }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; });
 }
 function submitTicket(){
@@ -97,7 +102,10 @@ function reply(id){
   fetch('/api/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
     .then(function(r){return r.json()}).then(function(){ inp.value=''; loadTickets(); }).catch(function(){});
 }
-loadTickets(); setInterval(loadTickets, 15000);
+loadTickets();
+// live ticket updates over the WS (new tickets, replies, status) — re-render on push
+window.addEventListener('sg:ws', function(e){ if(e.detail && e.detail.type==='ticket') loadTickets(); });
+setInterval(loadTickets, 30000); // slow fallback if the socket is down
 
 (function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
 </script>

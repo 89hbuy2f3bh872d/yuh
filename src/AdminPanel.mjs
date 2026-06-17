@@ -535,6 +535,18 @@ function buildPage(data, prefix) {
     fetch('/api/admin/tickets/'+id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
       .then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
   };
+  // Live tickets: the admin page is standalone (no sidebar socket), so open our own
+  // WS and refresh the ticket list whenever any ticket changes (new / reply / status).
+  (function(){
+    if(window.__adminWs)return; window.__adminWs=1;
+    function conn(){
+      var ws; try{ ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws'); }catch(e){ setTimeout(conn,3000); return; }
+      ws.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;} if(d&&d.type==='ticket'&&window.adminLoadTickets)window.adminLoadTickets(); };
+      ws.onerror=function(){ try{ws.close();}catch(e){} };
+      ws.onclose=function(){ setTimeout(conn,3000); };
+    }
+    conn();
+  })();
   window.adminWipeDb=function(){
     if(!confirm('This PERMANENTLY erases the ENTIRE database. Continue?')) return;
     var phrase=prompt('Type exactly:  WIPE EVERYTHING'); if(phrase!=='WIPE EVERYTHING'){ if(phrase!==null)alert('Phrase did not match. Aborted.'); return; }
