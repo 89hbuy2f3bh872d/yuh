@@ -470,6 +470,6 @@ app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, a
 
 // ── Bun server tuning for a cheap VPS (high concurrency, low memory) ──────────
 app.listen({ port: PORT, reusePort: true, hostname: "0.0.0.0" });
-console.log(`[web] Elysia on :${PORT} · STDB ${cfg.spacetime.module} · realtime WS at /ws`);
+console.log(`[web] Elysia on :${PORT} · STDB ${ST.module} · realtime WS at /ws`);
 
 export type App = typeof app;
