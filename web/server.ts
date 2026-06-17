@@ -76,6 +76,13 @@ function parseCookieStr(h: string): Record<string, string> {
 function parseCookies(req: Request): Record<string, string> { return parseCookieStr(req.headers.get("cookie") || ""); }
 // Explicit 302 — set.redirect isn't honored in this Elysia build, so set status + Location.
 function redir(set: any, url: string): string { set.status = 302; set.headers["Location"] = url; return ""; }
+// 302 + multiple Set-Cookie via a real Response (set.headers array isn't reliably
+// emitted as separate cookies by this Elysia build).
+function redirectWithCookies(url: string, cookies: string[]): Response {
+  const h = new Headers(); h.set("Location", url);
+  for (const c of cookies) h.append("Set-Cookie", c);
+  return new Response(null, { status: 302, headers: h });
+}
 // Verify the session server-side (sid must exist + be unexpired in Mongo), 30s cache.
 const sessCache = new Map<string, { uid: string; until: number }>();
 async function resolveSessionCookie(cookieHeader: string): Promise<string | null> {
@@ -357,20 +364,18 @@ app.get("/oauth/callback", async ({ query, set, request }) => {
   if (old) await db.rotateSession(uid, old, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
   else await db.createSession(uid, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
   const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
-  set.headers["Set-Cookie"] = [
+  return redirectWithCookies(OWNERS.includes(uid) ? "/admin/panel" : "/lobby", [
     `sid=${sid}; ${base}`, `uid=${uid}; ${base}`,
     `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
     `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
-  ];
-  return redir(set, OWNERS.includes(uid) ? "/admin/panel" : "/lobby");
+  ]);
 });
 
 app.get("/logout", async ({ request, set }) => {
   const c = parseCookies(request);
   if (c.uid && c.sid) await db.revokeSession(c.uid, c.sid).catch(() => {});
   if (c.sid) sessCache.delete(c.sid);
-  set.headers["Set-Cookie"] = ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"];
-  return redir(set, "/login");
+  return redirectWithCookies("/login", ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"]);
 });
 
 // ── authed pages (sidebar + tokens injected; ?v= cache-bust) ─────────────────
