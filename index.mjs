@@ -28,7 +28,7 @@ setInterval(() => db.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
 // This Node process is ONLY the Discord/Fluxer bot; for balance ops it routes to
 // the Elysia service over localhost (which owns SpacetimeDB).
 if (config.spacetime && config.web?.internalSecret) {
-  const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 8080);
+  const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 80);
   db.attachBalanceBridge(new StdbBridge(webUrl, config.web.internalSecret));
   console.log(`[Startup] Balance bridge → ${webUrl}. Web is served by the Elysia service (bun run web/server.ts).`);
 } else {

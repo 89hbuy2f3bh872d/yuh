@@ -28,15 +28,18 @@ import { Stdb } from "./src/stdb.ts";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const cfg = JSON.parse(readFileSync(join(ROOT, "config.json"), "utf8"));
-const PORT = cfg.web?.port ?? cfg.webPort ?? 8080;
+const PORT = cfg.web?.port ?? cfg.webPort ?? 80;
 const INTERNAL_SECRET = cfg.web?.internalSecret ?? "";
 const ASSET_VER = Date.now().toString(36);
 
 // ── data layer ────────────────────────────────────────────────────────────
 const db = new Database(cfg.mongodb.uri, cfg.mongodb.database);
-await db.connect();
-const stdb = new Stdb(cfg.spacetime.uri, cfg.spacetime.module, cfg.spacetime.token);
-await stdb.ready();
+// SpacetimeDB: connect in the BACKGROUND with auto-retry. The server must still
+// boot + listen even if STDB is briefly unreachable (balances read 0 until synced),
+// so a connect failure can never take the whole website down.
+const ST = (cfg.spacetime || {}) as any;
+const stdb = new Stdb(ST.uri || "ws://127.0.0.1:3000", ST.module || "sirgreen-6ls47", ST.token);
+stdb.ready().then(() => console.log("[web] SpacetimeDB connected")).catch((e) => console.error("[web] SpacetimeDB connect failed (retrying in background):", e?.message));
 const house = new HouseState();
 
 // Case-battle engine — balances via STDB, tiers/stats via Mongo.
@@ -53,8 +56,13 @@ const cb = new CaseBattle({
   },
   getAvatar: async (uid: string) => { const u = await db.getUser(uid).catch(() => null); return u?.av || fluxerAvatarUrl(uid, null); },
 });
-await cb.loadCustomTiers();
 const admin = new AdminPanel(db, cfg.prefix ?? "&");
+// Background init — NO top-level await anywhere in this module, so PM2's bun fork
+// (which require()s the entry) can load it. Connect Mongo, then load custom tiers.
+db.connect()
+  .then(() => cb.loadCustomTiers())
+  .then(() => console.log("[web] Mongo connected + custom tiers loaded"))
+  .catch((e) => console.error("[web] Mongo init failed:", e?.message));
 
 // ── tiny helpers ────────────────────────────────────────────────────────────
 const GAMES_DIR = join(ROOT, "games");
