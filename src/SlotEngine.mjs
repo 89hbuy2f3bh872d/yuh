@@ -156,9 +156,11 @@ function runRound(cfg, bet, buy) {
     freeLeft--;
     const s = runSpin(cfg, bet, true);
     const multSum = s.mults.reduce((a, m) => a + m.val, 0);
-    let total, applied = 0;
+    let total, applied = 0, added = 0;
     if (mode === "super") {
-      if (multSum > 0) globalMult += multSum;          // accumulate global multiplier
+      // X only counts toward the global multiplier when this spin actually HIT
+      // (a winning cluster) AND an x landed.
+      if (s.baseWin > 0 && multSum > 0) { globalMult += multSum; added = multSum; }
       applied = globalMult;
       total = (s.baseWin > 0 ? s.baseWin * globalMult : 0) + s.scatterWin;
     } else {
@@ -168,7 +170,7 @@ function runRound(cfg, bet, buy) {
     totalWin += total;
     let retrig = false;
     if (s.scatters >= cfg.scatter.retrig) { freeLeft += cfg.scatter.retrigAdd; freeAwarded += cfg.scatter.retrigAdd; retrig = true; }
-    spins.push({ free: true, super: mode === "super", steps: s.steps, baseWin: s.baseWin, mults: s.mults, multApplied: applied, globalMult: mode === "super" ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(total), retrigger: retrig, freeLeft });
+    spins.push({ free: true, super: mode === "super", steps: s.steps, baseWin: s.baseWin, mults: s.mults, multApplied: applied, multAdded: added, globalMult: mode === "super" ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(total), retrigger: retrig, freeLeft });
     if (totalWin > cfg.maxWinX * bet) break;
   }
 

@@ -43,9 +43,12 @@
 @keyframes cellPop{60%{transform:scale(1.18)}100%{transform:scale(0);opacity:0}}
 .cell.mhit{border-color:var(--gold);box-shadow:0 0 20px -2px var(--gold);animation:mPulse .5s ease}
 @keyframes mPulse{50%{transform:scale(1.12)}}
-.mbadge{position:absolute;right:-2px;bottom:-2px;font-size:.6rem;font-weight:900;color:#111;background:var(--gold);border-radius:5px;padding:.05rem .22rem;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.5)}
-.scbadge{position:absolute;inset:0;border-radius:9px;box-shadow:0 0 14px -2px var(--gc) inset;pointer-events:none}
-.scglow{position:absolute;inset:-2px;border-radius:10px;box-shadow:0 0 16px 0 var(--gc) inset, 0 0 14px -2px var(--gc);pointer-events:none;animation:winPulse .8s ease infinite alternate}
+.mbadge{position:absolute;right:-8%;bottom:-8%;font-size:.58rem;font-weight:900;color:#111;background:var(--gold);border-radius:5px;padding:.04rem .2rem;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.5);z-index:2}
+/* circular glow that hugs the emoji (not a box) */
+.sglow{position:absolute;left:50%;top:50%;width:135%;height:135%;transform:translate(-50%,-50%);border-radius:50%;z-index:-1;pointer-events:none;animation:glowPulse 1s ease-in-out infinite alternate}
+.sglow.sc{background:radial-gradient(circle,color-mix(in srgb,var(--gc) 75%,transparent) 0%,transparent 62%)}
+.sglow.mu{background:radial-gradient(circle,rgba(234,179,8,.85) 0%,transparent 62%)}
+@keyframes glowPulse{from{opacity:.65}to{opacity:1;transform:translate(-50%,-50%) scale(1.12)}}
 .gmult{font-size:.74rem;font-weight:800;color:var(--gold);padding:.3rem .7rem;border:1px solid var(--gold);border-radius:99px;background:color-mix(in srgb,var(--gold) 14%,transparent)}
 .gmult b{font-size:.95rem}
 
@@ -77,6 +80,13 @@
 .quick-bets{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:center;margin-top:.7rem}
 .qbet{font-size:.66rem;font-weight:700;padding:.25rem .5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text-2);font-variant-numeric:tabular-nums}
 .qbet.on{border-color:var(--gc);color:var(--gc);background:color-mix(in srgb,var(--gc) 12%, transparent)}
+.slot-toast{position:absolute;left:50%;top:.6rem;transform:translateX(-50%) translateY(-8px);z-index:20;background:rgba(20,8,8,.95);border:1px solid var(--red);color:#fecaca;font-size:.78rem;font-weight:700;padding:.5rem .9rem;border-radius:9px;box-shadow:0 8px 24px -8px rgba(0,0,0,.7);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
+.slot-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* X flying to the global-multiplier meter (super bonus) */
+.mult-fly{position:fixed;z-index:300;font-size:1.4rem;font-weight:900;color:var(--gold);text-shadow:0 0 12px var(--gold);pointer-events:none;transition:transform .7s cubic-bezier(.4,0,.2,1),opacity .7s}
+.gmult.bump{animation:gmBump .35s ease}
+@keyframes gmBump{0%{transform:scale(1)}45%{transform:scale(1.28);color:#fff}100%{transform:scale(1)}}
 
 /* ── Overlays ──────────────────────────────────────────────────────── */
 .overlay{position:fixed;inset:0;z-index:200;background:rgba(9,9,11,.84);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1rem;animation:fadeIn .2s ease}
@@ -104,8 +114,10 @@
 
 .bigwin-card{position:relative;text-align:center;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both;padding:1rem 2rem}
 @keyframes popIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
-.bigwin-rays{position:absolute;inset:-40% -60%;z-index:-1;background:conic-gradient(from 0deg,transparent 0 8deg,color-mix(in srgb,var(--gold) 22%,transparent) 8deg 16deg,transparent 16deg 24deg);animation:rays 14s linear infinite;border-radius:50%}
-@keyframes rays{to{transform:rotate(360deg)}}
+.bigwin-rays{position:absolute;inset:-30% -50%;z-index:-1;border-radius:50%;
+  background:radial-gradient(circle at 50% 45%, color-mix(in srgb,var(--gold) 32%,transparent) 0%, transparent 60%);
+  animation:bwGlow 1.6s ease-in-out infinite alternate}
+@keyframes bwGlow{from{opacity:.5;transform:scale(.9)}to{opacity:1;transform:scale(1.06)}}
 .bigwin-label{font-size:1.8rem;font-weight:900;letter-spacing:.1em;color:var(--gold);text-shadow:0 0 28px var(--gold);animation:bwThrob .7s ease infinite alternate}
 .bigwin-label[data-tier=huge]{color:#ff8a1a;text-shadow:0 0 28px #ff8a1a}
 .bigwin-label[data-tier=mega]{color:#ff3b6b;text-shadow:0 0 30px #ff3b6b}

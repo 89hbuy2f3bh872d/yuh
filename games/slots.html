@@ -61,6 +61,7 @@ __SIDEBAR__
       </div>
     </div>
     <div class="quick-bets" id="quickBets"></div>
+    <div class="slot-toast hidden" id="slotToast"></div>
   </div>
 </div>
 
@@ -162,8 +163,8 @@ function buildGrid(){
   for(var i=0;i<GAME.W*GAME.H;i++){ var c=document.createElement('div'); c.className='cell'; c.id='cell-'+i; c.innerHTML='<div class="sym"></div>'; r.appendChild(c); }
 }
 function symHtml(s){
-  if(s===GAME.scatter.id||s==='SC') return GAME.scatter.emoji+'<span class="scglow"></span>';
-  if(isMult(s)) return GAME.mult.emoji+'<span class="mbadge">×'+multVal(s)+'</span>';
+  if(s===GAME.scatter.id||s==='SC') return '<span class="sglow sc"></span>'+GAME.scatter.emoji;
+  if(isMult(s)) return '<span class="sglow mu"></span>'+GAME.mult.emoji+'<span class="mbadge">×'+multVal(s)+'</span>';
   return GAME.sym[s]||'❔';
 }
 function isMult(s){ return typeof s==='string'&&s.indexOf('M:')===0; }
@@ -188,20 +189,22 @@ function clearFx(){ for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c
 // ── Spin / round ─────────────────────────────────────────────────────────
 function setWin(v){ $('winMeter').textContent=fmt(v); }
 function stageMsg(t){ var m=$('stageMsg'); if(!t){m.classList.add('hidden');return;} m.innerHTML=t; m.classList.remove('hidden'); }
+var toastT=null;
+function toast(t){ var el=$('slotToast'); if(!el)return; el.textContent=t; el.classList.remove('hidden'); el.classList.add('show'); if(toastT)clearTimeout(toastT); toastT=setTimeout(function(){ el.classList.remove('show'); el.classList.add('hidden'); },1800); }
 function setControls(on){ $('spinBtn').disabled=!on; $('buyReg').disabled=!on; $('buySup').disabled=!on; document.querySelectorAll('.step-btn,.qbet').forEach(function(b){b.disabled=!on;}); }
 
 function doSpin(buy){
   if(busy||!GAME)return;
   var b=bet(); var cost = buy==='super'?b*(GAME.buy.super||0) : buy==='regular'?b*(GAME.buy.regular||0) : b;
-  if(cost>bal){ stageMsg('Not enough balance'); setTimeout(function(){stageMsg('');},1200); return; }
+  if(cost>bal){ toast('Not enough balance'); return; }
   busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden'); stageMsg('');
   if(window.SG)SG.sfx(buy?'coin':'spin');
   bal-=cost; $('balMeter').textContent=fmt(bal);
   fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:buy||false})})
     .then(function(r){return r.json()}).then(function(d){
-      if(d.error){ stageMsg(d.error); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); setTimeout(function(){stageMsg('');},1400); return; }
+      if(d.error){ toast(d.error); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); return; }
       animateRound(d);
-    }).catch(function(){ stageMsg('Network error'); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); });
+    }).catch(function(){ toast('Network error'); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); });
 }
 
 function freeIntro(count, isSuper){
@@ -240,7 +243,6 @@ async function animateRound(d){
         $('fsText').textContent='Free Spin '+fdone+' / '+freeCount;
         await animateSpin(sp, roundWin, fast, true);
         roundWin+=sp.total; setWin(roundWin);
-        if(isSuper && sp.globalMult){ $('gmultVal').textContent='×'+sp.globalMult; }
         await sleep(fast?90:230);
       }
     }
@@ -276,16 +278,47 @@ async function animateSpin(sp, runningBefore, fast, free){
     await sleep(fast?180:330);
   }
   // multiplier reveal
-  if(free && sp.multApplied>0){
+  if(sp.super){
+    // global multiplier: only when this spin HIT and an x landed → fly to the meter
+    if(sp.multAdded>0 && sp.mults && sp.mults.length){
+      if(window.SG)SG.sfx('mult');
+      await flyMults(sp.mults, sp.globalMult);
+    }
+  } else if(free && sp.multApplied>0){
     var fin=sp.steps[sp.steps.length-1].grid, mpos=[];
     for(var i=0;i<fin.length;i++){ if(isMult(fin[i]))mpos.push(i); }
     mpos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('mhit');});
     if(window.SG)SG.sfx('mult');
-    stageMsg(sp.super?('GLOBAL ×'+sp.globalMult):('×'+sp.multApplied));
+    stageMsg('×'+sp.multApplied);
     await sleep(fast?450:850); stageMsg(''); clearFx();
   }
 }
 function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.toggle('dim',!set[i]); } }
+
+// fly each x-value from its cell to the global-multiplier meter, then bump it
+function flyMults(mults, newGlobal){
+  var meter=$('gmult'); if(!meter) return Promise.resolve();
+  var mr=meter.getBoundingClientRect(), tx=mr.left+mr.width/2, ty=mr.top+mr.height/2;
+  var proms=[];
+  mults.forEach(function(m,k){
+    var c=$('cell-'+m.pos); if(c)c.classList.add('mhit');
+    var cr=(c||meter).getBoundingClientRect(), sx=cr.left+cr.width/2, sy=cr.top+cr.height/2;
+    var el=document.createElement('div'); el.className='mult-fly'; el.textContent='×'+m.val;
+    el.style.left=sx+'px'; el.style.top=sy+'px'; el.style.transform='translate(-50%,-50%) scale(1)';
+    document.body.appendChild(el);
+    proms.push(new Promise(function(res){
+      setTimeout(function(){
+        el.style.transform='translate(calc(-50% + '+(tx-sx)+'px), calc(-50% + '+(ty-sy)+'px)) scale(.55)';
+        el.style.opacity='0.25';
+        setTimeout(function(){ if(el.parentNode)el.parentNode.removeChild(el); res(); },720);
+      }, 40+k*130);
+    }));
+  });
+  return Promise.all(proms).then(function(){
+    var gv=$('gmultVal'); if(gv)gv.textContent='×'+newGlobal;
+    meter.classList.remove('bump'); void meter.offsetWidth; meter.classList.add('bump');
+  });
+}
 
 // ── Big win count-up ─────────────────────────────────────────────────────
 async function bigWin(total, betAmt){
