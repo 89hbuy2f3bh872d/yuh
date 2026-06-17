@@ -511,6 +511,10 @@ function buildPage(data, prefix) {
   window.adminLoadTickets = function adminLoadTickets(){
     fetch('/api/admin/tickets').then(function(r){return r.json()}).then(function(d){
       var list=(d&&d.tickets)||[]; var el=document.getElementById('tkAdminList'); if(!el)return;
+      // remember which tickets are expanded + any half-typed reply, so a re-render (e.g. after replying) doesn't collapse them
+      var EXP={}, REP={};
+      el.querySelectorAll('[data-tkid]').forEach(function(c){ var th=c.querySelector('.atk-thread'); if(th&&th.style.display!=='none')EXP[c.getAttribute('data-tkid')]=1; });
+      el.querySelectorAll('.atk-thread input').forEach(function(i){ if(i.value)REP[i.id]=i.value; });
       if(!list.length){ el.innerHTML='<div style="padding:1.4rem;text-align:center;color:var(--text-dim)">No tickets.</div>'; return; }
       el.innerHTML=list.map(function(t){
         var msgs=(t.messages||[]).map(function(m){
@@ -518,16 +522,18 @@ function buildPage(data, prefix) {
         }).join('');
         var open=t.status!=='closed';
         var controls='<div style="display:flex;gap:.4rem;margin-top:.4rem">'+(open?('<input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1" onkeydown="if(event.key===&quot;Enter&quot;)adminTicketReply(\\''+t._id+'\\')"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button>'):'<span style="flex:1"></span>')+'<button class="btn-danger" onclick="adminTicketDelete(\\''+t._id+'\\')">Delete</button></div>';
-        // collapsed by default — click the header to expand the thread
-        return '<div style="border:1px solid var(--border);border-radius:8px;padding:.45rem .65rem;margin-bottom:.4rem">'+
+        // collapsed by default — click the header to expand the thread (expanded state preserved across re-render)
+        var disp=EXP[t._id]?'block':'none';
+        return '<div data-tkid="'+t._id+'" style="border:1px solid var(--border);border-radius:8px;padding:.45rem .65rem;margin-bottom:.4rem">'+
           '<div style="display:flex;align-items:center;gap:.5rem;cursor:pointer" onclick="var b=this.nextElementSibling;b.style.display=b.style.display===&quot;none&quot;?&quot;block&quot;:&quot;none&quot;">'+
             '<b style="flex:1;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(t.subject)+'</b>'+
             '<span style="font-size:.58rem;text-transform:uppercase;color:var(--text-dim)">'+esc(t.status)+'</span>'+
             '<span style="font-size:.55rem;color:var(--text-dim)">'+esc(t.tag||'')+'</span>'+
           '</div>'+
-          '<div style="display:none;margin-top:.45rem">'+msgs+controls+'</div>'+
+          '<div class="atk-thread" style="display:'+disp+';margin-top:.45rem">'+msgs+controls+'</div>'+
         '</div>';
       }).join('');
+      Object.keys(REP).forEach(function(id){ var i=document.getElementById(id); if(i)i.value=REP[id]; }); // restore typed reply
     }).catch(function(e){ console.error('tickets',e); });
   };
   window.adminTicketReply=function(id){

@@ -7,6 +7,16 @@
     </div>
   </a>
 
+  <!-- Selected-server picker -->
+  <div class="srv-wrap" id="srvWrap">
+    <button class="srv-btn" id="srvBtn" type="button" onclick="sgToggleSrv(event)">
+      <span class="srv-av" id="srvAv">?</span>
+      <span class="srv-info"><span class="srv-label">Selected Server</span><span class="srv-name" id="srvName">—</span></span>
+      <svg class="icon srv-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="srv-menu hidden" id="srvMenu"></div>
+  </div>
+
   <span class="sb-section">Games</span>
   <a href="/lobby" class="sb-item __ACTIVE_lobby__">
     <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -100,7 +110,7 @@
     doc.querySelectorAll('body script').forEach(function(s){
       var txt=s.textContent||'';
       if(s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
-      if(!s.src && /__pjax|__bgHex|__notif/.test(txt)) return;
+      if(!s.src && /__pjax|__bgHex|__notif|__srvSel/.test(txt)) return;
       var n=document.createElement('script');
       if(s.src)n.src=s.src; else n.textContent=txt;
       document.body.appendChild(n);
@@ -266,5 +276,106 @@
     ws.onclose=function(){ ws=null; startPoll(); tries++; setTimeout(connect, Math.min(15000, 1000*tries)); };
   }
   connect();
+})();
+</script>
+<script>
+/* Server selector — lists the user's servers that have the bot; picking one sets the
+   active server (its pool/taxes/stats apply to your plays). Persists across pjax. */
+(function(){
+  if(window.__srvSel)return; window.__srvSel=1;
+  var servers=[], selected=null;
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function cur(){ for(var i=0;i<servers.length;i++) if(servers[i].id===selected) return servers[i]; return null; }
+  // Expose the active server (id + tax%) so money pages can show the cut + react to it.
+  function publish(){ var s=cur(); window.sgServer = s ? { id:s.id, name:s.name, owner:!!s.owner, taxBps:(s.tax|0), taxPct:(s.tax|0)/100 } : null;
+    try{ window.dispatchEvent(new CustomEvent('sg:server',{detail:window.sgServer})); }catch(e){} paintTax(); }
+  window.sgCurrentServer=function(){ return selected; };
+  // Update any #srvTaxNote on the current page with the active server's cut. Pjax-safe:
+  // the sidebar persists, so pages only need the element + a call to window.sgPaintTax().
+  function paintTax(){ var els=document.querySelectorAll('.srv-tax-note'); if(!els.length) return; var s=window.sgServer;
+    var html = s ? '<svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg> <span><b>'+(s.taxPct)+'%</b> tax on profit · <b>'+esc(s.name)+'</b></span>' : '';
+    for(var i=0;i<els.length;i++){ if(!s){ els[i].hidden=true; } else { els[i].hidden=false; els[i].innerHTML=html; } } }
+  window.sgPaintTax=paintTax;
+  function render(){
+    var s=cur(), nm=document.getElementById('srvName'), av=document.getElementById('srvAv'), w=document.getElementById('srvWrap');
+    if(nm) nm.textContent = s ? s.name : (servers.length?'Pick a server':'No server');
+    if(av) av.textContent = s ? (s.name||'?').slice(0,1).toUpperCase() : '?';
+    if(w) w.classList.toggle('srv-unset', !s);
+    var m=document.getElementById('srvMenu'); if(!m)return;
+    m.innerHTML = servers.length
+      ? servers.map(function(x){ return '<div class="srv-item'+(x.id===selected?' on':'')+'"><button class="srv-pick" type="button" onclick="sgPickSrv(\''+x.id+'\')"><span class="srv-av sm">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</span><span class="srv-it-name">'+esc(x.name)+'</span><span class="srv-tax">'+(((x.tax|0)/100))+'%</span>'+(x.owner?'<span class="srv-own">Owner</span>':'')+'</button>'+(x.owner?'<button class="srv-gear" type="button" title="Set winnings tax" onclick="sgEditTax(\''+x.id+'\',event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>':'')+'</div>'; }).join('')
+      : '<div class="srv-empty">No servers yet — type <b>&web</b> in a server that has the bot.</div>';
+  }
+  window.sgToggleSrv=function(e){ if(e)e.stopPropagation(); var m=document.getElementById('srvMenu'); if(m)m.classList.toggle('hidden'); };
+  window.sgPickSrv=function(id){
+    fetch('/api/select-server',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guildId:id}),credentials:'same-origin'})
+      .then(function(r){return r.json()}).then(function(d){ if(d&&d.ok){ selected=id; render(); publish(); var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); } else if(d&&d.error){ alert(d.error); } }).catch(function(){});
+  };
+  // Called by money pages when the server gate rejects an action — flash the picker open.
+  window.sgNeedServer=function(){ var b=document.getElementById('srvBtn'), m=document.getElementById('srvMenu');
+    if(m) m.classList.remove('hidden'); if(b){ b.classList.add('srv-flash'); setTimeout(function(){ b.classList.remove('srv-flash'); }, 1200); } };
+  // Owner-only: open the winnings-tax editor (gated behind a FluxerList vote, server-side).
+  window.sgEditTax=function(id,e){ if(e)e.stopPropagation();
+    fetch('/api/server/tax?gid='+encodeURIComponent(id),{credentials:'same-origin'})
+      .then(function(r){return r.json()}).then(function(d){ if(!d||d.error){ alert((d&&d.error)||'Failed to load tax'); return; } sgShowTaxDlg(id,d); })
+      .catch(function(){ alert('Failed to load tax'); });
+  };
+  function sgShowTaxDlg(id,d){
+    var sv=servers.filter(function(x){return x.id===id;})[0]||{name:'Server'};
+    var back=document.createElement('div'); back.className='sg-dlg-back';
+    var voteUrl=d.voteUrl||'https://fluxerlist.com';
+    var bank=Number(d.bank||0).toLocaleString();
+    var body = d.canChange
+      ? '<label class="sg-dlg-lab">Tax on winnings (% of profit)</label>'
+        +'<div class="sg-dlg-row"><input id="sgTaxIn" type="number" min="0" max="'+(d.maxBps/100)+'" step="0.5" value="'+(d.taxBps/100)+'"><span>%</span></div>'
+        +'<div class="sg-dlg-hint">Players pay this share of any profit into your server bank. Max '+(d.maxBps/100)+'%.</div>'
+        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Cancel</button><button class="btn btn-primary" id="sgTaxSave">Save</button></div>'
+      : '<div class="sg-dlg-hint">Current tax: <b>'+(d.taxBps/100)+'%</b>.</div>'
+        +'<div class="sg-dlg-gate">To change your server\'s tax you must have an active <b>vote for the bot on FluxerList</b>.</div>'
+        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Close</button><a class="btn btn-primary" href="'+voteUrl+'" target="_blank" rel="noopener">Vote on FluxerList</a></div>';
+    back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()"><div class="sg-dlg-h"><b>'+esc(sv.name)+'</b> · Server tax</div><div class="sg-dlg-bank">Bank: <b>'+bank+' FC</b></div>'+body+'</div>';
+    function close(){ try{document.body.removeChild(back);}catch(e){} }
+    back.addEventListener('click',close);
+    document.body.appendChild(back);
+    var c=back.querySelector('#sgTaxCancel'); if(c)c.onclick=close;
+    var s=back.querySelector('#sgTaxSave');
+    if(s)s.onclick=function(){ var v=parseFloat(back.querySelector('#sgTaxIn').value); if(!(v>=0)){ alert('Enter a valid percent'); return; }
+      s.disabled=true; s.textContent='Saving…';
+      fetch('/api/server/tax',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({gid:id,percent:v})})
+        .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok){ for(var i=0;i<servers.length;i++) if(servers[i].id===id) servers[i].tax=j.taxBps; render(); publish(); close(); }
+          else { alert((j&&j.error)||'Failed'); s.disabled=false; s.textContent='Save'; if(j&&j.needVote){ close(); window.open(j.voteUrl||voteUrl,'_blank'); } } })
+        .catch(function(){ alert('Failed'); s.disabled=false; s.textContent='Save'; });
+    };
+  }
+  document.addEventListener('click',function(){ var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); });
+  fetch('/api/servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){ if(!d)return; servers=d.servers||[]; selected=d.selected; render();
+    // No active selection yet but the user has servers → auto-pin the first so the
+    // "pick a server to gamble" gate doesn't lock them out on a fresh OAuth login.
+    if(!d.pinned && servers.length){ window.sgPickSrv(selected); } else { publish(); }
+  }).catch(function(){});
+})();
+/* Global gate guard: any /api money call rejected with {needServer} flashes the
+   server picker so the user knows to choose one — no per-page wiring needed. */
+(function(){
+  if(window.__srvGate)return; window.__srvGate=1;
+  var orig=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    var p=orig(input,init);
+    try{
+      var url=typeof input==='string'?input:(input&&input.url)||'';
+      if(url.indexOf('/api/')>=0){
+        return p.then(function(res){
+          try{
+            var ct=res.headers&&res.headers.get&&res.headers.get('content-type')||'';
+            if(ct.indexOf('application/json')>=0){
+              res.clone().json().then(function(j){ if(j&&j.needServer&&window.sgNeedServer) window.sgNeedServer(); }).catch(function(){});
+            }
+          }catch(e){}
+          return res;
+        });
+      }
+    }catch(e){}
+    return p;
+  };
 })();
 </script>

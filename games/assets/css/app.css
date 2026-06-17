@@ -56,6 +56,53 @@ input,select,textarea{font:inherit;color:inherit}
   display:flex;flex-direction:column;gap:.15rem;padding:1rem .75rem;overflow-y:auto;
 }
 .sb-brand{display:flex;align-items:center;gap:.55rem;padding:.4rem .55rem 1rem;margin-bottom:.5rem;border-bottom:1px solid var(--border)}
+
+/* Server selector (shadcn-style) */
+.srv-wrap{position:relative;margin:0 0 .5rem}
+.srv-btn{display:flex;align-items:center;gap:.5rem;width:100%;padding:.45rem .55rem;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);text-align:left}
+.srv-btn:hover{border-color:var(--accent)}
+.srv-av{width:26px;height:26px;flex-shrink:0;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:.8rem;display:flex;align-items:center;justify-content:center}
+.srv-av.sm{width:22px;height:22px;font-size:.72rem;border-radius:6px}
+.srv-info{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.srv-label{font-size:.52rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);font-weight:700}
+.srv-name{font-size:.8rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srv-chev{width:14px;height:14px;color:var(--text3);flex-shrink:0}
+.srv-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 40px -12px rgba(0,0,0,.6);padding:.3rem;max-height:50vh;overflow:auto}
+.srv-item{display:flex;align-items:center;gap:.2rem;width:100%;border-radius:7px;background:transparent;color:var(--text);font-size:.8rem}
+.srv-item:hover{background:var(--surface2)}
+.srv-item.on{background:var(--accent-soft);color:var(--accent)}
+.srv-pick{display:flex;align-items:center;gap:.5rem;flex:1;min-width:0;padding:.4rem .5rem;background:transparent;color:inherit;text-align:left;border-radius:7px}
+.srv-gear{flex:none;display:grid;place-items:center;width:28px;height:28px;margin-right:.2rem;border-radius:6px;color:var(--text3);background:transparent}
+.srv-gear:hover{color:var(--accent);background:var(--surface)}
+.srv-gear .icon{width:15px;height:15px}
+.srv-it-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srv-own{font-size:.52rem;font-weight:700;text-transform:uppercase;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);border-radius:99px;padding:.05rem .3rem}
+.srv-empty{font-size:.72rem;color:var(--text3);padding:.6rem;text-align:center;line-height:1.4}
+.srv-empty b{color:var(--text2)}
+.srv-tax{font-size:.6rem;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:99px;padding:.05rem .35rem}
+.srv-item.on .srv-tax{color:var(--accent)}
+.srv-wrap.srv-unset .srv-btn{border-color:color-mix(in srgb,var(--gold) 55%,transparent)}
+.srv-btn.srv-flash{animation:srvFlash 1.2s ease}
+@keyframes srvFlash{0%,100%{box-shadow:0 0 0 0 transparent}25%,75%{box-shadow:0 0 0 3px var(--accent-soft);border-color:var(--accent)}}
+/* server-tax notice on money pages */
+.srv-tax-note{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:.25rem .6rem}
+.srv-tax-note b{color:var(--gold)}
+.srv-tax-note .icon{width:14px;height:14px}
+/* server-tax editor dialog (launched from the server picker) */
+.sg-dlg-back{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);display:grid;place-items:center;padding:1rem}
+.sg-dlg{width:min(360px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 60px -16px rgba(0,0,0,.7);padding:1.1rem}
+.sg-dlg-h{font-size:.95rem;margin-bottom:.2rem}
+.sg-dlg-h b{color:var(--text)}
+.sg-dlg-bank{font-size:.74rem;color:var(--text3);margin-bottom:.8rem}
+.sg-dlg-bank b{color:var(--gold)}
+.sg-dlg-lab{display:block;font-size:.74rem;color:var(--text2);margin-bottom:.35rem}
+.sg-dlg-row{display:flex;align-items:center;gap:.45rem}
+.sg-dlg-row input{flex:1;padding:.5rem .6rem;border:1px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:1rem}
+.sg-dlg-row span{color:var(--text3)}
+.sg-dlg-hint{font-size:.68rem;color:var(--text3);margin-top:.5rem;line-height:1.45}
+.sg-dlg-gate{font-size:.74rem;color:var(--text2);margin-top:.5rem;line-height:1.5;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.55rem .6rem}
+.sg-dlg-gate b{color:var(--gold)}
+.sg-dlg-act{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
 /* Brand logo: hollow rounded square with a static "G". (Spin removed per
    request — kept a gentle glow so the mark still reads as a focal point.) */
 .sb-mark{position:relative;width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;

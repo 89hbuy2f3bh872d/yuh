@@ -72,7 +72,7 @@ export class HouseState {
     const mult = this.minesMult(g, g.revealed.length);
     const bombs = [...g.grid];
     this.mines.delete(uid);
-    return { mult, payout: Math.round(g.bet * mult), bombs };
+    return { mult, payout: Math.round(g.bet * mult), bet: g.bet, bombs };
   }
   minesActive(uid) { return this.mines.has(uid); }
   clearMines(uid) { this.mines.delete(uid); }
@@ -106,9 +106,9 @@ export class HouseState {
     const g = this.hilo.get(uid);
     if (!g || g.over || g.mult <= 1) return { error: "Nothing to cash out" };
     const payout = Math.round(g.bet * g.mult);
-    const mult = g.mult;
+    const mult = g.mult, bet = g.bet;
     this.hilo.delete(uid);
-    return { mult: +mult.toFixed(3), payout };
+    return { mult: +mult.toFixed(3), payout, bet };
   }
   hiloActive(uid) { return this.hilo.has(uid); }
   clearHilo(uid) { this.hilo.delete(uid); }

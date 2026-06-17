@@ -43,6 +43,14 @@ pub struct Notification {
     read: bool,
 }
 
+/// Per-server bank — accrues the tax taken from players' winnings on that server.
+#[table(name = server_bank, public)]
+pub struct ServerBank {
+    #[primary_key]
+    gid: String,      // guild id
+    balance: i64,
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 fn now_ms(ctx: &ReducerContext) -> i64 {
@@ -65,6 +73,15 @@ fn ensure(ctx: &ReducerContext, owner: &str) -> Account {
 fn set_balance(ctx: &ReducerContext, owner: &str, balance: i64) {
     let a = ensure(ctx, owner);
     ctx.db.account().owner().update(Account { owner: a.owner, balance: clamp_balance(balance) });
+}
+
+fn bank_add(ctx: &ReducerContext, gid: &str, amt: i64) {
+    if gid.is_empty() || amt <= 0 { return; }
+    if let Some(b) = ctx.db.server_bank().gid().find(gid.to_string()) {
+        ctx.db.server_bank().gid().update(ServerBank { gid: b.gid, balance: clamp_balance(b.balance + amt) });
+    } else {
+        ctx.db.server_bank().insert(ServerBank { gid: gid.to_string(), balance: clamp_balance(amt) });
+    }
 }
 
 /// Append a notification and trim to the newest MAX_NOTIFS for that user.
@@ -135,6 +152,41 @@ pub fn settle(ctx: &ReducerContext, owner: String, bet: i64, payout: i64) -> Res
     let a = ensure(ctx, &owner);
     if a.balance < bet { return Err("insufficient".into()); }
     set_balance(ctx, &owner, a.balance - bet + payout);
+    Ok(())
+}
+
+/// Atomic round WITH a server tax: take bet, pay (payout - tax) to the player, route
+/// `tax` to the server's bank. Aborts if the player can't cover the bet.
+#[reducer]
+pub fn settle_win(ctx: &ReducerContext, owner: String, bet: i64, payout: i64, gid: String, tax: i64) -> Result<(), String> {
+    if owner.is_empty() { return Err("empty owner".into()); }
+    if bet < 0 || bet > MAX_DELTA || payout < 0 || payout > MAX_DELTA || tax < 0 || tax > payout { return Err("bad amount".into()); }
+    let a = ensure(ctx, &owner);
+    if a.balance < bet { return Err("insufficient".into()); }
+    set_balance(ctx, &owner, a.balance - bet + (payout - tax));
+    bank_add(ctx, &gid, tax);
+    Ok(())
+}
+
+/// Credit a win already staked elsewhere (house cashout / case battle), minus tax.
+#[reducer]
+pub fn credit_win(ctx: &ReducerContext, owner: String, gross: i64, gid: String, tax: i64) -> Result<(), String> {
+    if owner.is_empty() { return Err("empty owner".into()); }
+    if gross < 0 || gross > MAX_DELTA || tax < 0 || tax > gross { return Err("bad amount".into()); }
+    let a = ensure(ctx, &owner);
+    set_balance(ctx, &owner, a.balance + (gross - tax));
+    bank_add(ctx, &gid, tax);
+    Ok(())
+}
+
+/// Spend from a server bank (shop). Aborts if the bank can't cover it.
+#[reducer]
+pub fn bank_spend(ctx: &ReducerContext, gid: String, amount: i64) -> Result<(), String> {
+    if gid.is_empty() { return Err("empty gid".into()); }
+    if amount <= 0 || amount > MAX_DELTA { return Err("bad amount".into()); }
+    let b = ctx.db.server_bank().gid().find(gid.clone()).ok_or_else(|| "no bank".to_string())?;
+    if b.balance < amount { return Err("insufficient".into()); }
+    ctx.db.server_bank().gid().update(ServerBank { gid: b.gid, balance: b.balance - amount });
     Ok(())
 }
 

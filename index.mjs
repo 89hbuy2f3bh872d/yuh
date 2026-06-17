@@ -2,7 +2,7 @@ import fs from "fs";
 import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Client, Events, EmbedBuilder } from "@fluxerjs/core";
+import { Client, Events, EmbedBuilder, GatewayOpcodes } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
 import { StdbBridge } from "./src/stdbBridge.mjs";
@@ -41,7 +41,25 @@ const client = new Client({ intents: 0, suppressIntentWarning: true, ...config["
 const handler = new CommandHandler(client, db, config);
 await handler.loadCommands(path.join(__dirname, "commands"));
 
-client.on(Events.Ready, () => console.log(`[Ready] ${client.user?.username}`));
+client.on(Events.Ready, () => {
+  console.log(`[Ready] ${client.user?.username}`);
+  // Rotating presence — always surfaces the casino website.
+  const items = (Array.isArray(config.presenceContents) && config.presenceContents.length)
+    ? config.presenceContents
+    : [{ text: "🎰 Play at https://sirgreen.online", activity: { name: "sirgreen.online", type: 2 } }];
+  let i = 0;
+  const PRESENCE_OP = (GatewayOpcodes && GatewayOpcodes.PresenceUpdate != null) ? GatewayOpcodes.PresenceUpdate : 3;
+  const tick = () => {
+    const e = items[i++ % items.length];
+    const presence = {
+      status: "online", mobile: false, afk: false,
+      custom_status: { text: e.text, emoji_name: e.emoji_name ?? null, emoji_id: e.emoji_id ?? null },
+      activities: [e.activity || { name: "sirgreen.online", type: 2 }],
+    };
+    try { client.ws.send(0, { op: PRESENCE_OP, d: presence }); } catch (err) { console.error("[presence]", err?.message ?? err); }
+  };
+  tick(); setInterval(tick, 30_000);
+});
 client.on(Events.MessageCreate, (msg) => handler.handleMessage(msg));
 
 client.login(config.token).catch(e => { console.error("[Login]", e.message); process.exit(1); });

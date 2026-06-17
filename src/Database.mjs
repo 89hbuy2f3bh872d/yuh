@@ -18,6 +18,15 @@ const MAX_BALANCE  = 9_000_000_000_000; // 9 trillion FC
 const MAX_DELTA    = 9_000_000_000_000; // max single balance change
 const MAX_FIELD_INC = 9_000_000_000_000;
 
+// Per-server tax on winnings, in basis points (1500 = 15%). Capped at 50%.
+const DEFAULT_TAX_BPS = 1500;
+const MAX_TAX_BPS = 5000;
+function clampTaxBps(bps) {
+  const v = Math.round(Number(bps));
+  if (!Number.isFinite(v)) return DEFAULT_TAX_BPS;
+  return Math.max(0, Math.min(MAX_TAX_BPS, v));
+}
+
 // User ID validation — Discord IDs are 17-20 digits
 const USER_ID_RE = /^\d{17,20}$/;
 
@@ -60,10 +69,12 @@ export class Database {
     this._users   = this._db.collection("u");
     this._stats   = this._db.collection("stats");
     this._guilds  = this._db.collection("guilds");
+    this._tokens  = this._db.collection("logintokens");
     // Ensure indexes
     try {
       await this._users.createIndex({ "st.e": -1 }); // session expiry TTL
       await this._stats.createIndex({ _id: 1 });
+      await this._tokens.createIndex({ expAt: 1 }, { expireAfterSeconds: 0 }); // auto-expire login links
     } catch (_) { /* index may already exist */ }
     console.log(`[DB] Connected → ${this._dbName}.u`);
   }
@@ -414,6 +425,45 @@ export class Database {
   async getGuilds() {
     if (!this._guilds) return [];
     return this._guilds.find({}).sort({ lastSeen: -1 }).toArray();
+  }
+  async getGuildsByIds(ids) {
+    if (!this._guilds || !Array.isArray(ids) || !ids.length) return [];
+    return this._guilds.find({ _id: { $in: ids.map(String) } }).toArray();
+  }
+  async getGuild(id) { if (!this._guilds) return null; return this._guilds.findOne({ _id: String(id) }); }
+
+  /** Per-server tax on winnings, in basis points (default 1500 = 15%). */
+  async getGuildTax(id) {
+    if (!this._guilds) return DEFAULT_TAX_BPS;
+    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1 } });
+    const bps = g?.taxBps;
+    return Number.isFinite(bps) ? clampTaxBps(bps) : DEFAULT_TAX_BPS;
+  }
+  /** Set a server's winnings tax (basis points, clamped 0..MAX_TAX_BPS). */
+  async setGuildTax(id, bps) {
+    if (!this._guilds) return DEFAULT_TAX_BPS;
+    const v = clampTaxBps(bps);
+    await this._guilds.updateOne({ _id: String(id) }, { $set: { taxBps: v, lastSeen: Date.now() } }, { upsert: true });
+    return v;
+  }
+
+  // ─── Server-scoped login links (created by &web, consumed by the web /s/:token) ──
+  async createLoginToken(token, uid, guildId, ttlMs = 600_000) {
+    if (!this._tokens) return;
+    await this._tokens.insertOne({ _id: String(token), uid: this._uid(uid), gid: guildId ? String(guildId) : null, expAt: new Date(Date.now() + ttlMs) }).catch(() => {});
+  }
+  async consumeLoginToken(token) {
+    if (!this._tokens || !token) return null;
+    const r = await this._tokens.findOneAndDelete({ _id: String(token) }).catch(() => null);
+    const d = unwrap(r) ?? r?.value ?? r;
+    if (!d || !d.uid) return null;
+    if (d.expAt && new Date(d.expAt).getTime() < Date.now()) return null;
+    return { uid: d.uid, gid: d.gid || null };
+  }
+
+  /** Cache which guilds a user belongs to (from OAuth scope=guilds at login). */
+  async setUserGuilds(userId, gids) {
+    await this._users.updateOne({ _id: this._uid(userId) }, { $set: { gids: (Array.isArray(gids) ? gids : []).slice(0, 300).map(String) } }, { upsert: true }).catch(() => {});
   }
 
   /** Pull top N users by balance. */

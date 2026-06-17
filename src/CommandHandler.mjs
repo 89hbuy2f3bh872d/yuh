@@ -75,6 +75,7 @@ export class CommandHandler {
           name:        guildName,
           memberCount: message.guild?.memberCount ?? null,
           icon:        message.guild?.icon ?? null,
+          ownerId:     message.guild?.ownerId ?? message.guild?.owner_id ?? null,
         }).catch(() => {});
       }
     }

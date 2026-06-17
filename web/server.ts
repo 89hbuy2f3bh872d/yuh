@@ -159,6 +159,56 @@ function rl(map: Map<string, number>, key: string, ms: number): boolean {
 }
 const rlMoney = new Map<string, number>();
 
+// ── per-server tax (winnings cut → server bank) ──────────────────────────────
+// Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
+// 50%. The selected server (`srv` cookie) decides the rate + receives the cut.
+const DEFAULT_TAX_BPS = 1500, MAX_TAX_BPS = 5000;
+const taxCache = new Map<string, { bps: number; until: number }>();
+async function guildTax(gid: string): Promise<number> {
+  if (!gid) return 0;
+  const hit = taxCache.get(gid);
+  if (hit && hit.until > Date.now()) return hit.bps;
+  const bps = await (db as any).getGuildTax(gid).catch(() => DEFAULT_TAX_BPS);
+  taxCache.set(gid, { bps, until: Date.now() + 60_000 });
+  return bps;
+}
+function taxOnProfit(profit: number, bps: number): number {
+  if (!(profit > 0) || !(bps > 0)) return 0;
+  return Math.min(profit, Math.floor(profit * bps / 10000));
+}
+// Resolve + require the gambling server for this request. Returns null when no
+// server is selected (the "must pick a server to gamble" gate).
+async function requireServer(request: Request): Promise<{ gid: string; taxBps: number } | null> {
+  const gid = parseCookies(request).srv || "";
+  if (!gid) return null;
+  return { gid, taxBps: await guildTax(gid) };
+}
+
+// ── FluxerList vote check (gates owner tax changes) ──────────────────────────
+const FL_LIST_URL = "https://fluxerlist.com/api/v1";
+const FL_SERVER_ID = String(cfg.fluxerListServerId ?? "");
+const FL_API_KEY = String(cfg.fluxerListApiKey ?? "");
+const voteCache = new Map<string, { voted: boolean; until: number }>();
+async function hasVoted(userId: string): Promise<boolean> {
+  if (!FL_SERVER_ID || !FL_API_KEY) return false;
+  const hit = voteCache.get(userId);
+  if (hit && hit.until > Date.now()) return hit.voted;
+  let voted = false;
+  try {
+    const r = await fetch(`${FL_LIST_URL}/servers/${FL_SERVER_ID}/voters`, {
+      headers: { Authorization: `Bearer ${FL_API_KEY}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) {
+      const data: any = await r.json();
+      const voters = Array.isArray(data?.voters) ? data.voters : [];
+      voted = voters.some((v: any) => String(v?.fluxerId ?? v?.id ?? v) === String(userId));
+    }
+  } catch (e: any) { console.error("[FluxerList] vote check failed:", e?.message); }
+  voteCache.set(userId, { voted, until: Date.now() + 5 * 60_000 });
+  return voted;
+}
+
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
 // One socket per browser tab. On open we auth via the session cookie, subscribe the
 // user to STDB balance + notification pushes, and stream them down. No polling.
@@ -175,7 +225,20 @@ function broadcastTicket(ownerUid: string, payload: any) {
   }
 }
 
+// Global per-IP rate limit — blocks extreme spam (real client IP via Cloudflare header).
+const ipHits = new Map<string, number[]>();
+setInterval(() => { const cut = Date.now() - 15000; for (const [ip, arr] of ipHits) { while (arr.length && arr[0] < cut) arr.shift(); if (!arr.length) ipHits.delete(ip); } }, 30000);
+function rateLimited(request: Request): boolean {
+  const ip = request.headers.get("cf-connecting-ip") || (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "?";
+  const now = Date.now(), WIN = 10000, MAX = 150; // 150 req / 10s per IP
+  let arr = ipHits.get(ip); if (!arr) { arr = []; ipHits.set(ip, arr); }
+  while (arr.length && arr[0] < now - WIN) arr.shift();
+  if (arr.length >= MAX) return true;
+  arr.push(now); return false;
+}
+
 const app = new Elysia()
+  .onRequest(({ request, set }) => { if (rateLimited(request)) { set.status = 429; return "Too many requests"; } })
   // make the upgrade request's cookie available inside the ws context (ws.data)
   .derive(({ request }) => ({ cookieHeader: request.headers.get("cookie") || "" }))
   .ws("/ws", {
@@ -240,6 +303,8 @@ const app = new Elysia()
   .post("/api/slots/spin", async ({ request, body, set }) => {
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
     if (rl(rlMoney, uid, 250)) { set.status = 429; return { error: "Slow down a moment" }; }
+    const srv = await requireServer(request);
+    if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; }
     const b = body as any;
     const game = Slots.getGame(String(b?.game ?? "")); if (!game) return { error: "Unknown game" };
     const bet = Math.floor(Number(b?.bet) || 0);
@@ -249,11 +314,12 @@ const app = new Elysia()
     if (cost > 50_000_000) return { error: "Bet too large for a buy" };
     let result;
     try { result = Slots.spin(game.id, bet, buy); } catch { set.status = 500; return { error: "Spin failed" }; }
-    // one atomic settle: take cost, pay winnings
-    try { await stdb.settle(uid, cost, result.totalWin); }
+    // one atomic settle: take cost, pay winnings minus the server's tax on profit
+    const tax = taxOnProfit(result.totalWin - cost, srv.taxBps);
+    try { await stdb.settleWin(uid, cost, result.totalWin, srv.gid, tax); }
     catch (e: any) { return { error: e?.message === "insufficient" ? "Insufficient balance" : "Settle failed" }; }
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
-    return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid) };
+    return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid) };
   })
 
   // ── house games (Plinko / Coinflip / Double = stateless; Mines / HiLo = stateful)
@@ -263,28 +329,35 @@ const app = new Elysia()
     // Plinko is multi-ball (up to 10 rapid drops, client-capped) — exempt it from the
     // per-op throttle; everything else stays rate-limited.
     if (sub !== "plinko" && rl(rlMoney, uid, 120)) { set.status = 429; return { error: "Slow down a moment" }; }
+    const srv = await requireServer(request);
+    if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; }
     const d = body as any;
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
-    const credit = (amt: number) => amt > 0 ? stdb.credit(uid, amt).catch(() => {}) : Promise.resolve();
     const bal = () => stdb.getBalance(uid);
+    // Credit a payout, routing the server's tax on profit (payout − stake) to its bank.
+    const payWin = (payout: number, stake: number) => {
+      if (!(payout > 0)) return Promise.resolve();
+      const tax = taxOnProfit(payout - stake, srv.taxBps);
+      return stdb.creditWin(uid, payout, srv.gid, tax).catch(() => {});
+    };
 
     if (sub === "plinko") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
-      const r = plinko(bet, d?.risk); await credit(r.payout); db.recordGame?.(uid, r.payout >= bet, bet).catch(() => {});
+      const r = plinko(bet, d?.risk); await payWin(r.payout, bet); db.recordGame?.(uid, r.payout >= bet, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "coinflip") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
-      const r = coinflip(bet, d?.side); await credit(r.payout); db.recordGame?.(uid, r.win, bet).catch(() => {});
+      const r = coinflip(bet, d?.side); await payWin(r.payout, bet); db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "double") {
       if (!goodBet) return { error: "Invalid bet" };
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
-      const r = doubleOrNothing(bet); await credit(r.payout); db.recordGame?.(uid, r.win, bet).catch(() => {});
+      const r = doubleOrNothing(bet); await payWin(r.payout, bet); db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "mines/start") {
@@ -302,7 +375,7 @@ const app = new Elysia()
     if (sub === "mines/cashout") {
       const r = house.minesCashout(uid);
       if ((r as any).error) return r;
-      await credit((r as any).payout); return Object.assign(r, { balance: bal() });
+      await payWin((r as any).payout, (r as any).bet ?? 0); return Object.assign(r, { balance: bal() });
     }
     if (sub === "hilo/start") {
       if (!goodBet) return { error: "Invalid bet" };
@@ -314,7 +387,7 @@ const app = new Elysia()
     if (sub === "hilo/cashout") {
       const r = house.hiloCashout(uid);
       if ((r as any).error) return r;
-      await credit((r as any).payout); return Object.assign(r, { balance: bal() });
+      await payWin((r as any).payout, (r as any).bet ?? 0); return Object.assign(r, { balance: bal() });
     }
     set.status = 404; return { error: "Unknown game" };
   })
@@ -360,44 +433,72 @@ app.get("/login", ({ set }) => {
   return readFileSync(fp, "utf8").replace("__AUTH_URL__", esc(authUrl));
 });
 
-app.get("/oauth/callback", async ({ query, set, request }) => {
+app.get("/oauth/callback", async ({ query, set, request, cookie }) => {
   const code = (query as any).code, state = (query as any).state;
   const exp = state ? oauthStates.get(state) : undefined;
-  if (!code || !state || !exp) { return redir(set, "/login"); }
+  if (!code || !state || !exp) { console.error("[oauth] bad state"); return redir(set, "/login"); }
   oauthStates.delete(state);
-  if (Date.now() > exp) { return redir(set, "/login"); }
+  if (Date.now() > exp) { console.error("[oauth] state expired"); return redir(set, "/login"); }
   let token: any;
   try {
     const r = await fetch(FLUXER_TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }).toString() });
     token = await r.json();
-  } catch { return redir(set, "/login"); }
-  if (!token?.access_token) { return redir(set, "/login"); }
+  } catch (e: any) { console.error("[oauth] token fetch", e?.message); return redir(set, "/login"); }
+  if (!token?.access_token) { console.error("[oauth] no access_token:", token?.error || token?.message || JSON.stringify(token).slice(0, 200)); return redir(set, "/login"); }
   let me: any;
-  try { me = await (await fetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${token.access_token}` } })).json(); } catch { return redir(set, "/login"); }
-  const uid = me?.id; if (!uid) { return redir(set, "/login"); }
+  try { me = await (await fetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${token.access_token}` } })).json(); } catch (e: any) { console.error("[oauth] /me", e?.message); return redir(set, "/login"); }
+  const uid = me?.id; if (!uid) { console.error("[oauth] no uid in /me:", JSON.stringify(me).slice(0, 200)); return redir(set, "/login"); }
   const tag = me.global_name ?? me.displayName ?? me.username ?? me.tag ?? uid;
   const avatar = fluxerAvatarUrl(uid, me.avatar);
   await db.setProfile(uid, { tag, avatar }).catch(() => {});
   await stdb.ensureAccount(uid).catch(() => {});
+  // cache the user's guild ids (scope=guilds) so the server-selector can list their servers
+  try {
+    const gl = await (await fetch("https://api.fluxer.app/v1/users/@me/guilds", { headers: { Authorization: `Bearer ${token.access_token}` } })).json();
+    if (Array.isArray(gl)) await db.setUserGuilds(uid, gl.map((g: any) => String(g.id)).filter(Boolean)).catch(() => {});
+  } catch {}
   const ip = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
   const old = parseCookies(request).sid;
   const sid = crypto.randomBytes(32).toString("hex");
   if (old) await db.rotateSession(uid, old, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
   else await db.createSession(uid, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
-  const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
-  return redirectWithCookies("/lobby", [ // everyone lands on the lobby; admins use the sidebar Admin link
-    `sid=${sid}; ${base}`, `uid=${uid}; ${base}`,
-    `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
-    `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
-  ]);
+  // Elysia cookie API — reliably emits Set-Cookie (the raw-Response approach didn't stick).
+  const opt = { httpOnly: true, path: "/", maxAge: 7200, sameSite: "lax" as const };
+  cookie.sid.set({ value: sid, ...opt });
+  cookie.uid.set({ value: uid, ...opt });
+  cookie.dtag.set({ value: tag, path: "/", maxAge: 7200, sameSite: "lax" });
+  cookie.dav.set({ value: avatar, path: "/", maxAge: 7200, sameSite: "lax" });
+  console.log("[oauth] login ok:", uid);
+  return redir(set, "/lobby");
 });
 
-app.get("/logout", async ({ request, set }) => {
+app.get("/logout", async ({ request, set, cookie }) => {
   const c = parseCookies(request);
   if (c.uid && c.sid) await db.revokeSession(c.uid, c.sid).catch(() => {});
   if (c.sid) sessCache.delete(c.sid);
-  return redirectWithCookies("/login", ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"]);
+  for (const k of ["sid", "uid", "dtag", "dav", "srv"]) { try { cookie[k].remove(); } catch {} }
+  return redir(set, "/login");
+});
+
+// Server-scoped login link from &web — logs in + selects that server's pool.
+app.get("/s/:token", async ({ params, set, cookie }) => {
+  const r = await db.consumeLoginToken((params as any).token).catch(() => null);
+  if (!r?.uid) return redir(set, "/login");
+  const uid = r.uid;
+  await stdb.ensureAccount(uid).catch(() => {});
+  const sid = crypto.randomBytes(32).toString("hex");
+  await db.createSession(uid, sid, 2 * 60 * 60 * 1000, null).catch(() => {});
+  const user = await db.getUser(uid).catch(() => null);
+  const tag = user?.tag || uid, avatar = user?.av || fluxerAvatarUrl(uid, null);
+  const opt = { httpOnly: true, path: "/", maxAge: 7200, sameSite: "lax" as const };
+  cookie.sid.set({ value: sid, ...opt });
+  cookie.uid.set({ value: uid, ...opt });
+  cookie.dtag.set({ value: tag, path: "/", maxAge: 7200, sameSite: "lax" });
+  cookie.dav.set({ value: avatar, path: "/", maxAge: 7200, sameSite: "lax" });
+  if (r.gid) cookie.srv.set({ value: r.gid, path: "/", maxAge: 7200, sameSite: "lax" });
+  console.log("[s] server login ok:", uid, "→ server", r.gid);
+  return redir(set, "/lobby");
 });
 
 // ── authed pages (sidebar + tokens injected; ?v= cache-bust) ─────────────────
@@ -421,8 +522,8 @@ app.get("/admin", async ({ request, set }) => {
 const authed = async (request: Request, set: any) => { const uid = await resolveSession(request); if (!uid) { set.status = 401; } return uid; };
 app.get("/api/case-battle/tiers", async ({ request, set }) => { if (!(await authed(request, set))) return { error: "Not logged in" }; return cb.getTiers(); });
 app.get("/api/case-battle/list", async ({ request }) => { await resolveSession(request); return cb.list(); });
-app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
-app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
+app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
+app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
 app.post("/api/case-battle/:id/bot", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.addBot(uid, (params as any).id); });
 app.post("/api/case-battle/:id/recreate", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.recreate(uid, (params as any).id); });
 app.post("/api/case-battle/:id/watch", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.watch(uid, (params as any).id); });
@@ -574,6 +675,70 @@ app.delete("/api/tickets/:id", async ({ request, params, set }) => {
   await db.deleteTicket(id).catch(() => {});
   broadcastTicket(uid, { type: "ticket", action: "delete", id });
   return { ok: true };
+});
+
+// ── servers (the user's bot-guilds, for the server selector) ─────────────────
+app.get("/api/servers", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const sel = parseCookies(request).srv || "";
+  const user = await db.getUser(uid).catch(() => null);
+  const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+  const ids = sel && !gids.includes(sel) ? gids.concat(sel) : gids;
+  const guilds = await db.getGuildsByIds(ids).catch(() => []);
+  const servers = guilds.map((g: any) => ({
+    id: g._id, name: g.name || "Server", icon: g.icon || null,
+    owner: g.ownerId === uid,
+    tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
+    bank: stdb.getServerBank(g._id),
+  }));
+  return { servers, selected: sel || (servers[0]?.id ?? null), pinned: !!sel };
+});
+app.post("/api/select-server", async ({ request, body, set, cookie }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const gid = String((body as any)?.guildId || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) return { error: "Unknown server" };
+  const user = await db.getUser(uid).catch(() => null);
+  const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+  if (gids.length && !gids.includes(gid)) return { error: "You're not in that server" };
+  cookie.srv.set({ value: gid, path: "/", maxAge: 7200, sameSite: "lax" });
+  return { ok: true, selected: gid };
+});
+
+// ── per-server winnings tax (owner-set, gated behind a FluxerList vote) ───────
+// The default 15% cut on profit is changeable by the server OWNER, but only while
+// they have an active vote for the bot on FluxerList.
+app.get("/api/server/tax", async ({ request, query, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const gid = String((query as any)?.gid || parseCookies(request).srv || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  const owner = g.ownerId === uid;
+  const voted = owner ? await hasVoted(uid) : false; // only the owner needs the gate checked
+  return {
+    gid, owner, voted,
+    taxBps: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
+    maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS,
+    bank: stdb.getServerBank(gid),
+    canChange: owner && voted,
+    voteUrl: "https://fluxerlist.com/servers/fabrikken",
+  };
+});
+app.post("/api/server/tax", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || parseCookies(request).srv || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (g.ownerId !== uid) { set.status = 403; return { error: "Only the server owner can change the tax" }; }
+  if (!(await hasVoted(uid))) { set.status = 403; return { error: "Vote for the bot on FluxerList to change your server's tax", needVote: true, voteUrl: "https://fluxerlist.com/servers/fabrikken" }; }
+  const pct = Number(b?.percent), bpsRaw = Number(b?.taxBps);
+  const bps = Number.isFinite(bpsRaw) ? bpsRaw : Number.isFinite(pct) ? Math.round(pct * 100) : NaN;
+  if (!Number.isFinite(bps) || bps < 0 || bps > MAX_TAX_BPS) { set.status = 400; return { error: `Tax must be between 0% and ${MAX_TAX_BPS / 100}%` }; }
+  const saved = await (db as any).setGuildTax(gid, bps).catch(() => null);
+  if (saved == null) { set.status = 500; return { error: "Failed to save" }; }
+  taxCache.set(gid, { bps: saved, until: Date.now() + 60_000 }); // refresh hot cache immediately
+  return { ok: true, taxBps: saved };
 });
 
 // ── user search (send-money picker) ─────────────────────────────────────────

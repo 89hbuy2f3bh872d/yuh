@@ -26,9 +26,11 @@ export class Stdb {
   private conn: any;
   private connected = false;
   private balances = new Map<string, number>();
+  private banks = new Map<string, number>();
   private notifs = new Map<string, NotifRow[]>();
   private notifSub = new Map<string, { handle: any; refs: number }>();
   private balCbs = new Map<string, Set<BalCb>>();
+  private bankCbs = new Map<string, Set<BalCb>>();
   private notifCbs = new Map<string, Set<NotifCb>>();
   private readyP?: Promise<void>;
 
@@ -45,7 +47,9 @@ export class Stdb {
           this.connected = true;
           conn.db.account.onInsert((_c: any, r: any) => this.#setBal(r.owner, num(r.balance)));
           conn.db.account.onUpdate((_c: any, _o: any, n: any) => this.#setBal(n.owner, num(n.balance)));
-          conn.subscriptionBuilder().onApplied(() => resolve()).subscribe(["SELECT * FROM account"]);
+          conn.db.serverBank?.onInsert?.((_c: any, r: any) => this.#setBank(r.gid, num(r.balance)));
+          conn.db.serverBank?.onUpdate?.((_c: any, _o: any, n: any) => this.#setBank(n.gid, num(n.balance)));
+          conn.subscriptionBuilder().onApplied(() => resolve()).subscribe(["SELECT * FROM account", "SELECT * FROM server_bank"]);
         })
         .onConnectError((_c: any, e: any) => reject(e instanceof Error ? e : new Error(e?.message || String(e))))
         .onDisconnect(() => { this.connected = false; this.readyP = undefined; setTimeout(() => this.ready().catch(() => {}), 1500); });
@@ -57,6 +61,12 @@ export class Stdb {
   #setBal(owner: string, balance: number) {
     this.balances.set(owner, balance);
     const cbs = this.balCbs.get(owner);
+    if (cbs) for (const cb of cbs) try { cb(balance); } catch {}
+  }
+
+  #setBank(gid: string, balance: number) {
+    this.banks.set(gid, balance);
+    const cbs = this.bankCbs.get(gid);
     if (cbs) for (const cb of cbs) try { cb(balance); } catch {}
   }
 
@@ -84,6 +94,9 @@ export class Stdb {
   async credit(owner: string, amount: number) { return this.#call("credit", { owner, amount: BigInt(Math.floor(amount)) }); }
   async deduct(owner: string, amount: number) { return this.#call("deduct", { owner, amount: BigInt(Math.floor(amount)) }); }
   async settle(owner: string, bet: number, payout: number) { return this.#call("settle", { owner, bet: BigInt(Math.floor(bet)), payout: BigInt(Math.floor(payout)) }); }
+  async settleWin(owner: string, bet: number, payout: number, gid: string, tax: number) { return this.#call("settleWin", { owner, bet: BigInt(Math.floor(bet)), payout: BigInt(Math.floor(payout)), gid: gid || "", tax: BigInt(Math.max(0, Math.floor(tax))) }); }
+  async creditWin(owner: string, gross: number, gid: string, tax: number) { return this.#call("creditWin", { owner, gross: BigInt(Math.floor(gross)), gid: gid || "", tax: BigInt(Math.max(0, Math.floor(tax))) }); }
+  async bankSpend(gid: string, amount: number) { return this.#call("bankSpend", { gid, amount: BigInt(Math.floor(amount)) }); }
   async transfer(from: string, to: string, amount: number, fromTag: string) { return this.#call("transfer", { from, to, amount: BigInt(Math.floor(amount)), fromTag }); }
   async setExact(owner: string, balance: number) { return this.#call("setExact", { owner, balance: BigInt(Math.floor(balance)) }); }
   async addNotification(owner: string, kind: string, amount: number, fromTag: string, msg: string) { return this.#call("addNotification", { owner, kind, amount: BigInt(Math.floor(amount)), fromTag, msg }).catch(() => {}); }
@@ -93,6 +106,13 @@ export class Stdb {
   onBalance(owner: string, cb: BalCb): () => void {
     const s = this.balCbs.get(owner) ?? new Set(); s.add(cb); this.balCbs.set(owner, s);
     return () => { s.delete(cb); if (!s.size) this.balCbs.delete(owner); };
+  }
+
+  // ── per-server bank (subscribed globally; read from cache) ──────────────────
+  getServerBank(gid: string): number { return this.banks.get(gid) ?? 0; }
+  onBank(gid: string, cb: BalCb): () => void {
+    const s = this.bankCbs.get(gid) ?? new Set(); s.add(cb); this.bankCbs.set(gid, s);
+    return () => { s.delete(cb); if (!s.size) this.bankCbs.delete(gid); };
   }
 
   // ── per-user notifications (subscribed on demand) ──────────────────────────

@@ -15,13 +15,14 @@ __SIDEBAR__
     <div class="page-head"><div>
       <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg> House Games</h1>
       <div class="page-sub">Quick games vs the house — provably resolved server-side.</div>
-    </div></div>
+    </div><span class="srv-tax-note" hidden></span></div>
     <div class="slot-grid" id="hgGrid"><div class="empty">Loading…</div></div>
   </div>
 
   <div id="view-game" class="hidden">
     <div class="page-head">
       <div><h1 class="page-title" id="hgTitle"></h1><div class="page-sub" id="hgTag"></div></div>
+      <span class="srv-tax-note" hidden></span>
       <div class="page-actions">
         <div class="hg-bal">Balance <b id="balMeter">0</b> FC</div>
         <button class="btn btn-ghost" onclick="backHouse()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Back</button>
@@ -343,6 +344,7 @@ function hlCash(){
     msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
   }).catch(function(){busy=false;});
 }
+window.sgPaintTax && window.sgPaintTax(); // show the active server's tax cut
 </script>
 </body>
 </html>
