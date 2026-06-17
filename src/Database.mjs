@@ -47,7 +47,11 @@ export class Database {
   constructor(uri, dbNameOverride) {
     this._uri    = uri;
     this._dbName = (dbNameOverride?.trim()) ? dbNameOverride : dbNameFromUri(uri);
+    this._bridge = null; // optional StdbBridge — when set, balances live in SpacetimeDB
   }
+
+  /** Route balance reads/writes through SpacetimeDB (via the web service bridge). */
+  attachBalanceBridge(bridge) { this._bridge = bridge; }
 
   async connect() {
     this._client = new MongoClient(this._uri);
@@ -88,7 +92,9 @@ export class Database {
       ],
       { upsert: true, returnDocument: "after" }
     );
-    return unwrap(r) ?? { _id: id, ...DEFAULTS };
+    const doc = unwrap(r) ?? { _id: id, ...DEFAULTS };
+    if (this._bridge) { try { doc.bal = await this._bridge.balance(id); } catch { /* keep mongo bal as fallback */ } }
+    return doc;
   }
 
   /**
@@ -102,6 +108,10 @@ export class Database {
   async atomicDeduct(userId, delta) {
     const id    = this._uid(userId);
     const d     = clamp(delta, -MAX_DELTA, MAX_DELTA);
+    if (this._bridge) {
+      const res = d < 0 ? await this._bridge.deduct(id, Math.abs(d)) : await this._bridge.credit(id, d);
+      return res.ok ? { _id: id, bal: Number(res.bal || 0) } : null; // null = couldn't afford
+    }
     const exact = d < 0 ? d : { $min: [d, MAX_BALANCE - "$bal"] };
 
     // For deductions, use a conditional update that only succeeds if bal >= |delta|
@@ -132,6 +142,12 @@ export class Database {
     const id    = this._uid(userId);
     const b     = clamp(Math.abs(bet), 0, MAX_DELTA);
     const w     = clamp(Math.abs(wonAmount), 0, MAX_DELTA);
+    if (this._bridge) {
+      const res = await this._bridge.settle(id, b, w); // atomic in STDB: take bet, pay win
+      if (!res.ok) return { ok: false };
+      await this.recordGame(id, w > b, Math.max(b, w));
+      return { ok: true, newBal: Number(res.bal || 0) };
+    }
     // Net change: -(bet) + wonAmount
     const net   = w - b;
     const newBal = await this.atomicDeduct(id, net);
@@ -144,6 +160,10 @@ export class Database {
   async updateBalance(userId, delta) {
     const id = this._uid(userId);
     const d  = clamp(delta, -MAX_DELTA, MAX_DELTA);
+    if (this._bridge) {
+      const res = d >= 0 ? await this._bridge.credit(id, d) : await this._bridge.deduct(id, Math.abs(d));
+      return { _id: id, bal: Number(res.bal || 0) };
+    }
     const r  = await this._users.findOneAndUpdate(
       { _id: id },
       [{ $set: { bal: { $min: [{ $add: [{ $ifNull: ["$bal", 0] }, d] }, MAX_BALANCE] } } }],
@@ -277,6 +297,11 @@ export class Database {
     const tId = this._uid(toId);
     if (fId === tId) return false;
     const amt = clamp(Math.abs(amount), 1, MAX_DELTA);
+
+    if (this._bridge) {
+      const res = await this._bridge.transfer(fId, tId, amt, fromTag || fId); // atomic + notifies in STDB
+      return !!res.ok;
+    }
 
     const session = this._client.startSession();
     try {

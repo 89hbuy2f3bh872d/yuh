@@ -216,8 +216,9 @@
 })();
 </script>
 <script>
-/* Real-time balance + notifications. Polls the DB; updates the sidebar balance,
-   shows the unread badge, and toasts incoming payments (with a coin sound). */
+/* Real-time balance + notifications over WebSocket (STDB-backed). Falls back to
+   HTTP polling whenever the socket is down. Updates the sidebar balance, the unread
+   badge, and toasts incoming payments (with a coin sound). */
 (function(){
   if(window.__notif)return; window.__notif=1;
   var SEEN='sgNotifSeen';
@@ -225,6 +226,7 @@
   function setSeen(v){ try{localStorage.setItem(SEEN,String(v));}catch(e){} }
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function badge(n){ var b=document.getElementById('sbNotifBadge'); if(!b)return; if(n>0){b.textContent=n>99?'99+':n;b.classList.remove('hidden');}else{b.classList.add('hidden');} }
+  function badgeBump(){ var b=document.getElementById('sbNotifBadge'); var n=(b&&!b.classList.contains('hidden'))?(parseInt(b.textContent,10)||0):0; badge(n+1); }
   function setBal(v){ var e=document.getElementById('sbBal'); if(e)e.textContent=Number(v).toLocaleString(); }
   function toast(it){
     var t=document.createElement('div'); t.className='notif-toast';
@@ -235,20 +237,32 @@
     setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ if(t.parentNode)t.parentNode.removeChild(t); },300); }, 4500);
     if(window.SG)SG.sfx('coins');
   }
-  var first=true;
-  function poll(){
+
+  var ws=null, pollT=null, tries=0;
+  function stopPoll(){ if(pollT){clearInterval(pollT);pollT=null;} }
+  function startPoll(){ if(pollT)return; httpPoll(); pollT=setInterval(httpPoll,5000); }
+  function httpPoll(){
     fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
-      if(!d)return;
-      if(d.bal!==undefined) setBal(d.bal);
-      badge(d.unread||0);
-      var last=seen(), maxTs=last;
-      (d.items||[]).forEach(function(it){
-        if(it.ts>maxTs)maxTs=it.ts;
-        if(!first && it.ts>last && it.t==='pay') toast(it); // only live payments while on-site
-      });
-      setSeen(maxTs); first=false;
+      if(!d)return; if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0);
+      var last=seen(), mx=last;
+      (d.items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; if(it.ts>last&&it.t==='pay')toast(it); });
+      setSeen(mx);
     }).catch(function(){});
   }
-  poll(); setInterval(poll,4000);
+  function recordSeen(items){ var mx=seen(); (items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; }); setSeen(mx); }
+  function connect(){
+    var proto=location.protocol==='https:'?'wss://':'ws://';
+    try{ ws=new WebSocket(proto+location.host+'/ws'); }catch(e){ startPoll(); return; }
+    ws.onopen=function(){ tries=0; stopPoll(); };
+    ws.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;}
+      if(d.type==='init'){ if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0); recordSeen(d.items); }
+      else if(d.type==='balance'){ setBal(d.bal); }
+      else if(d.type==='notification'){ var it=d.item; if(it){ if(it.t==='pay')toast(it); badgeBump(); if(it.ts>seen())setSeen(it.ts); } }
+      else if(d.type==='auth'&&!d.ok){ stopPoll(); } // not logged in
+    };
+    ws.onerror=function(){ try{ws.close();}catch(e){} };
+    ws.onclose=function(){ ws=null; startPoll(); tries++; setTimeout(connect, Math.min(15000, 1000*tries)); };
+  }
+  connect();
 })();
 </script>

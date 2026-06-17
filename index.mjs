@@ -5,6 +5,7 @@ import { Client, Events } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
 import { WebServer } from "./src/WebServer.mjs";
+import { StdbBridge } from "./src/stdbBridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,8 +25,17 @@ const db = new Database(config.mongodb.uri, config.mongodb.database);
 await db.connect();
 setInterval(() => db.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
 
-const web = new WebServer(db, config);
-await web.start();
+// When SpacetimeDB is configured, the Bun/Elysia service (web/server.ts) serves the
+// site + owns STDB; the bot just routes balance ops to it over localhost. Otherwise
+// fall back to the legacy in-process Node web server.
+if (config.spacetime && config.web?.internalSecret) {
+  const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 8080);
+  db.attachBalanceBridge(new StdbBridge(webUrl, config.web.internalSecret));
+  console.log(`[Startup] STDB balance bridge → ${webUrl} (Bun web service serves the site)`);
+} else {
+  const web = new WebServer(db, config);
+  await web.start();
+}
 
 const client = new Client({ intents: 0, suppressIntentWarning: true, ...config["fluxer.js"] });
 const handler = new CommandHandler(client, db, config);

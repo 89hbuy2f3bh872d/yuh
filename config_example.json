@@ -14,5 +14,16 @@
   "fluxerListApiKey":  "fl_your_api_key_here",
 
   "dailyAmount":        100,
-  "currencySymbol":     "FC"
+  "currencySymbol":     "FC",
+
+  "_comment_realtime": "SpacetimeDB owns balances/transactions/notifications; the Bun web service (web/server.ts) serves the site + realtime WS. Set both blocks to enable the new architecture; omit them to keep the legacy in-process Node web server.",
+  "spacetime": {
+    "uri":    "ws://127.0.0.1:3000",
+    "module": "sirgreen-6ls47",
+    "token":  "YOUR_SPACETIMEDB_IDENTITY_TOKEN"
+  },
+  "web": {
+    "port":           8080,
+    "internalSecret": "GENERATE_A_LONG_RANDOM_SECRET"
+  }
 }
