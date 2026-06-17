@@ -130,17 +130,35 @@ fetch('/api/slots/games').then(function(r){return r.json()}).then(function(d){
   GAMES=d.games||[]; renderLobby();
 }).catch(function(){ $('slotGrid').innerHTML='<div class="empty">Failed to load games.</div>'; });
 
+// Game-logo glyphs (Lucide paths, 24×24) composed into a branded badge.
+var LOGOS={
+  candy:'<path d="m9.5 7.5-2 2a4.95 4.95 0 1 0 7 7l2-2a4.95 4.95 0 1 0-7-7Z"/><path d="M14 6.5v10"/><path d="M10 7.5v10"/><path d="m16 7 1-5 1.37.68A3 3 0 0 1 20 5.4V7l1.5 1.5a3 3 0 0 1 0 4.2L20 14"/><path d="m8 17-1 5-1.37-.68A3 3 0 0 1 4 18.6V17l-1.5-1.5a3 3 0 0 1 0-4.2L4 10"/>',
+  olympus:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  bandit:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+};
+function slotLogo(g){
+  var glyph=LOGOS[g.id]||LOGOS.candy, id='lg-'+g.id;
+  return '<svg class="slot-logo" viewBox="0 0 64 64" aria-hidden="true">'+
+    '<defs>'+
+      '<linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+g.color+'"/><stop offset="1" stop-color="#0c0c12"/></linearGradient>'+
+      '<radialGradient id="'+id+'-h" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'+
+    '</defs>'+
+    '<rect x="4" y="4" width="56" height="56" rx="17" fill="url(#'+id+')"/>'+
+    '<rect x="4.75" y="4.75" width="54.5" height="54.5" rx="16.25" fill="none" stroke="'+g.color+'" stroke-opacity="0.55"/>'+
+    '<rect x="4" y="4" width="56" height="56" rx="17" fill="url(#'+id+'-h)"/>'+
+    '<g transform="translate(20 20)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+glyph+'</g>'+
+  '</svg>';
+}
 function renderLobby(){
   var el=$('slotGrid'); el.innerHTML='';
   GAMES.forEach(function(g){
-    var syms=Object.keys(g.sym).slice(-4).map(function(k){return g.sym[k];}).join(' ');
     var card=document.createElement('div'); card.className='slot-card'; card.style.setProperty('--gc',g.color);
     card.innerHTML=
-      '<div class="slot-card-art">'+g.scatter.emoji+'<span>'+syms+'</span></div>'+
+      '<div class="slot-card-art">'+slotLogo(g)+'</div>'+
       '<div class="slot-card-body">'+
         '<div class="slot-card-name">'+g.name+'</div>'+
         '<div class="slot-card-tag">'+g.tag+'</div>'+
-        '<div class="slot-card-meta">'+g.W+'×'+g.H+' · '+g.scatter.count+'+ '+g.scatter.emoji+' = '+g.scatter.spins+' free</div>'+
+        '<div class="slot-card-meta">'+g.W+'×'+g.H+' · '+g.scatter.count+'+ scatters = '+g.scatter.spins+' free spins</div>'+
       '</div>'+
       '<button class="btn btn-primary slot-play">Play</button>';
     card.querySelector('.slot-play').onclick=function(){ openGame(g.id); };

@@ -5,9 +5,10 @@
 .slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem}
 .slot-card{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,border-color .15s,box-shadow .2s}
 .slot-card:hover{transform:translateY(-3px);border-color:var(--gc);box-shadow:0 12px 40px -12px var(--gc)}
-.slot-card-art{height:120px;display:flex;align-items:center;justify-content:center;gap:.5rem;font-size:3rem;position:relative;
-  background:radial-gradient(circle at 50% 30%, color-mix(in srgb,var(--gc) 38%, transparent), transparent 70%), linear-gradient(160deg,var(--surface-2),var(--bg))}
-.slot-card-art span{font-size:1.5rem;letter-spacing:.1rem}
+.slot-card-art{height:128px;display:flex;align-items:center;justify-content:center;position:relative;
+  background:radial-gradient(circle at 50% 28%, color-mix(in srgb,var(--gc) 30%, transparent), transparent 72%), linear-gradient(160deg,var(--surface-2),var(--bg))}
+.slot-logo{width:92px;height:92px;filter:drop-shadow(0 6px 16px color-mix(in srgb,var(--gc) 45%, transparent));transition:transform .18s}
+.slot-card:hover .slot-logo{transform:translateY(-2px) scale(1.04)}
 .slot-card-body{padding:.9rem 1rem;flex:1}
 .slot-card-name{font-size:1.05rem;font-weight:800;letter-spacing:-.01em}
 .slot-card-tag{font-size:.74rem;color:var(--text-2);margin-top:.2rem}
