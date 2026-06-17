@@ -22,6 +22,8 @@ import crypto from "node:crypto";
 import { Database } from "../src/Database.mjs";
 import * as Slots from "../src/SlotEngine.mjs";
 import { HouseState, plinko, coinflip, doubleOrNothing, HOUSE_GAMES } from "../src/HouseGames.mjs";
+import { CaseBattle } from "../src/CaseBattle.mjs";
+import { AdminPanel } from "../src/AdminPanel.mjs";
 import { Stdb } from "./src/stdb.ts";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
@@ -36,6 +38,23 @@ await db.connect();
 const stdb = new Stdb(cfg.spacetime.uri, cfg.spacetime.module, cfg.spacetime.token);
 await stdb.ready();
 const house = new HouseState();
+
+// Case-battle engine — balances via STDB, tiers/stats via Mongo.
+const cb = new CaseBattle({
+  bal: {
+    deduct: (uid: string, amt: number) => stdb.deduct(uid, amt).then(() => true, () => false),
+    credit: (uid: string, amt: number) => stdb.credit(uid, amt).catch(() => {}),
+    getBalance: (uid: string) => Promise.resolve(stdb.getBalance(uid)),
+  },
+  db: {
+    getCustomTiers: () => (db as any).getCustomTiers ? (db as any).getCustomTiers() : Promise.resolve([]),
+    saveCustomTiers: (t: any) => (db as any).saveCustomTiers ? (db as any).saveCustomTiers(t) : Promise.resolve(),
+    recordGame: (u: string, w: boolean, a: number) => db.recordGame ? db.recordGame(u, w, a) : Promise.resolve(),
+  },
+  getAvatar: async (uid: string) => { const u = await db.getUser(uid).catch(() => null); return u?.av || fluxerAvatarUrl(uid, null); },
+});
+await cb.loadCustomTiers();
+const admin = new AdminPanel(db, cfg.prefix ?? "&");
 
 // ── tiny helpers ────────────────────────────────────────────────────────────
 const GAMES_DIR = join(ROOT, "games");
@@ -347,6 +366,92 @@ const PAGES: [string, string, string][] = [
 for (const [p, f, a] of PAGES) app.get(p, ({ request, set }) => renderPage(request, set, f, a));
 app.get("/case-battle", ({ request, set }) => renderPage(request, set, "case-battle.html", "case-battle", { "__BATTLE_ID__": "" }));
 app.get("/case-battle/:id", ({ request, set, params }) => renderPage(request, set, "case-battle.html", "case-battle", { "__BATTLE_ID__": esc((params as any).id) }));
+
+// ── Case Battle API (engine: ../src/CaseBattle.mjs; balances via STDB) ───────
+const authed = async (request: Request, set: any) => { const uid = await resolveSession(request); if (!uid) { set.status = 401; } return uid; };
+app.get("/api/case-battle/tiers", async ({ request, set }) => { if (!(await authed(request, set))) return { error: "Not logged in" }; return cb.getTiers(); });
+app.get("/api/case-battle/list", async ({ request }) => { await resolveSession(request); return cb.list(); });
+app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
+app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
+app.post("/api/case-battle/:id/bot", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.addBot(uid, (params as any).id); });
+app.post("/api/case-battle/:id/recreate", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.recreate(uid, (params as any).id); });
+app.post("/api/case-battle/:id/watch", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.watch(uid, (params as any).id); });
+app.get("/api/case-battle/:id", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.state(uid, (params as any).id, (u: string) => fluxerAvatarUrl(u, null)); });
+
+// ── Admin panel (owner/perm gated; balances via STDB) ────────────────────────
+app.get("/admin/panel", async ({ request, set }) => {
+  set.headers["content-type"] = "text/html; charset=utf-8";
+  const uid = await resolveSession(request);
+  if (!uid) return admin.loginRequired("/login");
+  if (!(await admin.isAdmin(uid))) { set.status = 403; return admin.accessDenied(uid); }
+  return admin.render(uid);
+});
+const adminApi = async (request: Request, set: any, fn: (uid: string) => Promise<any>) => {
+  const uid = await resolveSession(request);
+  if (!uid || !(await admin.isAdmin(uid))) { set.status = 403; return { error: "Forbidden" }; }
+  return fn(uid);
+};
+const withBal = (rows: any[]) => rows.map(r => ({ id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null), bal: stdb.getBalance(r._id), perms: Array.isArray(r.perms) ? r.perms : [] }));
+
+app.get("/api/admin/users", ({ request, query, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "balances")) && !(await admin.can(uid, "users"))) { set.status = 403; return { error: "Missing permission" }; }
+  return { users: withBal(await db.searchUsersAdmin((query as any).search || "", 30)) };
+}));
+app.get("/api/admin/admins", ({ request, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "balances")) && !(await admin.can(uid, "users"))) { set.status = 403; return { error: "Missing permission" }; }
+  const list = withBal(await db.listAdmins());
+  const owner = (AdminPanel as any).OWNER_ID;
+  if (owner && !list.some(x => x.id === owner)) { const o = await db.getUser(owner).catch(() => null); list.unshift({ id: owner, tag: o?.tag || "Owner", avatar: o?.av || fluxerAvatarUrl(owner, null), bal: stdb.getBalance(owner), perms: [] }); }
+  return { users: list };
+}));
+app.post("/api/admin/users/:id/perms", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "users"))) { set.status = 403; return { error: "Missing permission" }; }
+  const target = (params as any).id; if (target === (AdminPanel as any).OWNER_ID) return { error: "Owner permissions can't be changed" };
+  const perm = String((body as any).perm ?? ""); if (!(AdminPanel as any).PERM_IDS.includes(perm)) return { error: "Unknown permission" };
+  let next = (await db.getPerms(target)).filter((x: string) => (AdminPanel as any).PERM_IDS.includes(x));
+  if ((body as any).grant) { if (!next.includes(perm)) next.push(perm); } else next = next.filter((x: string) => x !== perm);
+  await db.setPerms(target, next); return { ok: true, perms: next };
+}));
+app.post("/api/admin/users/:id/balance", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "balances"))) { set.status = 403; return { error: "Missing permission" }; }
+  const target = (params as any).id, b = body as any;
+  if (typeof b.set === "number") { await stdb.setExact(target, Math.floor(b.set)).catch(() => {}); return { bal: stdb.getBalance(target) }; }
+  if (typeof b.delta === "number") { const d = Math.floor(b.delta); await (d >= 0 ? stdb.credit(target, d) : stdb.deduct(target, -d)).catch(() => {}); return { bal: stdb.getBalance(target) }; }
+  return { error: "Provide delta or set" };
+}));
+app.get("/api/admin/cases", ({ request, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return { tiers: cb.allTiers() }; }));
+app.post("/api/admin/cases", ({ request, body, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; }
+  const d = body as any; if (!d.id || !d.label || !d.entry || !Array.isArray(d.items) || !d.items.length) return { error: "id, label, entry, items[] required" };
+  return cb.addTier({ id: String(d.id), label: String(d.label), entry: Number(d.entry), color: String(d.color || "#2ecc71"), bg: String(d.bg || "#0a1f0a"), builtIn: false, items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
+}));
+app.put("/api/admin/cases/:id", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; }
+  const d = body as any; if (!d.label || !d.entry || !Array.isArray(d.items) || !d.items.length) return { error: "label, entry, items[] required" };
+  return cb.editTier(decodeURIComponent((params as any).id), { label: String(d.label), entry: Number(d.entry), color: String(d.color || "#2ecc71"), bg: String(d.bg || "#0a1f0a"), items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
+}));
+app.delete("/api/admin/cases/:id", ({ request, params, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return cb.deleteTier(decodeURIComponent((params as any).id)); }));
+app.get("/api/admin/battles", ({ request, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "battles"))) { set.status = 403; return { error: "Missing permission" }; }
+  return { battles: [...cb.active.values()].map((b: any) => ({ id: b.id, mode: b.mode, phase: b.phase, cost: b.cost, pot: b.pot, maxPlayers: b.maxPlayers, speed: b.speed, jackpot: b.jackpot, crazy: b.crazy, players: b.players.map((p: any) => ({ uid: p.uid, tag: p.tag })), createdAt: b.createdAt, winnerUid: b.winnerUid })) };
+}));
+app.delete("/api/admin/battles/:id", ({ request, params, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "battles"))) { set.status = 403; return { error: "Missing permission" }; }
+  const b: any = cb.active.get((params as any).id); if (!b) { set.status = 404; return { error: "Battle not found" }; }
+  for (const p of b.players) { if (!p.bot) await stdb.credit(p.uid, p.cost).catch(() => {}); cb.userBattle.delete(p.uid); }
+  cb.active.delete((params as any).id); return { ok: true };
+}));
+app.get("/api/admin/tickets", ({ request, set }) => adminApi(request, set, async () => ({ tickets: await db.listTickets({}).catch(() => []) })));
+app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adminApi(request, set, async (uid) => { const msg = String((body as any).body || "").trim().slice(0, 2000); if (!msg) return { error: "Message required" }; await db.addTicketMessage((params as any).id, { from: "admin", uid, body: msg, at: Date.now() }).catch(() => {}); return { ok: true }; }));
+app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async () => { const a = (params as any).action; if (a !== "close" && a !== "open") { set.status = 404; return { error: "?" }; } await db.setTicketStatus((params as any).id, a === "close" ? "closed" : "open").catch(() => {}); return { ok: true }; }));
+app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, async (uid) => {
+  if (uid !== (AdminPanel as any).OWNER_ID) { set.status = 403; return { error: "Owner only" }; }
+  const d = body as any;
+  if (d.confirm !== "WIPE EVERYTHING") return { error: "Confirmation phrase incorrect" };
+  if (String(d.ownerId) !== String((AdminPanel as any).OWNER_ID)) return { error: "Owner ID mismatch" };
+  if (d.ack !== true) return { error: "Acknowledgement required" };
+  const ok = await db.wipeAll().catch(() => false); return { ok };
+}));
 
 // ── Bun server tuning for a cheap VPS (high concurrency, low memory) ──────────
 app.listen({ port: PORT, reusePort: true, hostname: "0.0.0.0" });
