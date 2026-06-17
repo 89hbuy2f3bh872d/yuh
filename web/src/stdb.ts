@@ -49,7 +49,10 @@ export class Stdb {
           conn.db.account.onUpdate((_c: any, _o: any, n: any) => this.#setBal(n.owner, num(n.balance)));
           conn.db.serverBank?.onInsert?.((_c: any, r: any) => this.#setBank(r.gid, num(r.balance)));
           conn.db.serverBank?.onUpdate?.((_c: any, _o: any, n: any) => this.#setBank(n.gid, num(n.balance)));
-          conn.subscriptionBuilder().onApplied(() => resolve()).subscribe(["SELECT * FROM account", "SELECT * FROM server_bank"]);
+          // account gates ready(); server_bank is its own subscription so a multi-query
+          // quirk can't stop bank rows from syncing. Seed both caches from iter() on apply.
+          conn.subscriptionBuilder().onApplied(() => { this.#seedBanks(conn); resolve(); }).subscribe(["SELECT * FROM account"]);
+          try { conn.subscriptionBuilder().onApplied(() => this.#seedBanks(conn)).subscribe(["SELECT * FROM server_bank"]); } catch {}
         })
         .onConnectError((_c: any, e: any) => reject(e instanceof Error ? e : new Error(e?.message || String(e))))
         .onDisconnect(() => { this.connected = false; this.readyP = undefined; setTimeout(() => this.ready().catch(() => {}), 1500); });
@@ -68,6 +71,11 @@ export class Stdb {
     this.banks.set(gid, balance);
     const cbs = this.bankCbs.get(gid);
     if (cbs) for (const cb of cbs) try { cb(balance); } catch {}
+  }
+
+  // Reconcile the bank cache from whatever rows the server_bank subscription holds.
+  #seedBanks(conn: any) {
+    try { for (const r of conn.db.serverBank?.iter?.() ?? []) this.#setBank(r.gid, num(r.balance)); } catch {}
   }
 
   // Resolve once `owner`'s balance row changes (server reconciliation), or after `ms`.
@@ -97,6 +105,7 @@ export class Stdb {
   async settleWin(owner: string, bet: number, payout: number, gid: string, tax: number) { return this.#call("settleWin", { owner, bet: BigInt(Math.floor(bet)), payout: BigInt(Math.floor(payout)), gid: gid || "", tax: BigInt(Math.max(0, Math.floor(tax))) }); }
   async creditWin(owner: string, gross: number, gid: string, tax: number) { return this.#call("creditWin", { owner, gross: BigInt(Math.floor(gross)), gid: gid || "", tax: BigInt(Math.max(0, Math.floor(tax))) }); }
   async bankSpend(gid: string, amount: number) { return this.#call("bankSpend", { gid, amount: BigInt(Math.floor(amount)) }); }
+  async bankSet(gid: string, balance: number) { return this.#call("bankSet", { gid, balance: BigInt(Math.max(0, Math.floor(balance))) }); }
   async transfer(from: string, to: string, amount: number, fromTag: string) { return this.#call("transfer", { from, to, amount: BigInt(Math.floor(amount)), fromTag }); }
   async setExact(owner: string, balance: number) { return this.#call("setExact", { owner, balance: BigInt(Math.floor(balance)) }); }
   async addNotification(owner: string, kind: string, amount: number, fromTag: string, msg: string) { return this.#call("addNotification", { owner, kind, amount: BigInt(Math.floor(amount)), fromTag, msg }).catch(() => {}); }

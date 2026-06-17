@@ -190,6 +190,19 @@ pub fn bank_spend(ctx: &ReducerContext, gid: String, amount: i64) -> Result<(), 
     Ok(())
 }
 
+/// Set a server bank to an exact balance (admin tool). Creates the row if missing.
+#[reducer]
+pub fn bank_set(ctx: &ReducerContext, gid: String, balance: i64) -> Result<(), String> {
+    if gid.is_empty() { return Err("empty gid".into()); }
+    if balance < 0 || balance > MAX_BALANCE { return Err("bad amount".into()); }
+    if let Some(b) = ctx.db.server_bank().gid().find(gid.clone()) {
+        ctx.db.server_bank().gid().update(ServerBank { gid: b.gid, balance });
+    } else {
+        ctx.db.server_bank().insert(ServerBank { gid, balance });
+    }
+    Ok(())
+}
+
 /// Atomic transfer between two users + a "pay" notification to the receiver.
 #[reducer]
 pub fn transfer(ctx: &ReducerContext, from: String, to: String, amount: i64, from_tag: String) -> Result<(), String> {

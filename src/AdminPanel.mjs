@@ -17,6 +17,8 @@ const PERMS = [
   { id: "battles",  label: "Manage battles", desc: "View and force-cancel battles" },
   { id: "users",    label: "Manage users",   desc: "Grant or revoke admin permissions" },
   { id: "tickets",  label: "Support tickets", desc: "View and reply to support tickets" },
+  { id: "tax",      label: "Set server tax", desc: "Set a server's tax with no 15% floor or vote needed" },
+  { id: "servers",  label: "Manage servers", desc: "View & edit every server's bank, tax and shop" },
 ];
 const PERM_IDS = PERMS.map(p => p.id);
 
@@ -931,6 +933,15 @@ export class AdminPanel {
   async can(userId, perm) {
     if (isOwner(userId)) return true;
     try { const perms = await this.db.getPerms(userId); return hasPerm(userId, perms, perm); }
+    catch { return false; }
+  }
+
+  /** Can this user see the admin PANEL? (owner, or holds a perm mapping to a panel
+   *  tab). Perms like `tax`/`servers` grant powers WITHOUT a panel tab, so they
+   *  must not light up the Admin nav on their own. */
+  async canSeePanel(userId) {
+    if (isOwner(userId)) return true;
+    try { const perms = await this.db.getPerms(userId); return visiblePages(userId, perms).length > 0; }
     catch { return false; }
   }
 

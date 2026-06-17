@@ -17,6 +17,9 @@
 .svc-bank .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
 .svc-bank .val{font-size:1.5rem;font-weight:800;color:var(--gold);line-height:1.1}
 .svc-bank .val small{font-size:.7rem;color:var(--text3);font-weight:600;margin-left:.2rem}
+.svc-bank-edit{flex:none;width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--text3);background:var(--surface)}
+.svc-bank-edit:hover{color:var(--accent);background:var(--surface3,var(--surface2))}
+.svc-bank-edit .icon{width:16px;height:16px}
 .svc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.45rem}
 .svc-st{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.5rem .55rem}
 .svc-st .n{font-size:.92rem;font-weight:700}
@@ -88,19 +91,20 @@ function left(until){ var ms=Number(until)-Date.now(); if(ms<=0)return'ended'; v
 function card(s){
   var st=s.stats||{}, sh=s.shop||{};
   var accent = sh.accent ? ' style="--accent:'+esc(sh.accent)+'"' : '';
+  var bankEdit = s.manage ? '<button class="svc-bank-edit" title="Edit bank" onclick="editBank(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>' : '<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--gold);opacity:.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>';
   return '<div class="svc'+(sh.featured?' feat':'')+'" id="svc-'+esc(s.id)+'"'+accent+'>'
     + '<div class="svc-head"><div class="svc-av">'+esc(initials(s.name))+'</div>'
-      + '<div class="svc-h-meta"><div class="svc-name">'+esc(s.name)+'</div><div class="svc-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+'You own this</div></div></div>'
+      + '<div class="svc-h-meta"><div class="svc-name">'+esc(s.name)+'</div><div class="svc-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+(s.owner?'You own this':'Admin view')+'</div></div></div>'
     + '<div class="svc-perks-wrap" id="perks-'+esc(s.id)+'">'+perkBadges(s)+'</div>'
     + '<div class="svc-bank"><div><div class="lbl">Server bank</div><div class="val" id="bank-'+esc(s.id)+'">'+fmt(s.bank)+'<small>FC</small></div></div>'
-      + '<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--gold);opacity:.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg></div>'
+      + bankEdit + '</div>'
     + '<div class="svc-stats">'
       + tile(fmt(st.games),'Games') + tile(fmt(st.wagered),'Wagered') + tile(fmt(st.taxed),'Tax earned')
       + tile(fmt(st.payout),'Paid out') + tile(fmt(st.players),'Players') + tile(fmt(st.big),'Biggest win')
     + '</div>'
     + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+(s.tax/100)+'%</span></span>'
-      + '<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button></div>'
-    + '<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>'
+      + (s.manage?'<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button>':'')+'</div>'
+    + ((s.owner||s.manage)?'<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>':'')
   + '</div>';
 }
 function tile(n,k){ return '<div class="svc-st"><div class="n">'+n+'</div><div class="k">'+esc(k)+'</div></div>'; }
@@ -170,6 +174,32 @@ function buyItem(id,itemId,back,btn){
         if(s) patchCard(s);
       } else { alert((j&&j.error)||'Purchase failed'); btn.disabled=false; btn.textContent=old; }
     }).catch(function(){ alert('Purchase failed'); btn.disabled=false; btn.textContent=old; });
+}
+
+// ── Admin: set a server bank to an exact amount ──────────────────────────────
+function editBank(id){
+  var s=SRV[id]; if(!s)return;
+  var back=document.createElement('div'); back.className='sg-dlg-back';
+  back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()">'
+    +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Edit bank</div>'
+    +'<div class="sg-dlg-bank">Current: <b>'+fmt(s.bank)+' FC</b></div>'
+    +'<label class="sg-dlg-lab">Set bank to (FC)</label>'
+    +'<div class="sg-dlg-row"><input id="bankIn" type="number" min="0" step="1" value="'+(s.bank|0)+'"></div>'
+    +'<div class="sg-dlg-hint">Admin override — sets the server bank to an exact amount.</div>'
+    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="bankCancel">Cancel</button><button class="btn btn-primary" id="bankSave">Save</button></div>'
+  +'</div>';
+  function close(){ try{document.body.removeChild(back);}catch(e){} }
+  back.addEventListener('click',close);
+  document.body.appendChild(back);
+  back.querySelector('#bankCancel').onclick=close;
+  var sv=back.querySelector('#bankSave');
+  sv.onclick=function(){ var v=Math.floor(Number(back.querySelector('#bankIn').value)); if(!(v>=0)){ alert('Enter a valid amount'); return; }
+    sv.disabled=true; sv.textContent='Saving…';
+    fetch('/api/server/bank',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({gid:id,set:v})})
+      .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok){ if(s)s.bank=j.bank; var el=document.getElementById('bank-'+id); if(el)el.innerHTML=fmt(j.bank)+'<small>FC</small>'; close(); }
+        else { alert((j&&j.error)||'Failed'); sv.disabled=false; sv.textContent='Save'; } })
+      .catch(function(){ alert('Failed'); sv.disabled=false; sv.textContent='Save'; });
+  };
 }
 
 // Live updates: server bank (WS push) + tax (edited via the sidebar dialog).

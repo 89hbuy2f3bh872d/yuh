@@ -146,6 +146,10 @@ async function ownsAnyServer(uid: string, gids: string[]): Promise<boolean> {
   ownsCache.set(uid, { owns, until: Date.now() + 60_000 });
   return owns;
 }
+// Holds the "servers" permission → may view + edit EVERY server (bank/tax/shop). Owner always true.
+const canManageServers = (uid: string): Promise<boolean> => admin.can(uid, "servers").catch(() => false);
+// Tax exemption (no 15% floor, no vote to raise): the "tax" or "servers" permission.
+const isTaxExempt = async (uid: string): Promise<boolean> => (await admin.can(uid, "tax").catch(() => false)) || (await canManageServers(uid));
 async function renderPage(request: Request, set: any, file: string, active: string, extra: Record<string, string> = {}) {
   const uid = await resolveSession(request);
   if (!uid) { return redir(set, "/login"); }
@@ -156,8 +160,9 @@ async function renderPage(request: Request, set: any, file: string, active: stri
   const bal = stdb.getBalance(uid);
   const tag = c.dtag || user?.tag || "Player";
   let avatar = c.dav || user?.av || ""; if (!avatar) avatar = fluxerAvatarUrl(uid, null);
-  const showAdmin = await admin.isAdmin(uid).catch(() => OWNERS.includes(uid)); // owner OR holds a permission
-  const showServers = await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []).catch(() => false);
+  const showAdmin = await admin.canSeePanel(uid).catch(() => OWNERS.includes(uid)); // owner OR a perm with a panel tab
+  let showServers = await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []).catch(() => false);
+  if (!showServers) showServers = await canManageServers(uid); // server-managers see it too
   let html = readFileSync(fp, "utf8")
     .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin, showServers }))
     .replace(/__BALANCE__/g, String(bal)).replace(/__TAG__/g, esc(tag)).replace(/__AVATAR__/g, esc(avatar)).replace(/__UID__/g, esc(uid));
@@ -286,20 +291,24 @@ const app = new Elysia()
       (ws.data as any).offNotif = stdb.onNotification(uid, (n) =>
         ws.send(JSON.stringify({ type: "notification", item: { t: n.kind, m: n.msg, a: Number(n.amount), f: n.fromTag, ts: Number(n.ts) } })));
       (ws.data as any).isAdmin = await admin.isAdmin(uid).catch(() => false);
-      // Live server-bank pushes for any servers this user owns (Servers dashboard).
+      // Live server-bank pushes for the Servers dashboard: servers this user owns,
+      // or ALL servers for a manager (the "servers" permission).
       try {
-        const u = await db.getUser(uid).catch(() => null);
-        const gids: string[] = Array.isArray(u?.gids) ? u.gids : [];
-        if (gids.length) {
-          const owned = (await db.getGuildsByIds(gids).catch(() => [])).filter((g: any) => g.ownerId === uid).map((g: any) => g._id);
-          if (owned.length) {
-            const offs: Array<() => void> = [];
-            for (const gid of owned) {
-              ws.send(JSON.stringify({ type: "bank", gid, bal: stdb.getServerBank(gid) }));
-              offs.push(stdb.onBank(gid, (b) => ws.send(JSON.stringify({ type: "bank", gid, bal: b }))));
-            }
-            (ws.data as any).offBanks = offs;
+        let watch: string[] = [];
+        if (await canManageServers(uid)) {
+          watch = (await db.getGuilds().catch(() => [])).map((g: any) => g._id);
+        } else {
+          const u = await db.getUser(uid).catch(() => null);
+          const gids: string[] = Array.isArray(u?.gids) ? u.gids : [];
+          if (gids.length) watch = (await db.getGuildsByIds(gids).catch(() => [])).filter((g: any) => g.ownerId === uid).map((g: any) => g._id);
+        }
+        if (watch.length) {
+          const offs: Array<() => void> = [];
+          for (const gid of watch) {
+            ws.send(JSON.stringify({ type: "bank", gid, bal: stdb.getServerBank(gid) }));
+            offs.push(stdb.onBank(gid, (b) => ws.send(JSON.stringify({ type: "bank", gid, bal: b }))));
           }
+          (ws.data as any).offBanks = offs;
         }
       } catch {}
       wsClients.add(ws);
@@ -572,14 +581,15 @@ app.get("/case-battle/:id", ({ request, set, params }) => renderPage(request, se
 // Admin as a seamless in-app tab (embeds /admin/panel in an iframe — CSS-isolated)
 app.get("/admin", async ({ request, set }) => {
   const uid = await resolveSession(request); if (!uid) return redir(set, "/login");
-  if (!(await admin.isAdmin(uid))) return redir(set, "/lobby");
+  if (!(await admin.canSeePanel(uid))) return redir(set, "/lobby");
   return renderPage(request, set, "admin.html", "admin");
 });
-// Servers dashboard — visible only to users who OWN a bot-guild.
+// Servers dashboard — server owners, plus admins with the "servers" permission.
 app.get("/servers", async ({ request, set }) => {
   const uid = await resolveSession(request); if (!uid) return redir(set, "/login");
   const user = await db.getUser(uid).catch(() => null);
-  if (!(await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []))) return redir(set, "/lobby");
+  const ok = (await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : [])) || (await canManageServers(uid));
+  if (!ok) return redir(set, "/lobby");
   return renderPage(request, set, "servers.html", "servers");
 });
 
@@ -778,16 +788,18 @@ app.get("/api/server/tax", async ({ request, query, set }) => {
   const gid = String((query as any)?.gid || parseCookies(request).srv || "");
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  const manageAll = await canManageServers(uid);              // "servers" perm → edit any server
   const owner = g.ownerId === uid;
-  const isBotOwner = owner && OWNERS.includes(uid);            // the bot owner bypasses the floor + vote
-  const voted = owner ? await hasVoted(uid) : false;
+  const manage = owner || manageAll;
+  const exempt = await isTaxExempt(uid);                       // "tax"/"servers" perm → no floor, no vote
+  const voted = manage ? await hasVoted(uid) : false;
   return {
-    gid, owner, voted, botOwner: isBotOwner,
+    gid, owner, manage, exempt, voted,
     taxBps: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
-    minBps: isBotOwner ? 0 : MIN_TAX_BPS, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS,
+    minBps: exempt ? 0 : MIN_TAX_BPS, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS,
     bank: stdb.getServerBank(gid),
-    canChange: owner,                                          // owners can always lower; raising needs a vote
-    needVoteToRaise: owner && !isBotOwner && !voted,
+    canChange: manage,                                         // lowering always ok; raising needs a vote (unless exempt)
+    needVoteToRaise: manage && !exempt && !voted,
     voteUrl: "https://fluxerlist.com/servers/fabrikken",
   };
 });
@@ -797,15 +809,16 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
   const gid = String(b?.gid || parseCookies(request).srv || "");
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
-  if (g.ownerId !== uid) { set.status = 403; return { error: "Only the server owner can change the tax" }; }
-  const isBotOwner = OWNERS.includes(uid);
-  const minBps = isBotOwner ? 0 : MIN_TAX_BPS;                 // 15% floor unless bot owner
+  const manageAll = await canManageServers(uid);
+  if (g.ownerId !== uid && !manageAll) { set.status = 403; return { error: "Only the server owner can change the tax" }; }
+  const exempt = await isTaxExempt(uid);                       // "tax"/"servers" perm bypasses floor + vote
+  const minBps = exempt ? 0 : MIN_TAX_BPS;                     // 15% floor otherwise
   const currentBps = Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS;
   const pct = Number(b?.percent), bpsRaw = Number(b?.taxBps);
   const bps = Number.isFinite(bpsRaw) ? bpsRaw : Number.isFinite(pct) ? Math.round(pct * 100) : NaN;
   if (!Number.isFinite(bps) || bps < minBps || bps > MAX_TAX_BPS) { set.status = 400; return { error: `Tax must be between ${minBps / 100}% and ${MAX_TAX_BPS / 100}%` }; }
-  // Lowering the tax is always allowed; raising it requires an active FluxerList vote.
-  if (!isBotOwner && bps > currentBps && !(await hasVoted(uid))) {
+  // Lowering the tax is always allowed; raising it requires an active FluxerList vote (unless exempt).
+  if (!exempt && bps > currentBps && !(await hasVoted(uid))) {
     set.status = 403; return { error: "Vote for the bot on FluxerList to raise your server's tax", needVote: true, voteUrl: "https://fluxerlist.com/servers/fabrikken" };
   }
   const saved = await (db as any).setGuildTax(gid, bps).catch(() => null);
@@ -817,21 +830,29 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
 // ── Servers dashboard data (owner-only): each owned server's tax, bank + stats ─
 app.get("/api/my-servers", async ({ request, set }) => {
   const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
-  const user = await db.getUser(uid).catch(() => null);
-  const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
-  if (!gids.length) return { servers: [], voted: false };
-  const guilds = await db.getGuildsByIds(gids).catch(() => []);
-  const owned = guilds.filter((g: any) => g.ownerId === uid);
-  if (!owned.length) return { servers: [], voted: false };
-  const stats: any[] = await (db as any).getServerStatsMany(owned.map((g: any) => g._id)).catch(() => []);
+  const manageAll = await canManageServers(uid);              // "servers" perm → every server
+  const exempt = await isTaxExempt(uid);
+  const base = { maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS, voteUrl: "https://fluxerlist.com/servers/fabrikken", shopItems: shopCatalog(), manageAll, exempt };
+  let guilds: any[];
+  if (manageAll) {
+    guilds = await db.getGuilds().catch(() => []);             // admins manage all known servers
+  } else {
+    const user = await db.getUser(uid).catch(() => null);
+    const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+    if (!gids.length) return { servers: [], voted: false, ...base };
+    guilds = (await db.getGuildsByIds(gids).catch(() => [])).filter((g: any) => g.ownerId === uid);
+  }
+  if (!guilds.length) return { servers: [], voted: manageAll ? true : false, ...base };
+  const stats: any[] = await (db as any).getServerStatsMany(guilds.map((g: any) => g._id)).catch(() => []);
   const statMap = new Map(stats.map((s: any) => [s._id, s]));
-  const voted = await hasVoted(uid);
+  const voted = manageAll ? true : await hasVoted(uid);       // managers are exempt; vote banner irrelevant
   const now = Date.now();
-  const servers = owned.map((g: any) => {
+  const servers = guilds.map((g: any) => {
     const s: any = statMap.get(g._id) || {}; const shop: any = g.shop || {};
     return {
       id: g._id, name: g.name || "Server", icon: g.icon || null,
       members: g.memberCount ?? null,
+      owner: g.ownerId === uid, manage: manageAll || g.ownerId === uid,
       tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
       bank: stdb.getServerBank(g._id),
       stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
@@ -839,7 +860,23 @@ app.get("/api/my-servers", async ({ request, set }) => {
               featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
     };
   });
-  return { servers, voted, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS, voteUrl: "https://fluxerlist.com/servers/fabrikken", shopItems: shopCatalog() };
+  return { servers, voted, ...base };
+});
+
+// Admin: set/adjust a server bank directly (needs the "servers" permission).
+app.post("/api/server/bank", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (!(await canManageServers(uid))) { set.status = 403; return { error: "Forbidden" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  let target: number;
+  if (typeof b.set === "number" && Number.isFinite(b.set)) target = Math.max(0, Math.floor(b.set));
+  else if (typeof b.delta === "number" && Number.isFinite(b.delta)) target = Math.max(0, stdb.getServerBank(gid) + Math.floor(b.delta));
+  else { set.status = 400; return { error: "Provide set or delta" }; }
+  try { await stdb.bankSet(gid, target); } catch { set.status = 400; return { error: "Failed to set bank" }; }
+  return { ok: true, bank: target };
 });
 
 // ── server Shop: buy a perk with the server bank (owner only) ─────────────────
@@ -849,7 +886,7 @@ app.post("/api/server/shop/buy", async ({ request, body, set }) => {
   const gid = String(b?.gid || "");
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
-  if (g.ownerId !== uid) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
+  if (g.ownerId !== uid && !(await canManageServers(uid))) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
   const item = SHOP_ITEMS.find(i => i.id === String(b?.itemId));
   if (!item) { set.status = 400; return { error: "Unknown item" }; }
   // Build the perk patch before spending so a bad request never charges the bank.
