@@ -5,33 +5,331 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Slots — SirGreen Casino</title>
 <link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/slots.css">
 </head>
 <body>
 <div class="app">
 __SIDEBAR__
 <main class="main">
+
+<!-- ── Lobby ─────────────────────────────────────────────────────────── -->
+<div id="view-list">
   <div class="page-head">
     <div>
       <h1 class="page-title">
         <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
         Slots
       </h1>
-      <div class="page-sub">Native SirGreen slot machine.</div>
+      <div class="page-sub">Tumble pays · free spins · buy bonus — provably server-resolved.</div>
+    </div>
+  </div>
+  <div class="slot-grid" id="slotGrid"><div class="empty">Loading…</div></div>
+</div>
+
+<!-- ── Game ──────────────────────────────────────────────────────────── -->
+<div id="view-game" class="hidden">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title" id="gameTitle"><span></span></h1>
+      <div class="page-sub" id="gameTag"></div>
+    </div>
+    <div class="page-actions">
+      <button class="btn btn-ghost" onclick="showInfo()"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Paytable</button>
+      <button class="btn btn-ghost" onclick="backToLobby()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Lobby</button>
     </div>
   </div>
 
-  <div class="soon-hero">
-    <div class="ring">
-      <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
+  <div class="machine">
+    <div class="machine-top">
+      <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
+      <div class="fs-banner hidden" id="fsBanner"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg> <span id="fsText">Free Spins</span></div>
+      <div class="meter right"><span class="meter-lbl">Balance</span><b id="balMeter">0</b> FC</div>
     </div>
-    <h2>Coming Soon</h2>
-    <p>We're building our own slot machine from scratch — weighted reels, multipliers, and smooth spins. Check back shortly.</p>
-    <a class="btn btn-secondary" href="/lobby">← Back to Lobby</a>
+
+    <div class="reel-stage">
+      <div class="reels" id="reels"></div>
+      <div class="stage-msg hidden" id="stageMsg"></div>
+    </div>
+
+    <div class="controls">
+      <div class="bet-box">
+        <span class="bet-lbl">Bet</span>
+        <button class="step-btn" onclick="adjustBet(-1)">−</button>
+        <span class="bet-val" id="betVal">20</span>
+        <button class="step-btn" onclick="adjustBet(1)">+</button>
+      </div>
+      <button class="spin-btn" id="spinBtn" onclick="doSpin(false)">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.5 1 6 2.5L21 3M21 3v6h-6"/></svg>
+        <span>SPIN</span>
+      </button>
+      <button class="buy-btn" id="buyBtn" onclick="doSpin(true)">
+        <span class="buy-top">Buy Bonus</span>
+        <span class="buy-cost" id="buyCost">—</span>
+      </button>
+    </div>
+    <div class="quick-bets" id="quickBets"></div>
   </div>
+</div>
+
 </main>
 </div>
+
+<!-- Paytable modal -->
+<div id="infoOverlay" class="overlay hidden" onclick="if(event.target===this)hideInfo()">
+  <div class="info-card">
+    <div class="info-head"><b id="infoTitle">Paytable</b><button class="btn btn-ghost btn-sm" onclick="hideInfo()">✕</button></div>
+    <div id="infoBody"></div>
+  </div>
+</div>
+
+<!-- Big-win overlay -->
+<div id="winOverlay" class="overlay hidden">
+  <div class="bigwin-card">
+    <div class="bigwin-label" id="bigwinLabel">BIG WIN</div>
+    <div class="bigwin-amt" id="bigwinAmt">0 FC</div>
+    <button class="btn btn-primary" onclick="$('winOverlay').classList.add('hidden')">Collect</button>
+  </div>
+</div>
+
 <script>
-(function(){function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=document.getElementById('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){})}rb();setInterval(rb,8000);})();
+function $(id){return document.getElementById(id);}
+function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+
+var GAMES = [];
+var GAME = null;          // active game config
+var bal = 0;
+var BET_LEVELS = [1,2,5,10,20,40,80,150,300,600,1000,2000];
+var betIdx = 4;           // 20
+var busy = false;
+var winMeterVal = 0;
+
+function refreshBal(){
+  return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){
+    if(d&&d.bal!==undefined){ bal=Number(d.bal); var e=$('sbBal'); if(e)e.textContent=fmt(bal); var bm=$('balMeter'); if(bm)bm.textContent=fmt(bal); }
+  }).catch(function(){});
+}
+refreshBal(); setInterval(function(){ if(!busy) refreshBal(); },8000);
+
+function bet(){ return BET_LEVELS[betIdx]; }
+function setBetMeters(){
+  $('betVal').textContent = fmt(bet());
+  if(GAME){ $('buyCost').textContent = fmt(bet()*GAME.buyX)+' FC'; }
+}
+function adjustBet(d){ betIdx=Math.max(0,Math.min(BET_LEVELS.length-1,betIdx+d)); setBetMeters(); renderQuick(); }
+function renderQuick(){
+  var el=$('quickBets'); if(!el) return; el.innerHTML='';
+  BET_LEVELS.forEach(function(v,i){
+    var b=document.createElement('button'); b.className='qbet'+(i===betIdx?' on':''); b.textContent=fmt(v);
+    b.onclick=function(){ betIdx=i; setBetMeters(); renderQuick(); };
+    el.appendChild(b);
+  });
+}
+
+// ── Lobby ───────────────────────────────────────────────────────────────
+fetch('/api/slots/games').then(function(r){return r.json()}).then(function(d){
+  GAMES=d.games||[]; renderLobby();
+}).catch(function(){ $('slotGrid').innerHTML='<div class="empty">Failed to load games.</div>'; });
+
+function renderLobby(){
+  var el=$('slotGrid'); el.innerHTML='';
+  GAMES.forEach(function(g){
+    var syms=Object.keys(g.sym).slice(-4).map(function(k){return g.sym[k];}).join(' ');
+    var card=document.createElement('div'); card.className='slot-card'; card.style.setProperty('--gc',g.color);
+    card.innerHTML=
+      '<div class="slot-card-art">'+g.scatter.emoji+'<span>'+syms+'</span></div>'+
+      '<div class="slot-card-body">'+
+        '<div class="slot-card-name">'+g.name+'</div>'+
+        '<div class="slot-card-tag">'+g.tag+'</div>'+
+        '<div class="slot-card-meta">'+g.W+'×'+g.H+' · '+g.scatter.count+'+ '+g.scatter.emoji+' = '+g.scatter.spins+' free</div>'+
+      '</div>'+
+      '<button class="btn btn-primary slot-play">Play</button>';
+    card.querySelector('.slot-play').onclick=function(){ openGame(g.id); };
+    el.appendChild(card);
+  });
+}
+
+function openGame(id){
+  GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME) return;
+  $('view-list').classList.add('hidden');
+  $('view-game').classList.remove('hidden');
+  $('gameTitle').querySelector('span').textContent=GAME.name;
+  $('gameTitle').style.setProperty('--gc',GAME.color);
+  $('gameTag').textContent=GAME.tag;
+  document.querySelector('.machine').style.setProperty('--gc',GAME.color);
+  setBetMeters(); renderQuick();
+  buildEmptyGrid(); fillRandom();
+  refreshBal();
+}
+function backToLobby(){ if(busy) return; $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
+
+// ── Grid ────────────────────────────────────────────────────────────────
+function buildEmptyGrid(){
+  var r=$('reels'); r.style.setProperty('--w',GAME.W); r.style.setProperty('--h',GAME.H);
+  r.innerHTML='';
+  for(var i=0;i<GAME.W*GAME.H;i++){
+    var c=document.createElement('div'); c.className='cell'; c.id='cell-'+i;
+    c.innerHTML='<div class="sym"></div>';
+    r.appendChild(c);
+  }
+}
+function symEmoji(s){
+  if(s===GAME.scatter.id||s==='SC') return GAME.scatter.emoji;
+  if(typeof s==='string'&&s.indexOf('M:')===0) return GAME.mult.emoji;
+  return GAME.sym[s]||'❔';
+}
+function isMult(s){ return typeof s==='string'&&s.indexOf('M:')===0; }
+function multVal(s){ return parseInt(s.slice(2),10)||0; }
+
+function renderGrid(cells, opts){
+  opts=opts||{};
+  for(var i=0;i<cells.length;i++){
+    var cell=$('cell-'+i); if(!cell) continue;
+    var s=cells[i];
+    cell.className='cell'+(opts.drop?' drop':'');
+    var badge = isMult(s) ? '<span class="mbadge">x'+multVal(s)+'</span>' : (s===GAME.scatter.id?'<span class="scbadge"></span>':'');
+    cell.innerHTML='<div class="sym">'+symEmoji(s)+badge+'</div>';
+  }
+}
+function fillRandom(){
+  var keys=Object.keys(GAME.sym); var cells=[];
+  for(var i=0;i<GAME.W*GAME.H;i++) cells.push(keys[Math.floor(Math.random()*keys.length)]);
+  renderGrid(cells);
+}
+
+function highlight(positions, on){
+  positions.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.toggle('win', on); });
+}
+function dim(except){
+  var set={}; (except||[]).forEach(function(i){set[i]=1;});
+  for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c) c.classList.toggle('dim', !set[i]); }
+}
+function clearFx(){
+  for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c){ c.classList.remove('win','dim','pop','mhit'); } }
+}
+
+// ── Spin / round animation ──────────────────────────────────────────────
+function setWinMeter(v){ winMeterVal=v; $('winMeter').textContent=fmt(v); }
+function stageMsg(t){ var m=$('stageMsg'); if(!t){m.classList.add('hidden');return;} m.textContent=t; m.classList.remove('hidden'); }
+
+function doSpin(buy){
+  if(busy||!GAME) return;
+  var b=bet(); var cost=buy?b*GAME.buyX:b;
+  if(cost>bal){ stageMsg('Not enough balance'); setTimeout(function(){stageMsg('');},1200); return; }
+  busy=true; setControls(false); setWinMeter(0); $('fsBanner').classList.add('hidden'); stageMsg('');
+  bal-=cost; $('balMeter').textContent=fmt(bal);
+  fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:!!buy})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){ stageMsg(d.error); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); setTimeout(function(){stageMsg('');},1400); return; }
+      animateRound(d);
+    }).catch(function(){ stageMsg('Network error'); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); });
+}
+
+async function animateRound(d){
+  var TURBO = false;
+  var roundWin = 0;
+  var fast = d.spins.length > 14; // long bonus → speed up
+  for(var si=0; si<d.spins.length; si++){
+    var sp = d.spins[si];
+    if(sp.free){
+      var idx = d.spins.slice(0,si+1).filter(function(x){return x.free;}).length;
+      var totalFree = d.spins.filter(function(x){return x.free;}).length;
+      $('fsBanner').classList.remove('hidden');
+      $('fsText').textContent='Free Spin '+idx+' / '+totalFree;
+    }
+    if(si>0 && d.spins[si-1] && !d.spins[si-1].free && sp.free){
+      stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
+    }
+    await animateSpin(sp, roundWin, fast);
+    roundWin += sp.total;
+    setWinMeter(roundWin);
+    await sleep(fast?120:300);
+  }
+  // finish
+  if(d.totalWin>0){ await bigWin(d.totalWin, d.bet); }
+  bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
+  $('fsBanner').classList.add('hidden');
+  busy=false; setControls(true);
+}
+
+async function animateSpin(sp, runningBefore, fast){
+  var STEP=fast?320:620, POP=fast?180:330;
+  clearFx();
+  // initial grid drops in
+  renderGrid(sp.steps[0].grid, {drop:true});
+  await sleep(fast?180:340);
+  var spinWin=0;
+  for(var st=0; st<sp.steps.length; st++){
+    var step=sp.steps[st];
+    if(!step.wins||!step.wins.length) break; // last (no win) step
+    var winPos=[];
+    step.wins.forEach(function(w){ w.positions.forEach(function(p){winPos.push(p);}); });
+    dim(winPos); highlight(winPos,true);
+    spinWin += step.stepWin;
+    setWinMeter(runningBefore + spinWin);
+    await sleep(STEP);
+    // pop winners
+    winPos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('pop'); });
+    await sleep(POP);
+    clearFx();
+    // drop to next grid
+    if(sp.steps[st+1]) renderGrid(sp.steps[st+1].grid,{drop:true});
+    await sleep(fast?150:280);
+  }
+  // multipliers
+  if(sp.multApplied>0){
+    var fin = sp.steps[sp.steps.length-1].grid;
+    var mpos=[];
+    for(var i=0;i<fin.length;i++){ if(isMult(fin[i])) mpos.push(i); }
+    mpos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('mhit'); });
+    stageMsg('×'+sp.multApplied);
+    await sleep(fast?500:900);
+    stageMsg('');
+    clearFx();
+  }
+  if(sp.scatters>=GAME.scatter.count && sp.scatterWin>0 && !sp.free){
+    // base trigger glow handled by FREE SPINS msg in round loop
+  }
+}
+
+async function bigWin(total, betAmt){
+  var x = total / betAmt;
+  if(x < 15) return; // only celebrate sizeable wins
+  var label = x>=200?'MEGA WIN':(x>=75?'EPIC WIN':'BIG WIN');
+  $('bigwinLabel').textContent=label;
+  var amt=$('bigwinAmt'); $('winOverlay').classList.remove('hidden');
+  var start=0, dur=1400, t0=Date.now();
+  return new Promise(function(resolve){
+    (function tick(){
+      var p=Math.min(1,(Date.now()-t0)/dur);
+      amt.textContent=fmt(total*p)+' FC';
+      if(p<1) requestAnimationFrame(tick);
+      else { amt.textContent=fmt(total)+' FC'; setTimeout(function(){ $('winOverlay').classList.add('hidden'); resolve(); }, 1100); }
+    })();
+  });
+}
+
+function setControls(on){
+  $('spinBtn').disabled=!on; $('buyBtn').disabled=!on;
+  document.querySelectorAll('.step-btn,.qbet').forEach(function(b){ b.disabled=!on; });
+}
+
+// ── Paytable ────────────────────────────────────────────────────────────
+function showInfo(){
+  if(!GAME) return;
+  $('infoTitle').textContent=GAME.name+' — Paytable';
+  var html='<div class="pt-note">Pays for '+GAME.minPay+'+ matching symbols anywhere. Wins tumble — winners vanish, new symbols drop. '+GAME.scatter.count+'+ '+GAME.scatter.emoji+' awards '+GAME.scatter.spins+' free spins. '+GAME.mult.emoji+' multipliers apply '+(GAME.mult.when==='always'?'every spin':'in free spins')+'.</div>';
+  html+='<div class="pt-grid">';
+  Object.keys(GAME.pays).reverse().forEach(function(k){
+    var tiers=GAME.pays[k];
+    var rows=tiers.map(function(t){return '<span>'+t[0]+'+ &nbsp;<b>'+t[1]+'×</b></span>';}).join('');
+    html+='<div class="pt-row"><div class="pt-sym">'+GAME.sym[k]+'</div><div class="pt-tiers">'+rows+'</div></div>';
+  });
+  html+='</div>';
+  $('infoBody').innerHTML=html;
+  $('infoOverlay').classList.remove('hidden');
+}
+function hideInfo(){ $('infoOverlay').classList.add('hidden'); }
 </script>
 </body>
 </html>

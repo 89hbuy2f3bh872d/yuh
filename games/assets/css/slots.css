@@ -1,0 +1,93 @@
+/* Slots — loaded after app.css. Aliases hyphen vars to the app palette. */
+:root{--surface-2:var(--surface2);--surface-3:var(--surface3);--text-2:var(--text2);--text-3:var(--text3);--border-2:var(--border2)}
+
+/* ── Lobby ─────────────────────────────────────────────────────────── */
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem}
+.slot-card{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,border-color .15s,box-shadow .2s}
+.slot-card:hover{transform:translateY(-3px);border-color:var(--gc);box-shadow:0 12px 40px -12px var(--gc)}
+.slot-card-art{height:120px;display:flex;align-items:center;justify-content:center;gap:.5rem;font-size:3rem;position:relative;
+  background:radial-gradient(circle at 50% 30%, color-mix(in srgb,var(--gc) 38%, transparent), transparent 70%), linear-gradient(160deg,var(--surface-2),var(--bg))}
+.slot-card-art span{font-size:1.5rem;letter-spacing:.1rem}
+.slot-card-body{padding:.9rem 1rem;flex:1}
+.slot-card-name{font-size:1.05rem;font-weight:800;letter-spacing:-.01em}
+.slot-card-tag{font-size:.74rem;color:var(--text-2);margin-top:.2rem}
+.slot-card-meta{font-size:.66rem;color:var(--text-3);margin-top:.5rem;font-variant-numeric:tabular-nums}
+.slot-play{margin:0 1rem 1rem;justify-content:center;background:var(--gc);border-color:var(--gc)}
+
+/* ── Machine ───────────────────────────────────────────────────────── */
+#gameTitle{--gc:#22c55e}
+#gameTitle span{color:var(--gc)}
+.machine{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.1rem;max-width:680px;margin:0 auto;position:relative;overflow:hidden}
+.machine::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0%, color-mix(in srgb,var(--gc) 14%, transparent), transparent 60%)}
+.machine-top{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.8rem;position:relative}
+.meter{font-size:.72rem;color:var(--text-2);font-variant-numeric:tabular-nums}
+.meter.right{text-align:right}
+.meter b{display:block;font-size:1.15rem;color:var(--text);font-weight:800}
+.meter-lbl{text-transform:uppercase;letter-spacing:.08em;font-size:.56rem;color:var(--text-3)}
+.fs-banner{display:flex;align-items:center;gap:.35rem;font-size:.78rem;font-weight:800;color:var(--gc);padding:.3rem .7rem;border:1px solid var(--gc);border-radius:99px;background:color-mix(in srgb,var(--gc) 12%, transparent);animation:fsPulse 1.4s ease-in-out infinite}
+.fs-banner svg{width:14px;height:14px}
+@keyframes fsPulse{50%{box-shadow:0 0 18px -2px var(--gc)}}
+
+.reel-stage{position:relative;border-radius:12px;background:linear-gradient(180deg,var(--bg),#05060a);border:1px solid var(--border);padding:.5rem;overflow:hidden}
+.reels{display:grid;grid-template-columns:repeat(var(--w),1fr);gap:.3rem}
+.cell{aspect-ratio:1;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;justify-content:center;position:relative;transition:opacity .2s,transform .12s}
+.cell .sym{font-size:clamp(1.3rem,5.4vw,2.3rem);line-height:1;position:relative;display:flex;align-items:center;justify-content:center}
+.cell.drop{animation:cellDrop .34s cubic-bezier(.2,.8,.3,1.1) both}
+@keyframes cellDrop{from{transform:translateY(-42%);opacity:0}to{transform:translateY(0);opacity:1}}
+.cell.win{border-color:var(--gc);background:color-mix(in srgb,var(--gc) 18%, var(--surface-2));box-shadow:0 0 16px -3px var(--gc);z-index:2}
+.cell.dim{opacity:.32}
+.cell.pop{animation:cellPop .3s ease forwards}
+@keyframes cellPop{60%{transform:scale(1.18)}100%{transform:scale(0);opacity:0}}
+.cell.mhit{border-color:var(--gold);box-shadow:0 0 20px -2px var(--gold);animation:mPulse .5s ease}
+@keyframes mPulse{50%{transform:scale(1.12)}}
+.mbadge{position:absolute;right:-2px;bottom:-2px;font-size:.6rem;font-weight:900;color:#111;background:var(--gold);border-radius:5px;padding:.05rem .22rem;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.scbadge{position:absolute;inset:0;border-radius:9px;box-shadow:0 0 14px -2px var(--gc) inset;pointer-events:none}
+
+.stage-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:5;
+  font-size:clamp(2rem,9vw,4rem);font-weight:900;letter-spacing:-.02em;color:var(--gc);
+  text-shadow:0 4px 24px rgba(0,0,0,.7);background:rgba(5,6,10,.45);backdrop-filter:blur(2px);animation:msgPop .3s ease}
+@keyframes msgPop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ── Controls ──────────────────────────────────────────────────────── */
+.controls{display:flex;align-items:center;gap:.7rem;margin-top:.9rem;position:relative;flex-wrap:wrap;justify-content:center}
+.bet-box{display:flex;align-items:center;gap:.4rem;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:.4rem .55rem}
+.bet-lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);font-weight:700}
+.bet-val{font-size:1rem;font-weight:800;min-width:54px;text-align:center;font-variant-numeric:tabular-nums}
+.step-btn{width:30px;height:30px;border-radius:7px;background:var(--surface);border:1px solid var(--border);color:var(--gc);font-size:1.1rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.step-btn:hover{border-color:var(--gc)}
+.spin-btn{flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.9rem 1.2rem;border-radius:12px;font-size:1rem;font-weight:900;letter-spacing:.04em;color:#06150b;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--gc) 88%, white),var(--gc));box-shadow:0 6px 22px -8px var(--gc);transition:transform .1s,filter .15s}
+.spin-btn svg{width:18px;height:18px}
+.spin-btn:hover{filter:brightness(1.08)}
+.spin-btn:active{transform:translateY(1px)}
+.spin-btn:disabled,.buy-btn:disabled{opacity:.5;cursor:not-allowed}
+.buy-btn{display:flex;flex-direction:column;align-items:center;gap:.05rem;padding:.55rem 1rem;border-radius:12px;border:1px solid var(--gold);background:linear-gradient(180deg,#241c00,#1a1400);color:var(--gold)}
+.buy-btn:hover{box-shadow:0 0 18px -4px var(--gold)}
+.buy-top{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.buy-cost{font-size:.78rem;font-weight:900;font-variant-numeric:tabular-nums}
+.quick-bets{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:center;margin-top:.7rem}
+.qbet{font-size:.66rem;font-weight:700;padding:.25rem .5rem;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text-2);font-variant-numeric:tabular-nums}
+.qbet.on{border-color:var(--gc);color:var(--gc);background:color-mix(in srgb,var(--gc) 12%, transparent)}
+
+/* ── Overlays ──────────────────────────────────────────────────────── */
+.overlay{position:fixed;inset:0;z-index:200;background:rgba(9,9,11,.84);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1rem;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:460px;width:100%;max-height:84vh;overflow:auto;padding:1.2rem}
+.info-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
+.info-head b{font-size:1.05rem;font-weight:800}
+.pt-note{font-size:.74rem;color:var(--text-2);line-height:1.5;margin-bottom:.9rem}
+.pt-grid{display:flex;flex-direction:column;gap:.4rem}
+.pt-row{display:flex;align-items:center;gap:.8rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:.4rem .6rem}
+.pt-sym{font-size:1.6rem;width:40px;text-align:center}
+.pt-tiers{display:flex;flex-wrap:wrap;gap:.4rem .9rem;font-size:.72rem;color:var(--text-2)}
+.pt-tiers b{color:var(--text)}
+
+.bigwin-card{text-align:center;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes popIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+.bigwin-label{font-size:1.4rem;font-weight:900;letter-spacing:.12em;color:var(--gold);text-shadow:0 0 24px var(--gold)}
+.bigwin-amt{font-size:3rem;font-weight:900;margin:.4rem 0 1.2rem;font-variant-numeric:tabular-nums}
+
+@media(max-width:680px){
+  .controls{gap:.5rem}
+  .spin-btn{order:-1;width:100%;flex-basis:100%}
+}

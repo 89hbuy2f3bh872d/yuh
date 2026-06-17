@@ -92,10 +92,12 @@
 .checkbox-row.gold{border-color:#eab30822}.checkbox-row.gold .label-text{color:var(--gold)}.checkbox-row.gold .label-text svg{color:var(--gold)}
 .checkbox-row.purple{border-color:#a855f722}.checkbox-row.purple .label-text{color:var(--purple)}.checkbox-row.purple .label-text svg{color:var(--purple)}
 .checkbox-row.fast{border-color:#22c55e22}.checkbox-row.fast .label-text{color:var(--accent)}.checkbox-row.fast .label-text svg{color:var(--accent)}
+.checkbox-row.blue{border-color:#3b82f622}.checkbox-row.blue .label-text{color:var(--blue)}.checkbox-row.blue .label-text svg{color:var(--blue)}
 .checkbox-row.active{background:var(--surface-2)}
 .checkbox-row.fast.active{border-color:var(--accent);box-shadow:0 0 0 1px #22c55e33 inset}
 .checkbox-row.gold.active{border-color:var(--gold);box-shadow:0 0 0 1px #eab30833 inset}
 .checkbox-row.purple.active{border-color:var(--purple);box-shadow:0 0 0 1px #a855f733 inset}
+.checkbox-row.blue.active{border-color:var(--blue);box-shadow:0 0 0 1px #3b82f633 inset}
 
 /* Arena */
 .arena{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;position:relative;overflow:hidden}
@@ -212,10 +214,24 @@
   background:linear-gradient(90deg,transparent,rgba(34,197,94,.55) 25%,rgba(34,197,94,.7) 50%,rgba(34,197,94,.55) 75%,transparent);
   box-shadow:0 0 10px rgba(34,197,94,.3)}
 .pcol-strip{position:absolute;left:0;right:0;top:0;will-change:transform}
-.pcol-item{height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;border-bottom:1px solid rgba(34,197,94,.08)}
+.pcol-strip.idle{animation:idleScroll 9s linear infinite}
+@keyframes idleScroll{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+.pcol-item{position:relative;height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem}
+/* divider between items: dark grey gradient with a faint green hint (never red) */
+.pcol-item::after{content:'';position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(82,90,86,.22) 30%,rgba(34,197,94,.20) 50%,rgba(82,90,86,.22) 70%,transparent)}
 .pcol-emoji{font-size:2.3rem;line-height:1}
 .pcol-val{font-size:.62rem;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 .pcol-item.win .pcol-emoji{filter:drop-shadow(0 0 7px var(--accent))}
+/* reel cover — hidden mode + waiting slots */
+.pcol-cover{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;
+  background:rgba(9,9,11,.78);backdrop-filter:blur(3px);color:var(--text-2);font-size:.72rem;font-weight:700;text-align:center;padding:.6rem}
+.pcol-cover svg{width:22px;height:22px;color:var(--text-3)}
+.pcol-cover .wait-label{color:var(--text-2);letter-spacing:.02em}
+.pcol-botbtn{margin-top:.2rem}
+.pcol.masked{border-color:var(--border)}
+.pcol.waiting{border-style:dashed;opacity:.92}
+.pcol.waiting .player-tag.muted{color:var(--text-3);font-weight:600;font-size:.78rem}
 .pcol-foot{display:flex;justify-content:space-between;align-items:center;font-size:.74rem}
 .pcol-total{color:var(--text-2)}
 .pcol-total b{color:var(--text);font-variant-numeric:tabular-nums}

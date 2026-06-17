@@ -7,6 +7,7 @@ import fs      from "fs";
 import path    from "path";
 import { fileURLToPath } from "url";
 import { AdminPanel }    from "./AdminPanel.mjs";
+import * as Slots        from "./SlotEngine.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -839,6 +840,49 @@ export class WebServer {
       return this._json(res, 200, { bal: Number(user?.bal ?? 0) });
     }
 
+    // ── Slots ─────────────────────────────────────────────────────────────────
+    if (p === "/api/slots/games" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      return this._json(res, 200, { games: Slots.listGames() });
+    }
+
+    // POST /api/slots/spin { game, bet, buy } — resolve a whole round server-side
+    if (p === "/api/slots/spin" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      let data;
+      try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const cfg = Slots.getGame(String(data.game || ""));
+      if (!cfg) return this._json(res, 400, { error: "Unknown game" });
+      const bet = Math.floor(Number(data.bet) || 0);
+      if (!(bet >= 1) || bet > 1_000_000) return this._json(res, 400, { error: "Invalid bet" });
+      const buy = !!data.buy;
+      const cost = buy ? bet * cfg.buyX : bet;
+
+      // Deduct stake atomically, resolve round, credit winnings.
+      const ok = await this.db.atomicDeduct(uid, -cost);
+      if (!ok) return this._json(res, 200, { error: "Insufficient balance" });
+      let result;
+      try {
+        result = Slots.spin(cfg.id, bet, buy);
+      } catch (e) {
+        await this.db.updateBalance(uid, cost).catch(() => {}); // refund on engine error
+        return this._json(res, 500, { error: "Spin failed" });
+      }
+      if (result.totalWin > 0) await this.db.updateBalance(uid, result.totalWin).catch(() => {});
+      this.db.recordGame(uid, result.totalWin >= cost, cost).catch(() => {});
+      const user = await this.db.getUser(uid).catch(() => null);
+      return this._json(res, 200, {
+        game: cfg.id, bet, cost, buy,
+        spins: result.spins,
+        totalWin: result.totalWin,
+        freeTriggered: result.freeTriggered,
+        freeAwarded: result.freeAwarded,
+        balance: Number(user?.bal ?? 0),
+      });
+    }
+
     // ── Send-money picker: search users (no balance leak) ─────────────────────
     if (p === "/api/users/search" && req.method === "GET") {
       const uid = this._uid(req);
@@ -922,7 +966,7 @@ export class WebServer {
       const tag = decodeURIComponent(cookies.dtag || uid);
       let data;
       try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
-      const { cases, mode, maxPlayers, speed, jackpot, crazy } = data;
+      const { cases, mode, maxPlayers, speed, jackpot, crazy, hidden } = data;
 
       if (!Array.isArray(cases) || cases.length === 0)
         return this._json(res, 400, { error: "At least one case is required" });
@@ -931,10 +975,10 @@ export class WebServer {
       const mp = Math.max(2, Math.min(8, Number(maxPlayers) || 2));
       // speed: "normal" | "fast" (faster reveal)
       const sp = speed === "fast" ? "fast" : "normal";
-      // Jackpot mode: +50% to pot for winner (admin feature)
       const jp = !!jackpot;
-      // Crazy mode: random multi-item reveal (admin feature)
       const cr = !!crazy;
+      // Hidden mode: opponents' pulls + odds masked until the battle resolves.
+      const hd = !!hidden;
 
       // Validate cases and compute entry cost
       const validatedCases = [];
@@ -968,6 +1012,7 @@ export class WebServer {
         speed: sp,
         jackpot: jp,
         crazy: cr,
+        hidden: hd,
         phase: "pending",
         players: [{ uid, tag, avatar, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
         createdAt: Date.now(),
@@ -1054,39 +1099,51 @@ export class WebServer {
       const allAccepted = realPlayers.every(pl => battle.recreateAccepts.has(pl.uid));
       if (!allAccepted) return this._json(res, 200, { accepted: battle.recreateAccepts.size, needed: realPlayers.length });
 
-      // Re-check affordability + deduct for every real player.
-      const charged = [];
-      for (const pl of realPlayers) {
-        const d = await this.db.atomicDeduct(pl.uid, -battle.cost);
-        if (!d) { // refund any already charged, abort
-          for (const c of charged) await this.db.updateBalance(c, battle.cost).catch(() => {});
-          battle.recreateAccepts.delete(pl.uid);
-          return this._json(res, 200, { error: `${pl.tag || pl.uid} can no longer afford it` });
+      // Only ONE request may build the rematch (avoid double-charge / double-create
+      // when both players accept near-simultaneously). Others wait for the id.
+      if (battle._recreating) {
+        return this._json(res, 200, { accepted: battle.recreateAccepts.size, needed: realPlayers.length, pending: true });
+      }
+      battle._recreating = true;
+      try {
+        if (battle.recreateBattleId) return this._json(res, 200, { battleId: battle.recreateBattleId });
+
+        // Re-check affordability + deduct for every real player.
+        const charged = [];
+        for (const pl of realPlayers) {
+          const d = await this.db.atomicDeduct(pl.uid, -battle.cost);
+          if (!d) { // refund any already charged, abort
+            for (const c of charged) await this.db.updateBalance(c, battle.cost).catch(() => {});
+            battle.recreateAccepts.delete(pl.uid);
+            return this._json(res, 200, { error: `${pl.tag || pl.uid} can no longer afford it` });
+          }
+          charged.push(pl.uid);
         }
-        charged.push(pl.uid);
-      }
 
-      const newId = crypto.randomBytes(8).toString("hex");
-      const players = [];
-      for (const pl of realPlayers) {
-        const u2 = await this.db.getUser(pl.uid).catch(() => null);
-        players.push({ uid: pl.uid, tag: pl.tag, avatar: u2?.av || fluxerAvatarUrl(pl.uid, null), cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
-        this._cbUserBattle.set(pl.uid, newId);
-      }
-      const botCount = battle.players.filter(pl => pl.bot).length;
-      for (let i = 0; i < botCount; i++) players.push(this._cbMakeBot(battle.cost));
+        const newId = crypto.randomBytes(8).toString("hex");
+        const players = [];
+        for (const pl of realPlayers) {
+          const u2 = await this.db.getUser(pl.uid).catch(() => null);
+          players.push({ uid: pl.uid, tag: pl.tag, avatar: u2?.av || fluxerAvatarUrl(pl.uid, null), cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
+          this._cbUserBattle.set(pl.uid, newId);
+        }
+        const botCount = battle.players.filter(pl => pl.bot).length;
+        for (let i = 0; i < botCount; i++) players.push(this._cbMakeBot(battle.cost));
 
-      const nb = {
-        id: newId, creatorUid: battle.creatorUid, mode: battle.mode, maxPlayers: battle.maxPlayers,
-        cases: battle.cases.map(c => ({ ...c })), cost: battle.cost, pot: battle.cost * battle.maxPlayers,
-        speed: battle.speed, jackpot: battle.jackpot, crazy: battle.crazy,
-        phase: "pending", players, createdAt: Date.now(), resolvedAt: 0, winnerUid: null,
-        watchers: new Set(), recreateAccepts: new Set(), recreateBattleId: null,
-      };
-      this._cbActive.set(newId, nb);
-      battle.recreateBattleId = newId;
-      if (nb.players.length >= nb.maxPlayers) this._cbStartBattle(nb);
-      return this._json(res, 200, { battleId: newId });
+        const nb = {
+          id: newId, creatorUid: battle.creatorUid, mode: battle.mode, maxPlayers: battle.maxPlayers,
+          cases: battle.cases.map(c => ({ ...c })), cost: battle.cost, pot: battle.cost * battle.maxPlayers,
+          speed: battle.speed, jackpot: battle.jackpot, crazy: battle.crazy, hidden: battle.hidden,
+          phase: "pending", players, createdAt: Date.now(), resolvedAt: 0, winnerUid: null,
+          watchers: new Set(), recreateAccepts: new Set(), recreateBattleId: null,
+        };
+        this._cbActive.set(newId, nb);
+        battle.recreateBattleId = newId;
+        if (nb.players.length >= nb.maxPlayers) this._cbStartBattle(nb);
+        return this._json(res, 200, { battleId: newId });
+      } finally {
+        battle._recreating = false;
+      }
     }
 
     // POST /api/case-battle/:id/watch — register as a watcher
@@ -1113,6 +1170,10 @@ export class WebServer {
       if (!battle) return this._json(res, 200, { notFound: true });
       const isPlayer = battle.players.some(p => p.uid === uid);
       const realPlayers = battle.players.filter(pl => !pl.bot);
+      // Hidden mode: while the battle is unresolved, mask everyone except the
+      // viewer (and only for players — watchers spectate fully). Reveal on done.
+      const reveal = battle.phase === "done";
+      const maskOf = (pl) => !!battle.hidden && !reveal && isPlayer && pl.uid !== uid;
 
       return this._json(res, 200, {
         id: battle.id,
@@ -1124,10 +1185,12 @@ export class WebServer {
         speed: battle.speed || "normal",
         jackpot: !!battle.jackpot,
         crazy: !!battle.crazy,
+        hidden: !!battle.hidden,
         creatorUid: battle.creatorUid,
         phase: battle.phase,
         startsAt: battle.startsAt || null,
         openedAt: battle.openedAt || null,
+        now: Date.now(),
         caseStaggerMs: battle.caseStaggerMs || 600,
         caseSpinMs: battle.caseSpinMs || 400,
         jackpotWheelMs: battle.jackpotWheelMs || 0,
@@ -1140,17 +1203,21 @@ export class WebServer {
           needed: realPlayers.length,
           newBattleId: battle.recreateBattleId || null,
         },
-        players: battle.players.map(p => ({
-          uid: p.uid,
-          tag: p.tag || p.uid,
-          avatar: p.avatar || (p.bot ? "" : fluxerAvatarUrl(p.uid, null)),
-          bot: !!p.bot,
-          cost: p.cost,
-          rewards: p.rewards || [],
-          totalValue: p.totalValue || 0,
-          netWin: p.netWin || 0,
-          winChance: typeof p.winChance === "number" ? p.winChance : null,
-        })),
+        players: battle.players.map(p => {
+          const m = maskOf(p);
+          return {
+            uid: p.uid,
+            tag: p.tag || p.uid,
+            avatar: p.avatar || (p.bot ? "" : fluxerAvatarUrl(p.uid, null)),
+            bot: !!p.bot,
+            cost: p.cost,
+            rewards: m ? [] : (p.rewards || []),
+            totalValue: m ? 0 : (p.totalValue || 0),
+            netWin: m ? 0 : (p.netWin || 0),
+            winChance: battle.hidden ? null : (typeof p.winChance === "number" ? p.winChance : null),
+            hiddenMasked: m,
+          };
+        }),
       });
     }
 

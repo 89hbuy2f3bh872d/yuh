@@ -117,6 +117,16 @@ __SIDEBAR__
           <div class="hint">Lowest total wins everything</div>
         </label>
       </div>
+      <div class="checkbox-row blue" id="row-hidden" onclick="toggleSetting('hidden')">
+        <input type="checkbox" id="cb-hidden" tabindex="-1">
+        <label>
+          <div class="label-text">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24M1 1l22 22"/></svg>
+            Hidden mode
+          </div>
+          <div class="hint">Opponents' pulls & odds stay hidden until the end</div>
+        </label>
+      </div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;padding:.7rem;font-size:.85rem;margin-top:1.4rem" onclick="createBattle()">
         <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         Create battle
@@ -200,7 +210,7 @@ var tierMap = {};
 var mode = 'regular';
 var playerCount = 2;
 var caseQty = {};
-var battleSettings = { speed: false, jackpot: false, crazy: false };
+var battleSettings = { speed: false, jackpot: false, crazy: false, hidden: false };
 var pollTimer = null;
 var listTimer = null;
 var currentBattle = null;
@@ -271,7 +281,7 @@ function createBattle(){
   fetch('/api/case-battle/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     cases:cases,mode:mode,maxPlayers:playerCount,
     speed:battleSettings.speed?'fast':'normal',
-    jackpot:battleSettings.jackpot,crazy:battleSettings.crazy
+    jackpot:battleSettings.jackpot,crazy:battleSettings.crazy,hidden:battleSettings.hidden
   })})
   .then(function(r){return r.json()}).then(function(d){
     if(d.error){alert(d.error);return;}
@@ -358,10 +368,13 @@ function pollBattle(){
   if(!currentBattle)return;
   fetch('/api/case-battle/'+currentBattle.id).then(function(r){return r.json()}).then(function(d){
     if(d.notFound){stopBattlePoll();showList();return;}
-    // Mark opening start the first time we see it
-    if(d.phase==='opening'&&!openedAt){
-      // openedAt is server timestamp; estimate client offset by comparing to "now"
-      openedAt = Date.now();
+    if(d.phase==='opening'&&!openedAt) openedAt = Date.now();
+    // Seamless recreate: the instant a rematch exists, follow it — no matter what
+    // overlay is up. Runs before renderArena so nothing can swallow it.
+    if(d.recreate && d.recreate.newBattleId && currentBattle && currentBattle.id===d.id && !currentBattle.followed){
+      currentBattle.followed = true;
+      followRecreate(d.recreate.newBattleId);
+      return;
     }
     lastData = d;
     renderArena();
@@ -397,11 +410,7 @@ function renderArena(){
   var statusEl = $('arenaStatus');
   if (b.phase === 'pending') {
     var waiting = b.maxPlayers - players.length;
-    var botBtn = '';
-    if (b.creatorUid === MY_UID && players.length < b.maxPlayers) {
-      botBtn = '<button class="btn btn-ghost btn-sm" style="margin-left:.6rem" onclick="addBot()"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Add bot</button>';
-    }
-    statusEl.innerHTML = '<span class="live-dot"></span><span>Waiting for ' + waiting + ' more player' + (waiting !== 1 ? 's' : '') + '…</span>' + botBtn;
+    statusEl.innerHTML = '<span class="live-dot"></span><span>Waiting for ' + waiting + ' more player' + (waiting !== 1 ? 's' : '') + '… (Add bot on an open slot)</span>';
   } else if (b.phase === 'countdown') {
     var sec = b.startsAt ? Math.max(0, Math.ceil((b.startsAt - now) / 1000)) : 3;
     statusEl.innerHTML = '<span class="live-dot"></span><span>Starting in ' + sec + 's</span>';
@@ -437,13 +446,8 @@ function renderArena(){
     else { $('countdownOverlay').classList.add('hidden'); }
   } else { $('countdownOverlay').classList.add('hidden'); }
 
-  // ===== RECREATE (follow new battle / live accept count) =====
+  // ===== RECREATE (live accept count; follow handled in pollBattle) =====
   if (b.recreate) {
-    if (b.recreate.newBattleId && !currentBattle.followed) {
-      currentBattle.followed = true;
-      followRecreate(b.recreate.newBattleId);
-      return;
-    }
     if (currentBattle.recreateWaiting) {
       var ri = $('recreateInfo');
       if (ri) { ri.classList.remove('hidden'); ri.textContent = b.recreate.accepted.length + '/' + b.recreate.needed + ' accepted — waiting…'; }
@@ -453,43 +457,88 @@ function renderArena(){
 }
 
 // ── CSGO-style per-player columns: one big vertical reel that opens ONE case
-// at a time, with a "Case X / N" counter, long baity spins, and a growing
-// collected-items strip below. Built once; startReels() drives the animation.
+// at a time, with a "Case X / N" counter, baity spins, and a growing collected
+// strip below. Built once per phase group; startReels() drives the animation.
 function pidOf(p){ return String(p.uid).replace(/[^a-zA-Z0-9]/g, ''); }
 function reelItemH(){ return window.innerWidth <= 780 ? 72 : 92; }
 function reelWindowH(){ return window.innerWidth <= 780 ? 150 : 200; }
 function reelItemHtml(s, v, color, win){
-  return '<div class="pcol-item' + (win ? ' win' : '') + '" style="border-color:' + color + '">' +
-    '<div class="pcol-emoji">' + s + '</div><div class="pcol-val">' + fmt(v) + '</div></div>';
+  return '<div class="pcol-item' + (win ? ' win' : '') + '">' +
+    '<div class="pcol-emoji">' + s + '</div><div class="pcol-val" style="color:' + color + '">' + fmt(v) + '</div></div>';
+}
+var BOT_BADGE = '<span class="badge badge-bot"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Bot</span>';
+var YOU_BADGE = '<span class="badge badge-you"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>You</span>';
+
+// Random items pulled from every tier — used for idle/waiting reels.
+function poolItems(){
+  var pool = [];
+  (TIERS || []).forEach(function (t){ (t.items || []).forEach(function (i){ pool.push({ s: i.s, v: i.v, color: t.color }); }); });
+  if (!pool.length) pool = [{ s: '🎁', v: 0, color: '#22c55e' }];
+  return pool;
+}
+function fillIdle(stripId){
+  var strip = document.getElementById(stripId);
+  if (!strip) return;
+  var pool = poolItems(), html = '';
+  for (var i = 0; i < 16; i++) { var it = pool[Math.floor(Math.random() * pool.length)]; html += reelItemHtml(it.s, it.v, it.color, false); }
+  strip.innerHTML = html;
+  strip.classList.add('idle');
 }
 
 function buildArena(b, players, isPlayer){
-  var el = $('arenaPlayers');
-  el.innerHTML = '';
+  var el = $('arenaPlayers'); el.innerHTML = '';
   var N = (b.cases || []).length;
-  var wrap = document.createElement('div');
-  wrap.className = 'pcols';
-  players.forEach(function (p){
-    var pid = pidOf(p);
-    var isMe = isPlayer && p.uid === MY_UID;
-    var nm = escapeHtml(String(p.tag || p.uid).replace(/^BOT\s+/, ''));
-    var badges = '';
-    if (p.bot) badges += '<span class="badge badge-bot"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Bot</span>';
-    if (isMe) badges += '<span class="badge badge-you"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>You</span>';
-    if (b.jackpot) badges += '<span class="badge badge-chance" id="jpodds-' + pid + '">—</span>';
-    var col = document.createElement('div');
-    col.className = 'pcol' + (isMe ? ' me' : '');
-    col.id = 'pcard-' + pid;
-    col.innerHTML =
-      '<div class="pcol-hdr"><div class="player-tag">' + nm + '</div>' + badges +
-        '<div class="player-cost">' + fmt(p.cost || b.cost) + ' FC</div></div>' +
-      '<div class="pcol-casenum" id="case-' + pid + '">Case 0 / ' + N + '</div>' +
-      '<div class="pcol-reel"><div class="pcol-strip" id="strip-' + pid + '"></div><div class="pcol-marker"></div></div>' +
-      '<div class="pcol-foot"><div class="pcol-total">Total <b id="tot-' + pid + '">0 FC</b></div><div class="pcol-net" id="net-' + pid + '"></div></div>' +
-      '<div class="coll-row" id="coll-' + pid + '"></div>';
-    wrap.appendChild(col);
-  });
+  var live = (b.phase === 'opening' || b.phase === 'done');
+  var slots = live ? players.length : b.maxPlayers;
+  var idleIds = [];
+  var wrap = document.createElement('div'); wrap.className = 'pcols';
+  for (var s = 0; s < slots; s++){
+    var p = players[s];
+    if (p){
+      var pid = pidOf(p);
+      var isMe = isPlayer && p.uid === MY_UID;
+      var masked = !!p.hiddenMasked;
+      var nm = escapeHtml(String(p.tag || p.uid).replace(/^BOT\s+/, ''));
+      var badges = '';
+      if (p.bot) badges += BOT_BADGE;
+      if (isMe) badges += YOU_BADGE;
+      if (b.jackpot && !b.hidden) badges += '<span class="badge badge-chance" id="jpodds-' + pid + '">—</span>';
+      var stripId = 'strip-' + pid;
+      var reelInner = '<div class="pcol-strip" id="' + stripId + '"></div><div class="pcol-marker"></div>';
+      if (masked) reelInner += '<div class="pcol-cover"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Hidden</span></div>';
+      var col = document.createElement('div');
+      col.className = 'pcol' + (isMe ? ' me' : '') + (masked ? ' masked' : '');
+      col.id = 'pcard-' + pid;
+      col.innerHTML =
+        '<div class="pcol-hdr"><div class="player-tag">' + nm + '</div>' + badges +
+          '<div class="player-cost">' + fmt(p.cost || b.cost) + ' FC</div></div>' +
+        '<div class="pcol-casenum" id="case-' + pid + '">Case 0 / ' + N + '</div>' +
+        '<div class="pcol-reel">' + reelInner + '</div>' +
+        '<div class="pcol-foot"><div class="pcol-total">Total <b id="tot-' + pid + '">' + (masked ? '•••' : '0 FC') + '</b></div><div class="pcol-net" id="net-' + pid + '"></div></div>' +
+        '<div class="coll-row" id="coll-' + pid + '"></div>';
+      wrap.appendChild(col);
+      if (!live || masked) idleIds.push(stripId);  // pending or hidden: idle scroll
+    } else {
+      // empty slot (waiting group only) — "Waiting for player…" + per-slot Add bot
+      var eid = 'empty-' + s;
+      var botBtn = (b.creatorUid === MY_UID)
+        ? '<button class="btn btn-primary btn-sm pcol-botbtn" onclick="addBot()"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 14h.01M15 14h.01"/></svg>Add bot</button>'
+        : '';
+      var col2 = document.createElement('div');
+      col2.className = 'pcol waiting';
+      col2.innerHTML =
+        '<div class="pcol-hdr"><div class="player-tag muted">Open slot</div></div>' +
+        '<div class="pcol-casenum">Waiting…</div>' +
+        '<div class="pcol-reel"><div class="pcol-strip" id="' + eid + '"></div><div class="pcol-marker"></div>' +
+          '<div class="pcol-cover"><div class="wait-label">Waiting for player…</div>' + botBtn + '</div></div>' +
+        '<div class="pcol-foot"><div class="pcol-total">Total <b>—</b></div></div>' +
+        '<div class="coll-row"></div>';
+      wrap.appendChild(col2);
+      idleIds.push(eid);
+    }
+  }
   el.appendChild(wrap);
+  idleIds.forEach(fillIdle);
 }
 
 function setLabels(cur, N, players){
@@ -507,13 +556,15 @@ function collectCase(p, idx){
   if (card) { card.classList.add('hit'); setTimeout(function () { card.classList.remove('hit'); }, 420); }
 }
 
-// One case spins on a player's reel; lands centered on the reward, with a
-// deliberate overshoot ("bait") that scrolls past then settles back.
+// One case spins on a player's reel; lands centered on the reward. Subtle bait:
+// the reward never crosses the line — it eases to just under it, dips a touch,
+// then settles on. (translateY stays >= targetY the whole time.)
 function spinPlayerCase(b, p, idx, dur){
   var pid = pidOf(p);
   var strip = document.getElementById('strip-' + pid);
   var reward = (p.rewards || [])[idx], c = (b.cases || [])[idx];
   if (!strip || !reward || !c) return;
+  strip.classList.remove('idle');
   var tier = tierMap[c.tier] || { color: '#22c55e', items: [{ s: reward.s, v: reward.v }] };
   var items = (tier.items && tier.items.length) ? tier.items : [{ s: reward.s, v: reward.v }];
   var H = reelItemH(), winH = reelWindowH();
@@ -527,32 +578,30 @@ function spinPlayerCase(b, p, idx, dur){
   strip.style.transform = 'translateY(0)';
   var center = winH / 2 - H / 2;
   var targetY = -(REEL * H) + center;       // reward centered exactly on the marker line
-  // Bait WITHOUT ever crossing the line: the reward only ever sits AT or BELOW
-  // the marker (translateY stays >= targetY). It rises to just under the line,
-  // dips back down, then settles onto it.
-  var nearY = targetY + H * 0.30;           // climbs to just under the line
-  var backY = targetY + H * 0.62;           // pulls back down (the fake-out)
+  var nearY = targetY + H * 0.12;           // eases to just under the line
+  var backY = targetY + H * 0.22;           // tiny dip back (gentle fake-out)
   void strip.offsetHeight;
   requestAnimationFrame(function () {
-    strip.style.transition = 'transform ' + (dur * 0.66 / 1000).toFixed(3) + 's cubic-bezier(.10,.72,.20,1)';
+    strip.style.transition = 'transform ' + (dur * 0.72 / 1000).toFixed(3) + 's cubic-bezier(.12,.74,.18,1)';
     strip.style.transform = 'translateY(' + nearY + 'px)';
   });
   setTimeout(function () {
-    strip.style.transition = 'transform ' + (dur * 0.17 / 1000).toFixed(3) + 's cubic-bezier(.4,0,.5,1)';
+    strip.style.transition = 'transform ' + (dur * 0.14 / 1000).toFixed(3) + 's ease-out';
     strip.style.transform = 'translateY(' + backY + 'px)';
-  }, dur * 0.66);
+  }, dur * 0.72);
   setTimeout(function () {
-    strip.style.transition = 'transform ' + (dur * 0.17 / 1000).toFixed(3) + 's cubic-bezier(.25,0,.2,1)';
+    strip.style.transition = 'transform ' + (dur * 0.14 / 1000).toFixed(3) + 's cubic-bezier(.3,0,.25,1)';
     strip.style.transform = 'translateY(' + targetY + 'px)';
-  }, dur * 0.83);
+  }, dur * 0.86);
 }
 
-// Late-join / refresh: drop straight to the finished state, no animation.
+// Late-join / refresh / hidden-reveal: drop straight to the finished state.
 function fillStatic(b, p, N){
   var pid = pidOf(p), rw = p.rewards || [];
   for (var i = 0; i < N; i++) { if (rw[i]) collectCase(p, i); }
   var strip = document.getElementById('strip-' + pid);
   if (strip && rw[N - 1]) {
+    strip.classList.remove('idle');
     var c = (b.cases || [])[N - 1], tier = tierMap[c.tier] || { color: '#22c55e' };
     var H = reelItemH(), winH = reelWindowH();
     strip.innerHTML = reelItemHtml(rw[N - 1].s, rw[N - 1].v, tier.color, true);
@@ -565,14 +614,16 @@ function fillStatic(b, p, N){
 function startReels(b, players, isPlayer){
   var N = (b.cases || []).length;
   var FAST = b.speed === 'fast';
-  var SPIN_MS = FAST ? 1500 : 3600;   // per-case spin (long + baity)
-  var PAUSE_MS = FAST ? 350 : 800;    // pause after each landing
+  var SPIN_MS = FAST ? 1500 : 3600;
+  var PAUSE_MS = FAST ? 350 : 800;
   var PER = SPIN_MS + PAUSE_MS;
-  var elapsed = openedAt ? (Date.now() - openedAt) : 0;
+  // Server-authoritative elapsed so watchers/refreshers sync to the live case.
+  var elapsed = (b.now && b.openedAt) ? Math.max(0, b.now - b.openedAt) : 0;
   var startIdx = Math.max(0, Math.floor(elapsed / PER));
+  function animated(p){ return !p.hiddenMasked; } // masked columns stay covered (idle)
 
   if (b.phase === 'done' || startIdx >= N || N === 0) {
-    players.forEach(function (p) { fillStatic(b, p, N); });
+    players.forEach(function (p) { if (animated(p)) fillStatic(b, p, N); });
     currentBattle.casesShown = N;
     currentBattle.reelsDone = true;
     if (b.jackpot) updateLiveOdds();
@@ -582,19 +633,20 @@ function startReels(b, players, isPlayer){
 
   currentBattle.reelsStarted = true;
   if (startIdx > 0) {
-    players.forEach(function (p) { for (var i = 0; i < startIdx; i++) collectCase(p, i); });
+    players.forEach(function (p) { if (animated(p)) { for (var i = 0; i < startIdx; i++) collectCase(p, i); } });
     currentBattle.casesShown = startIdx;
   }
+  setLabels(Math.min(N, startIdx + 1), N, players);
   var idx = startIdx;
   function step(){
     if (!currentBattle || currentBattle.id !== b.id) return; // left arena
     if (idx >= N) { currentBattle.reelsDone = true; finishReels(); return; }
     var thisIdx = idx;
-    players.forEach(function (p) { spinPlayerCase(b, p, thisIdx, SPIN_MS); });
+    players.forEach(function (p) { if (animated(p)) spinPlayerCase(b, p, thisIdx, SPIN_MS); });
     setLabels(thisIdx + 1, N, players);
     setTimeout(function () {
       if (!currentBattle || currentBattle.id !== b.id) return;
-      players.forEach(function (p) { collectCase(p, thisIdx); });
+      players.forEach(function (p) { if (animated(p)) collectCase(p, thisIdx); });
       currentBattle.casesShown = thisIdx + 1;
       if (b.jackpot) updateLiveOdds();
     }, SPIN_MS);
@@ -604,17 +656,24 @@ function startReels(b, players, isPlayer){
   step();
 }
 
-// All cases done → mark winner/loser + net, then result (or jackpot wheel).
+// All cases done → reveal hidden columns, mark winner/loser + net, then result.
 function finishReels(){
   var b = lastData;
   if (!b || (currentBattle && currentBattle.resultShown)) return;
+  var N = (b.cases || []).length;
   (b.players || []).forEach(function (p){
-    var card = document.getElementById('pcard-' + pidOf(p));
+    var pid = pidOf(p);
+    var card = document.getElementById('pcard-' + pid);
+    if (card && card.classList.contains('masked')) {
+      card.classList.remove('masked');
+      var cover = card.querySelector('.pcol-cover'); if (cover && cover.parentNode) cover.parentNode.removeChild(cover);
+      fillStatic(b, p, N); // rewards now revealed by the server
+    }
     if (card && b.winnerUid && b.winnerUid !== 'shared' && b.winnerUid !== 'tie') {
       card.classList.add(b.winnerUid === p.uid ? 'winner' : 'loser');
     }
     if (typeof p.netWin === 'number') {
-      var nEl = document.getElementById('net-' + pidOf(p));
+      var nEl = document.getElementById('net-' + pid);
       if (nEl) { var nw = p.netWin; nEl.textContent = (nw > 0 ? '+' : '') + fmt(nw) + ' FC'; nEl.className = 'pcol-net ' + (nw > 0 ? 'pos' : (nw < 0 ? 'neg' : 'neu')); }
     }
   });
@@ -717,7 +776,7 @@ function followRecreate(newId){
 // shifts case-by-case and never exposes the final outcome early.
 function updateLiveOdds(){
   var b = lastData;
-  if (!b || !b.jackpot) return;
+  if (!b || !b.jackpot || b.hidden) return;   // hidden mode shows no odds
   var players = b.players || [];
   if (!players.length) return;
   var caseCount = (b.cases || []).length;
