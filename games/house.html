@@ -120,58 +120,84 @@ function donPlay(){
   }).catch(function(){busy=false;});
 }
 
-// ── Plinko ──────────────────────────────────────────────────────────────
+// ── Plinko (canvas) ─────────────────────────────────────────────────────
+var PK=null, ROWS=12;
 RENDER.plinko=function(){
   GAME._risk='med';
-  var rows=12;
-  var pegs='';
-  for(var r=2;r<=rows;r++){ pegs+='<div class="pk-row">'; for(var c=0;c<=r;c++) pegs+='<span class="peg"></span>'; pegs+='</div>'; }
   var table=PLINKO.med;
-  var slots='<div class="pk-slots" id="pkSlots">'+table.map(function(m,i){return '<span class="pk-slot" id="pks-'+i+'">'+m+'×</span>';}).join('')+'</div>';
-  $('hgBoard').innerHTML='<div class="pk"><div class="pk-ball" id="pkBall"></div>'+pegs+slots+'</div>';
+  $('hgBoard').innerHTML='<canvas id="pkCanvas" class="pk-canvas"></canvas>'+
+    '<div class="pk-slots" id="pkSlots">'+table.map(function(m,i){return '<span class="pk-slot" id="pks-'+i+'">'+m+'×</span>';}).join('')+'</div>';
   $('hgControls').innerHTML=
     '<div class="seg"><button class="seg-b" onclick="pkRisk(\'low\',this)">Low</button><button class="seg-b on" onclick="pkRisk(\'med\',this)">Med</button><button class="seg-b" onclick="pkRisk(\'high\',this)">High</button></div>'+
     '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>';
+  setTimeout(pkInit,30);
+  window.addEventListener('resize',pkInit);
 };
+function pkInit(){
+  var cv=$('pkCanvas'); if(!cv)return;
+  var w=cv.parentNode.clientWidth-22; if(w<240)w=240;
+  var h=Math.min(340,w*0.82);
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=w*dpr; cv.height=h*dpr; cv.style.width=w+'px'; cv.style.height=h+'px';
+  var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  var margin=16, topY=20, botY=h-30;
+  PK={cv:cv,ctx:ctx,w:w,h:h,margin:margin,topY:topY,botY:botY,
+      slotW:(w-2*margin)/(ROWS+1), rowH:(botY-topY)/ROWS, ball:null};
+  pkDraw();
+}
+function pkPegs(){ // peg grid: row r has r+1 pegs, centered triangle
+  var P=PK,a=[];
+  for(var r=1;r<=ROWS;r++){ for(var j=0;j<=r;j++){ a.push({x:P.w/2+(j-r/2)*P.slotW, y:P.topY+(r)*P.rowH}); } }
+  return a;
+}
+function pkDraw(){
+  var P=PK; if(!P)return; var ctx=P.ctx; ctx.clearRect(0,0,P.w,P.h);
+  pkPegs().forEach(function(p){ ctx.beginPath(); ctx.arc(p.x,p.y,2.6,0,6.28); ctx.fillStyle='rgba(160,170,180,.55)'; ctx.fill(); });
+  if(P.ball){ var b=P.ball; ctx.beginPath(); ctx.arc(b.x,b.y,7,0,6.28);
+    var g=ctx.createRadialGradient(b.x-2,b.y-2,1,b.x,b.y,8); g.addColorStop(0,'#fff'); g.addColorStop(1,getComputedStyle(document.querySelector('.hg-stage')).getPropertyValue('--gc')||'#a855f7');
+    ctx.fillStyle=g; ctx.shadowColor='#a855f7'; ctx.shadowBlur=10; ctx.fill(); ctx.shadowBlur=0; }
+}
 function pkRisk(r,b){ GAME._risk=r; document.querySelectorAll('#hgControls .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
   var t=PLINKO[r]; t.forEach(function(m,i){var e=$('pks-'+i);if(e)e.textContent=m+'×';}); }
 function pkDrop(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true; msg(''); sfx('spin');
+  if(busy)return; if(!PK){pkInit();} if(bet()>bal){msg('Not enough balance','bad');return;}
+  busy=true; msg(''); sfx('coin');
   post('plinko',{bet:bet(),risk:GAME._risk}).then(function(d){
     if(d.error){msg(d.error,'bad');busy=false;return;}
     bal=d.balance;
-    animateBall(d.path,d.slot,function(){
+    pkAnimate(d.path,d.slot,function(){
       setBal();
-      var s=$('pks-'+d.slot); if(s){s.classList.add('hit');setTimeout(function(){s.classList.remove('hit');},1200);}
-      if(d.payout>=d.payout&&d.mult>=1)sfx('win'); else sfx('pop');
+      var s=$('pks-'+d.slot); if(s){s.classList.add('hit');setTimeout(function(){s.classList.remove('hit');},1300);}
+      sfx(d.mult>=1?'win':'pop');
       msg((d.payout>0?'+':'')+fmt(d.payout)+' FC · '+d.mult+'×', d.mult>=1?'good':'bad');
       busy=false;
     });
   }).catch(function(){busy=false;});
 }
-function animateBall(path,slot,done){
-  var ball=$('pkBall'), board=$('hgBoard').querySelector('.pk');
-  var slotsEl=$('pkSlots'); var target=$('pks-'+slot);
-  ball.style.opacity='1';
-  var bw=board.clientWidth;
-  var x=bw/2, step=bw/ (path.length+2);
-  var rows=path.length, i=0;
-  ball.style.transform='translate(-50%,0)'; ball.style.left=x+'px'; ball.style.top='6px';
-  function next(){
-    if(i>=rows){
-      var tr=target.getBoundingClientRect(), br=board.getBoundingClientRect();
-      ball.style.transition='top .2s ease-in, left .2s ease-in';
-      ball.style.left=(tr.left-br.left+tr.width/2)+'px'; ball.style.top=(br.height-18)+'px';
-      setTimeout(function(){ball.style.opacity='0';ball.style.transition='none';done&&done();},230); return;
-    }
-    x += (path[i]? step/1.6 : -step/1.6);
-    ball.style.transition='top .12s linear, left .12s ease-out';
-    ball.style.left=x+'px'; ball.style.top=(6+ (i+1)*(board.clientHeight-40)/(rows+1))+'px';
-    sfx('tick');
-    i++; setTimeout(next,120);
+function pkAnimate(path,slot,done){
+  var P=PK; if(!P){done&&done();return;}
+  // waypoints: peg contacts per row, then final slot
+  var pts=[], rights=0;
+  for(var k=0;k<=ROWS;k++){
+    if(k>0) rights+=path[k-1];
+    pts.push({x:P.margin+(rights+(ROWS-k)/2+0.5)*P.slotW, y:P.topY+k*P.rowH});
   }
-  next();
+  pts.push({x:P.margin+(slot+0.5)*P.slotW, y:P.botY+14});
+  var seg=0, segDur=88, t0=null;
+  function frame(ts){
+    if(t0==null)t0=ts;
+    var p=(ts-t0)/segDur; if(p>1)p=1;
+    var a=pts[seg], b=pts[seg+1];
+    var x=a.x+(b.x-a.x)*p;
+    var ease=1-Math.pow(1-p,2);
+    var y=a.y+(b.y-a.y)*ease;
+    y-=Math.sin(p*Math.PI)*6; // little bounce arc
+    P.ball={x:x,y:y}; pkDraw();
+    if(p>=1){ seg++; t0=null; if(seg<10)sfx('tick');
+      if(seg>=pts.length-1){ P.ball=null; pkDraw(); done&&done(); return; } }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 // ── Mines ───────────────────────────────────────────────────────────────

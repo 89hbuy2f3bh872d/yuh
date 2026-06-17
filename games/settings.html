@@ -33,7 +33,9 @@
 .msg.admin{background:var(--accent-soft);border:1px solid #22c55e33;align-self:flex-start}
 .msg .who{font-size:.6rem;color:var(--text3);font-weight:700;margin-bottom:.15rem}
 .tk-reply{display:flex;gap:.4rem;margin-top:.4rem}
-.tk-reply input{flex:1}
+.tk-reply input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem .65rem;color:var(--text);font-size:.82rem}
+.tk-reply input::placeholder{color:var(--text3)}
+.tk-reply input:focus{outline:none;border-color:var(--accent)}
 .empty{color:var(--text3);font-size:.82rem;padding:1rem;text-align:center}
 </style>
 </head>

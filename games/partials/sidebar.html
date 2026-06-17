@@ -57,6 +57,63 @@
 </aside>
 <script src="/assets/js/sound.js"></script>
 <script>
+/* Smooth in-app navigation (pjax): swap <main> instead of full reload.
+   Tracks intervals so leaving a page tears down its timers (no leaks). */
+(function(){
+  if(window.__pjax)return; window.__pjax=1;
+  var _si=window.setInterval, ints=[];
+  window.setInterval=function(f,t){ var id=_si.call(window,f,t); ints.push(id); return id; };
+  function clearInts(){ ints.forEach(function(i){ try{clearInterval(i);}catch(e){} }); ints=[]; }
+  function internal(href){ return href && href[0]==='/' && !/^\/(logout|admin|login|oauth|assets)/.test(href); }
+  function updateActive(path){
+    document.querySelectorAll('.sb-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('href')===path); });
+  }
+  function ensureCss(doc){
+    doc.querySelectorAll('link[rel=stylesheet]').forEach(function(l){
+      var href=l.getAttribute('href'); var base=href.split('?')[0];
+      if(![].some.call(document.querySelectorAll('link[rel=stylesheet]'),function(x){return x.getAttribute('href').split('?')[0]===base;})){
+        var n=document.createElement('link'); n.rel='stylesheet'; n.href=href; document.head.appendChild(n);
+      }
+    });
+  }
+  function swap(html,url,push){
+    var doc; try{ doc=new DOMParser().parseFromString(html,'text/html'); }catch(e){ location.href=url; return; }
+    var nm=doc.querySelector('main.main'), cur=document.querySelector('main.main');
+    if(!nm||!cur){ location.href=url; return; }
+    clearInts();
+    if(window.SG&&SG.music)SG.music.stop(); // music is slot-page only
+    ensureCss(doc);
+    cur.innerHTML=nm.innerHTML;
+    // re-execute inline scripts inside the new main
+    cur.querySelectorAll('script').forEach(function(s){
+      var n=document.createElement('script');
+      if(s.src)n.src=s.src; else n.textContent=s.textContent;
+      s.parentNode.replaceChild(n,s);
+    });
+    document.title=doc.title||document.title;
+    updateActive(new URL(url,location.href).pathname);
+    if(push){ try{ history.pushState({pjax:1},'',url); }catch(e){} }
+    window.scrollTo(0,0);
+  }
+  function go(url,push){
+    fetch(url,{headers:{'X-Pjax':'1'},credentials:'same-origin'})
+      .then(function(r){ if(r.redirected){ location.href=r.url; throw 0; } return r.text(); })
+      .then(function(h){ swap(h,url,push); })
+      .catch(function(){ if(arguments[0]!==0) location.href=url; });
+  }
+  document.addEventListener('click',function(e){
+    if(e.metaKey||e.ctrlKey||e.shiftKey||e.button)return;
+    var a=e.target.closest&&e.target.closest('a'); if(!a)return;
+    if(a.target==='_blank')return;
+    var href=a.getAttribute('href'); if(!internal(href))return;
+    e.preventDefault();
+    if(new URL(href,location.href).pathname===location.pathname)return;
+    go(href,true);
+  });
+  window.addEventListener('popstate',function(){ go(location.pathname,false); });
+})();
+</script>
+<script>
 /* Floating hexagon network background. Nodes drift + connect; cursor repels nearby
    nodes. Canvas = own compositor layer, so it never repaints page content. */
 (function(){

@@ -503,6 +503,17 @@ export class Database {
   }
   async setTicketStatus(id, status) { if (!this._db) return; await this._db.collection("tickets").updateOne({ _id: id }, { $set: { status, updatedAt: Date.now() } }); }
 
+  // ─── Destructive: wipe every collection (owner-gated at the route) ──────────
+  async wipeAll() {
+    if (!this._db) return false;
+    const cols = await this._db.listCollections().toArray();
+    for (const c of cols) {
+      if (c.name.startsWith("system.")) continue;
+      try { await this._db.collection(c.name).deleteMany({}); } catch (e) {}
+    }
+    return true;
+  }
+
   // ─── Pets ─────────────────────────────────────────────────────────────────
   async getPet(uid) { const u = await this.getUser(uid); return u?.pet ?? null; }
   async savePet(uid, pet) {

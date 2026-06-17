@@ -159,9 +159,10 @@ function openGame(id){
   document.querySelector('.machine').style.setProperty('--gc',GAME.color);
   setBetMeters(); renderQuick();
   buildEmptyGrid(); fillRandom();
+  if(window.SG&&SG.music)SG.music.play(GAME.id);
   refreshBal();
 }
-function backToLobby(){ if(busy) return; $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
+function backToLobby(){ if(busy) return; if(window.SG&&SG.music)SG.music.stop(); $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
 
 // ── Grid ────────────────────────────────────────────────────────────────
 function buildEmptyGrid(){
@@ -229,6 +230,8 @@ function doSpin(buy){
 async function animateRound(d){
   var TURBO = false;
   var roundWin = 0;
+  var hadFree = d.spins.some(function(s){return s.free;});
+  if(hadFree && window.SG && SG.music) SG.music.play('bonus'); // uplifting bonus theme
   var fast = d.spins.length > 14; // long bonus → speed up
   for(var si=0; si<d.spins.length; si++){
     var sp = d.spins[si];
@@ -250,6 +253,7 @@ async function animateRound(d){
   if(d.totalWin>0){ await bigWin(d.totalWin, d.bet); }
   bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
   $('fsBanner').classList.add('hidden');
+  if(hadFree && window.SG && SG.music) SG.music.play(GAME.id); // back to game theme
   busy=false; setControls(true);
 }
 

@@ -42,13 +42,11 @@
 .don.win{color:var(--accent);transform:scale(1.3)} .don.lose{color:var(--red)}
 
 /* plinko */
-.pk{position:relative;width:100%;max-width:420px;height:300px}
-.pk-row{display:flex;justify-content:center;gap:14px;margin:6px 0}
-.peg{width:6px;height:6px;border-radius:50%;background:var(--border2)}
-.pk-ball{position:absolute;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--gc));box-shadow:0 0 10px var(--gc);opacity:0;z-index:3;transform:translate(-50%,0)}
-.pk-slots{position:absolute;left:0;right:0;bottom:-6px;display:flex;gap:2px}
-.pk-slot{flex:1;text-align:center;font-size:.56rem;font-weight:800;padding:.3rem 0;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);font-variant-numeric:tabular-nums}
-.pk-slot.hit{background:var(--gc);color:#06150b;transform:scale(1.1)}
+.hg-board:has(.pk-canvas){justify-content:flex-start}
+.pk-canvas{display:block;width:100%;border-radius:10px}
+.pk-slots{display:flex;gap:3px;width:100%;margin-top:.2rem}
+.pk-slot{flex:1;text-align:center;font-size:.55rem;font-weight:800;padding:.32rem 0;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);font-variant-numeric:tabular-nums;transition:transform .12s,background .12s}
+.pk-slot.hit{background:var(--gc);color:#06150b;transform:scale(1.14)}
 
 /* mines */
 .mn-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.45rem;width:100%;max-width:360px}

@@ -817,6 +817,17 @@ export class WebServer {
         }
       }
 
+      // ── DANGER: wipe entire database (OWNER ONLY, multi-check) ───────────────
+      if (p === "/api/admin/wipe" && req.method === "POST") {
+        if (uid !== ADMIN_ID) { console.warn(`[Admin] WIPE denied for non-owner uid=${uid}`); return deny(); }
+        if (data.confirm !== "WIPE EVERYTHING") return this._json(res, 400, { error: "Confirmation phrase incorrect" });
+        if (String(data.ownerId) !== String(ADMIN_ID)) return this._json(res, 400, { error: "Owner ID mismatch" });
+        if (data.ack !== true) return this._json(res, 400, { error: "Acknowledgement required" });
+        console.warn(`[Admin] DATABASE WIPE initiated by owner uid=${uid}`);
+        const ok = await this.db.wipeAll().catch((e) => { console.error("[Admin] wipe failed", e); return false; });
+        return this._json(res, 200, { ok });
+      }
+
       return this._json(res, 404, { error: "Not found" });
     }
 
@@ -877,6 +888,7 @@ export class WebServer {
     if (p === "/api/slots/spin" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      if (this._rl(uid, "slots", 300)) return this._json(res, 429, { error: "Slow down a moment" });
       let data;
       try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
       const cfg = Slots.getGame(String(data.game || ""));
@@ -913,6 +925,7 @@ export class WebServer {
     if (p.startsWith("/api/house/") && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      if (this._rl(uid, "house", 250)) return this._json(res, 429, { error: "Slow down a moment" });
       let data; try { data = JSON.parse(await readBody(req)); } catch { data = {}; }
       const bet = Math.floor(Number(data.bet) || 0);
       const goodBet = bet >= 1 && bet <= 1_000_000;
@@ -999,6 +1012,7 @@ export class WebServer {
     if (p === "/api/tickets" && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      if (this._rl(uid, "tknew", 8000)) return this._json(res, 429, { error: "Please wait before opening another ticket" });
       const cookies = parseCookies(req);
       const tag = decodeURIComponent(cookies.dtag || uid);
       let data; try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
@@ -1482,6 +1496,18 @@ export class WebServer {
     // Cache-bust local CSS/JS so deployed changes load immediately.
     html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
     return this._html(res, 200, html);
+  }
+
+  // Per-user min-interval rate limiter. Returns true when the call is too soon.
+  _rl(uid, key, minMs) {
+    if (!this._rlMap) this._rlMap = new Map();
+    const now = Date.now();
+    // occasional prune to bound memory
+    if (this._rlMap.size > 5000) { for (const [k, t] of this._rlMap) if (now - t > 60000) this._rlMap.delete(k); }
+    const k = uid + ":" + key, last = this._rlMap.get(k) || 0;
+    if (now - last < minMs) return true;
+    this._rlMap.set(k, now);
+    return false;
   }
 
   _html(res, s, b) { res.writeHead(s, { "Content-Type": "text/html;charset=utf-8" }); res.end(b); }

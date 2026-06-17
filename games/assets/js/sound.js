@@ -84,34 +84,56 @@
   }
   var musicTimerSafe = 0;
 
-  // ── Ambient music: slow pentatonic pads, gentle and calming ─────────────
-  var SCALE = [220, 246.94, 293.66, 329.63, 392, 440, 587.33];
-  function musicStep() {
-    if (!musicOn || !ensure()) return;
-    var root = SCALE[Math.floor(Math.random() * SCALE.length)];
-    // soft pad chord
-    [root, root * 1.5, root * 2].forEach(function (f, i) {
-      tone({ type: "sine", f0: f, dur: 3.2, atk: 0.8, gain: 0.12 - i * 0.03, toMusic: true, filter: "lowpass", cut: 900 });
-    });
-    musicTimer = setTimeout(musicStep, 2600 + Math.random() * 1400);
+  // ── Per-game music themes (only play on slot pages, never casino-wide) ───
+  // Each theme is a short looping sequence; quiet by default. Bonus theme is
+  // brighter/faster. Switching themes crossfades the music bus.
+  var THEMES = {
+    candy:   { tempo: 430, type: "triangle", cut: 1150, gain: 0.085, lead: [523, 659, 784, 659, 587, 784, 880, 784], bass: [131, 0, 165, 0, 175, 0, 196, 0] },
+    olympus: { tempo: 500, type: "sine",     cut: 950,  gain: 0.085, lead: [440, 523, 659, 523, 587, 440, 392, 523], bass: [110, 0, 131, 0, 98, 0, 110, 0] },
+    bandit:  { tempo: 520, type: "triangle", cut: 880,  gain: 0.095, lead: [392, 0, 494, 587, 0, 494, 440, 0],       bass: [98, 0, 0, 123, 0, 0, 110, 0] },
+    bonus:   { tempo: 300, type: "sawtooth", cut: 1700, gain: 0.10,  lead: [659, 784, 880, 1046, 988, 880, 784, 1046, 1175, 1046, 880, 784], bass: [131, 165, 196, 165, 175, 220, 196, 165] },
+  };
+  var mKey = null, mStep = 0, mTimer = 0, mPlaying = false;
+  function mTick() {
+    if (!mPlaying || !ensure()) return;
+    var th = THEMES[mKey]; if (!th) { mTimer = setTimeout(mTick, 300); return; }
+    var i = mStep % th.lead.length, f = th.lead[i];
+    if (f) tone({ type: th.type, f0: f, dur: th.tempo / 1000 * 1.6, atk: 0.02, gain: th.gain, toMusic: true, filter: "lowpass", cut: th.cut });
+    var bf = th.bass[i % th.bass.length];
+    if (bf) tone({ type: "sine", f0: bf, dur: th.tempo / 1000 * 1.9, atk: 0.02, gain: th.gain * 0.85, toMusic: true, filter: "lowpass", cut: 480 });
+    mStep++;
+    mTimer = setTimeout(mTick, th.tempo);
   }
-  function startMusic() { if (musicOn) return; if (!ensure()) return; resume(); musicOn = true; musicStep(); }
-  function stopMusic() { musicOn = false; if (musicTimer) clearTimeout(musicTimer); }
+  function crossfade() {
+    if (!musicGain || !ctx) return;
+    var t = ctx.currentTime, target = cfg.muted ? 0 : cfg.music / 100;
+    musicGain.gain.cancelScheduledValues(t);
+    musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), t);
+    musicGain.gain.linearRampToValueAtTime(0.0001, t + 0.22);
+    musicGain.gain.linearRampToValueAtTime(target, t + 0.6);
+  }
+  function playTheme(key) {
+    if (!THEMES[key]) return;
+    if (!ensure()) return; resume();
+    if (mKey === key && mPlaying) return;
+    if (mPlaying) crossfade();      // smooth transition between themes
+    mKey = key; mStep = 0;
+    if (!mPlaying) { mPlaying = true; if (mTimer) clearTimeout(mTimer); mTimer = setTimeout(mTick, 250); }
+  }
+  function stopMusic() { mPlaying = false; if (mTimer) clearTimeout(mTimer); mKey = null; }
 
-  // first user gesture unlocks audio + (re)starts music if enabled
-  function unlock() {
-    if (started) return; started = true; ensure(); resume();
-    if (cfg.music > 0 && !cfg.muted) startMusic();
-  }
+  // First gesture only unlocks the audio context (no auto-play music).
+  function unlock() { if (started) return; started = true; ensure(); resume(); }
   ["pointerdown", "keydown", "touchstart"].forEach(function (ev) { window.addEventListener(ev, unlock, { once: false }); });
 
   window.SG = {
     sfx: function (name) { if (cfg.muted) return; var f = SFX[name]; if (f) try { f(); } catch (e) {} },
     caseSpin: function (d) { if (!cfg.muted) try { caseSpin(d); } catch (e) {} },
+    music: { play: function (k) { try { playTheme(k); } catch (e) {} }, stop: stopMusic },
     get: function () { return Object.assign({}, cfg); },
-    setMusic: function (v) { cfg.music = Math.max(0, Math.min(100, v | 0)); save(); if (musicGain) musicGain.gain.value = cfg.music / 100; if (cfg.music > 0 && !cfg.muted) startMusic(); else if (cfg.music === 0) stopMusic(); },
+    setMusic: function (v) { cfg.music = Math.max(0, Math.min(100, v | 0)); save(); if (musicGain) musicGain.gain.value = cfg.muted ? 0 : cfg.music / 100; if (cfg.music === 0) stopMusic(); },
     setSfx: function (v) { cfg.sfx = Math.max(0, Math.min(100, v | 0)); save(); if (sfxGain) sfxGain.gain.value = cfg.sfx / 100; },
-    setMuted: function (m) { cfg.muted = !!m; save(); if (master) master.gain.value = cfg.muted ? 0 : 1; if (cfg.muted) stopMusic(); else if (cfg.music > 0) startMusic(); },
+    setMuted: function (m) { cfg.muted = !!m; save(); if (master) master.gain.value = cfg.muted ? 0 : 1; },
     test: function () { this.sfx("win"); },
   };
 })();

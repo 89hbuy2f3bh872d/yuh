@@ -308,7 +308,13 @@ function buildPage(data, prefix) {
       sub: `${fmt(globals.totalUsers)} players · ${fmt(guilds.length)} servers · refreshed ${esc(refreshedAt)}`,
     })}
     <div class="kpi-grid">${kpiHtml}</div>
-    ${miniChartHtml}`;
+    ${miniChartHtml}
+    ${isOwner(uid) ? `
+    <div style="margin-top:1.6rem;border:1px solid var(--red);border-radius:var(--r-md);padding:1.1rem;background:rgba(239,68,68,.05)">
+      <div style="font-size:.85rem;font-weight:800;color:var(--red);margin-bottom:.3rem">⚠ Danger Zone — Owner only</div>
+      <div style="font-size:.74rem;color:var(--text-dim);margin-bottom:.8rem">Permanently erases <b>every</b> collection: balances, tickets, tiers, stats. This cannot be undone.</div>
+      <button class="btn-danger" onclick="adminWipeDb()">Wipe entire database</button>
+    </div>` : ""}`;
 
   const pageServers = `
     ${pageHeader({
@@ -528,6 +534,15 @@ function buildPage(data, prefix) {
   window.adminTicketClose=function(id){
     fetch('/api/admin/tickets/'+id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
       .then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
+  };
+  window.adminWipeDb=function(){
+    if(!confirm('This PERMANENTLY erases the ENTIRE database. Continue?')) return;
+    var phrase=prompt('Type exactly:  WIPE EVERYTHING'); if(phrase!=='WIPE EVERYTHING'){ if(phrase!==null)alert('Phrase did not match. Aborted.'); return; }
+    var oid=prompt('Type your OWNER user ID to confirm:'); if(!oid) return;
+    if(!confirm('FINAL WARNING: wipe all balances, tickets, tiers and stats now?')) return;
+    fetch('/api/admin/wipe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'WIPE EVERYTHING',ownerId:oid.trim(),ack:true})})
+      .then(function(r){return r.json()}).then(function(d){ alert(d&&d.ok?'Database wiped.':((d&&d.error)||'Wipe failed.')); })
+      .catch(function(){ alert('Wipe request failed.'); });
   };
 
   navButtons.forEach(function(b){
