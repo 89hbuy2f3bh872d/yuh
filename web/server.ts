@@ -74,6 +74,8 @@ function parseCookieStr(h: string): Record<string, string> {
   return o;
 }
 function parseCookies(req: Request): Record<string, string> { return parseCookieStr(req.headers.get("cookie") || ""); }
+// Explicit 302 — set.redirect isn't honored in this Elysia build, so set status + Location.
+function redir(set: any, url: string): string { set.status = 302; set.headers["Location"] = url; return ""; }
 // Verify the session server-side (sid must exist + be unexpired in Mongo), 30s cache.
 const sessCache = new Map<string, { uid: string; until: number }>();
 async function resolveSessionCookie(cookieHeader: string): Promise<string | null> {
@@ -121,7 +123,7 @@ function buildSidebar(a: { active: string; tag: string; avatar: string; bal: num
 }
 async function renderPage(request: Request, set: any, file: string, active: string, extra: Record<string, string> = {}) {
   const uid = await resolveSession(request);
-  if (!uid) { set.redirect = "/login"; return; }
+  if (!uid) { return redir(set, "/login"); }
   const fp = join(GAMES_DIR, file);
   if (!existsSync(fp)) { set.status = 503; return "Page not available"; }
   const c = parseCookies(request);
@@ -324,7 +326,7 @@ app.get("/login", ({ set }) => {
   oauthStates.set(state, Date.now() + 10 * 60 * 1000);
   const authUrl = `${FLUXER_AUTH_URL}?client_id=${encodeURIComponent(CLIENT_ID)}&scope=identify+guilds&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(state)}`;
   const fp = join(GAMES_DIR, "login.html");
-  if (!existsSync(fp)) { set.redirect = authUrl; return; }
+  if (!existsSync(fp)) { return redir(set, authUrl); }
   set.headers["content-type"] = "text/html; charset=utf-8";
   return readFileSync(fp, "utf8").replace("__AUTH_URL__", esc(authUrl));
 });
@@ -332,19 +334,19 @@ app.get("/login", ({ set }) => {
 app.get("/oauth/callback", async ({ query, set, request }) => {
   const code = (query as any).code, state = (query as any).state;
   const exp = state ? oauthStates.get(state) : undefined;
-  if (!code || !state || !exp) { set.redirect = "/login"; return; }
+  if (!code || !state || !exp) { return redir(set, "/login"); }
   oauthStates.delete(state);
-  if (Date.now() > exp) { set.redirect = "/login"; return; }
+  if (Date.now() > exp) { return redir(set, "/login"); }
   let token: any;
   try {
     const r = await fetch(FLUXER_TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }).toString() });
     token = await r.json();
-  } catch { set.redirect = "/login"; return; }
-  if (!token?.access_token) { set.redirect = "/login"; return; }
+  } catch { return redir(set, "/login"); }
+  if (!token?.access_token) { return redir(set, "/login"); }
   let me: any;
-  try { me = await (await fetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${token.access_token}` } })).json(); } catch { set.redirect = "/login"; return; }
-  const uid = me?.id; if (!uid) { set.redirect = "/login"; return; }
+  try { me = await (await fetch(FLUXER_ME_URL, { headers: { Authorization: `Bearer ${token.access_token}` } })).json(); } catch { return redir(set, "/login"); }
+  const uid = me?.id; if (!uid) { return redir(set, "/login"); }
   const tag = me.global_name ?? me.displayName ?? me.username ?? me.tag ?? uid;
   const avatar = fluxerAvatarUrl(uid, me.avatar);
   await db.setProfile(uid, { tag, avatar }).catch(() => {});
@@ -360,7 +362,7 @@ app.get("/oauth/callback", async ({ query, set, request }) => {
     `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
     `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
   ];
-  set.redirect = OWNERS.includes(uid) ? "/admin/panel" : "/lobby";
+  return redir(set, OWNERS.includes(uid) ? "/admin/panel" : "/lobby");
 });
 
 app.get("/logout", async ({ request, set }) => {
@@ -368,7 +370,7 @@ app.get("/logout", async ({ request, set }) => {
   if (c.uid && c.sid) await db.revokeSession(c.uid, c.sid).catch(() => {});
   if (c.sid) sessCache.delete(c.sid);
   set.headers["Set-Cookie"] = ["sid=; Path=/; Max-Age=0", "uid=; Path=/; Max-Age=0", "dtag=; Path=/; Max-Age=0", "dav=; Path=/; Max-Age=0"];
-  set.redirect = "/login";
+  return redir(set, "/login");
 });
 
 // ── authed pages (sidebar + tokens injected; ?v= cache-bust) ─────────────────
