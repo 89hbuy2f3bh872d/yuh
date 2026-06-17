@@ -214,6 +214,7 @@ var battleSettings = { speed: false, jackpot: false, crazy: false, hidden: false
 var pollTimer = null;
 var listTimer = null;
 var currentBattle = null;
+var battleGen = 0; // bumped whenever we enter/leave a battle; stale timers check it
 var openedAt = 0;          // when the opening phase started (server time → client estimate)
 var lastData = null;       // last battle state fetched
 
@@ -285,7 +286,7 @@ function createBattle(){
   })})
   .then(function(r){return r.json()}).then(function(d){
     if(d.error){alert(d.error);return;}
-    currentBattle={id:d.battleId};openedAt=0;showArena();startBattlePoll();
+    currentBattle={id:d.battleId,gen:++battleGen};openedAt=0;showArena();startBattlePoll();
   }).catch(function(e){console.error(e)});
 }
 
@@ -351,18 +352,18 @@ function joinBattle(id){
   fetch('/api/case-battle/'+id+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
     .then(function(r){return r.json()}).then(function(d){
       if(d.error){alert(d.error);return;}
-      currentBattle={id:d.battleId};openedAt=0;showArena();startBattlePoll();
+      currentBattle={id:d.battleId,gen:++battleGen};openedAt=0;showArena();startBattlePoll();
     }).catch(function(e){console.error(e)});
 }
 function watchBattle(id){
-  currentBattle={id:id};
+  currentBattle={id:id,gen:++battleGen};
   fetch('/api/case-battle/'+id+'/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
   showArena();startBattlePoll();
 }
 
 function startBattlePoll(){stopBattlePoll();pollTimer=setInterval(pollBattle,250);pollBattle();}
 function stopBattlePoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-function leaveArena(){stopBattlePoll();currentBattle=null;openedAt=0;lastData=null;showList();}
+function leaveArena(){battleGen++;stopBattlePoll();currentBattle=null;openedAt=0;lastData=null;$('resultOverlay').classList.add('hidden');$('jackpotOverlay').classList.add('hidden');$('countdownOverlay').classList.add('hidden');showList();}
 
 function pollBattle(){
   if(!currentBattle)return;
@@ -701,8 +702,9 @@ function finishReels(){
     }
   });
   if (currentBattle) currentBattle.resultShown = true;
-  if (b.jackpot && (b.players || []).length) setTimeout(function () { runJackpotWheel(b); }, 700);
-  else setTimeout(function () { showResult(); }, 700);
+  var gen = currentBattle ? currentBattle.gen : -1;
+  if (b.jackpot && (b.players || []).length) setTimeout(function () { if (currentBattle && currentBattle.gen === gen) runJackpotWheel(b, gen); }, 700);
+  else setTimeout(function () { if (currentBattle && currentBattle.gen === gen) showResult(); }, 700);
 }
 
 function showResult() {
@@ -788,8 +790,9 @@ function recreateBattle(){
 function followRecreate(newId){
   $('resultOverlay').classList.add('hidden');
   $('jackpotOverlay').classList.add('hidden');
+  $('countdownOverlay').classList.add('hidden');
   stopBattlePoll();
-  currentBattle={id:newId};
+  currentBattle={id:newId,gen:++battleGen};
   openedAt=0;lastData=null;
   showArena();startBattlePoll();
   refreshBal();
@@ -824,7 +827,8 @@ function updateLiveOdds(){
 }
 
 // CSGO-style player wheel for jackpot: spins through avatars, lands on winner.
-function runJackpotWheel(b){
+function runJackpotWheel(b, gen){
+  if(gen!=null && (!currentBattle || currentBattle.gen!==gen)) return; // battle changed — abort
   var players=b.players||[];
   if(!players.length){ showResult(); return; }
   var widx = typeof b.jackpotWinnerIdx==='number' ? b.jackpotWinnerIdx : 0;
@@ -872,14 +876,17 @@ function runJackpotWheel(b){
     strip.style.transform='translateX('+targetX+'px)';
   });
   setTimeout(function(){
+    if(gen!=null && (!currentBattle || currentBattle.gen!==gen)){ $('jackpotOverlay').classList.add('hidden'); return; }
     $('jackpotOverlay').classList.add('hidden');
     showResult();
   },4700);
 }
 
 function backToList() {
+  battleGen++;
   $('resultOverlay').classList.add('hidden');
   $('countdownOverlay').classList.add('hidden');
+  $('jackpotOverlay').classList.add('hidden');
   currentBattle = null;
   openedAt = 0;
   lastData = null;

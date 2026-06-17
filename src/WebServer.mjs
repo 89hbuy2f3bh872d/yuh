@@ -958,7 +958,7 @@ export class WebServer {
       }
       if (sub === "mines/start") {
         if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
-        if (this._house.minesActive(uid)) return this._json(res, 200, { error: "Finish your current game first" });
+        this._house.clearMines(uid); // forfeit any abandoned game so the player is never stuck
         if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
         const r = this._house.startMines(uid, bet, data.mines);
         const u = await this.db.getUser(uid).catch(() => null);
@@ -978,7 +978,7 @@ export class WebServer {
       }
       if (sub === "hilo/start") {
         if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
-        if (this._house.hiloActive(uid)) return this._json(res, 200, { error: "Finish your current game first" });
+        this._house.clearHilo(uid); // forfeit any abandoned game so the player is never stuck
         if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
         const r = this._house.startHilo(uid, bet);
         const u = await this.db.getUser(uid).catch(() => null);

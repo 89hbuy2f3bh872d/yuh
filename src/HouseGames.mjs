@@ -75,6 +75,7 @@ export class HouseState {
     return { mult, payout: Math.round(g.bet * mult), bombs };
   }
   minesActive(uid) { return this.mines.has(uid); }
+  clearMines(uid) { this.mines.delete(uid); }
 
   // HiLo: uniform 13-rank draws. "higher" = higher-or-equal, "lower" = lower-or-equal.
   drawRank() { return 1 + Math.floor(rnd() * 13); }
@@ -110,6 +111,7 @@ export class HouseState {
     return { mult: +mult.toFixed(3), payout };
   }
   hiloActive(uid) { return this.hilo.has(uid); }
+  clearHilo(uid) { this.hilo.delete(uid); }
 }
 
 export const HOUSE_GAMES = [

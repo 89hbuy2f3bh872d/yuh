@@ -86,26 +86,33 @@ var RENDER={};
 
 // ── Coinflip ────────────────────────────────────────────────────────────
 RENDER.coinflip=function(){
-  $('hgBoard').innerHTML='<div class="coin" id="coin"><div class="coin-face">FC</div></div>';
+  $('hgBoard').innerHTML='<div class="coin-wrap"><div class="coin3d" id="coin3d"><div class="coin-face heads">H</div><div class="coin-face tails">T</div></div></div>';
   $('hgControls').innerHTML=
     '<div class="seg"><button class="seg-b on" id="cf-h" onclick="cfPick(\'heads\')">Heads</button><button class="seg-b" id="cf-t" onclick="cfPick(\'tails\')">Tails</button></div>'+
     '<button class="play-btn" id="cfGo" onclick="cfPlay()">Flip · win 1.96×</button>';
-  GAME._side='heads';
+  GAME._side='heads'; GAME._rot=0;
 };
 function cfPick(s){ GAME._side=s; $('cf-h').classList.toggle('on',s==='heads'); $('cf-t').classList.toggle('on',s==='tails'); }
 function cfPlay(){
   if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true; msg(''); sfx('coin'); var coin=$('coin'); coin.classList.add('spin');
+  busy=true; msg(''); sfx('coin');
   post('coinflip',{bet:bet(),side:GAME._side}).then(function(d){
+    if(d.error){msg(d.error,'bad');busy=false;return;}
+    bal=d.balance;
+    var coin=$('coin3d');
+    // rotate forward to the face the server already decided (0=H, 180=T) — no swap
+    var full=Math.floor((GAME._rot||0)/360)+6;
+    var target=full*360 + (d.roll==='tails'?180:0);
+    if(target<=(GAME._rot||0)) target+=360;
+    GAME._rot=target;
+    coin.style.transition='transform 1.8s cubic-bezier(.15,.82,.2,1)';
+    coin.style.transform='rotateY('+target+'deg)';
     setTimeout(function(){
-      coin.classList.remove('spin');
-      if(d.error){msg(d.error,'bad');busy=false;return;}
-      coin.querySelector('.coin-face').textContent=d.roll==='heads'?'H':'T';
-      bal=d.balance; setBal();
+      setBal();
       if(d.win){msg('+'+fmt(d.payout)+' FC — '+d.roll,'good');sfx('win');} else {msg('Lost — '+d.roll,'bad');sfx('lose');}
       busy=false;
-    },900);
-  }).catch(function(){coin.classList.remove('spin');msg('Network error','bad');busy=false;});
+    },1850);
+  }).catch(function(){msg('Network error','bad');busy=false;});
 }
 
 // ── Double or Nothing ───────────────────────────────────────────────────
