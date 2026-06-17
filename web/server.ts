@@ -60,15 +60,16 @@ const admin = new AdminPanel(db, cfg.prefix ?? "&");
 const GAMES_DIR = join(ROOT, "games");
 const MIME: Record<string, string> = { ".css": "text/css", ".js": "text/javascript", ".html": "text/html; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".json": "application/json", ".mp3": "audio/mpeg" };
 
-function parseCookies(req: Request): Record<string, string> {
-  const h = req.headers.get("cookie") || "", o: Record<string, string> = {};
-  for (const part of h.split(";")) { const i = part.indexOf("="); if (i > 0) o[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); }
+function parseCookieStr(h: string): Record<string, string> {
+  const o: Record<string, string> = {};
+  for (const part of (h || "").split(";")) { const i = part.indexOf("="); if (i > 0) o[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); }
   return o;
 }
+function parseCookies(req: Request): Record<string, string> { return parseCookieStr(req.headers.get("cookie") || ""); }
 // Verify the session server-side (sid must exist + be unexpired in Mongo), 30s cache.
 const sessCache = new Map<string, { uid: string; until: number }>();
-async function resolveSession(req: Request): Promise<string | null> {
-  const c = parseCookies(req);
+async function resolveSessionCookie(cookieHeader: string): Promise<string | null> {
+  const c = parseCookieStr(cookieHeader || "");
   if (!c.sid || !c.uid) return null;
   const hit = sessCache.get(c.sid);
   if (hit && hit.uid === c.uid && hit.until > Date.now()) return c.uid;
@@ -76,6 +77,9 @@ async function resolveSession(req: Request): Promise<string | null> {
   if (!v) { sessCache.delete(c.sid); return null; }
   sessCache.set(c.sid, { uid: c.uid, until: Date.now() + 30_000 });
   return c.uid;
+}
+async function resolveSession(req: Request): Promise<string | null> {
+  return resolveSessionCookie(req.headers.get("cookie") || "");
 }
 
 // ── OAuth + page rendering (ported from src/WebServer.mjs) ───────────────────
@@ -138,9 +142,12 @@ const rlMoney = new Map<string, number>();
 type WSData = { uid: string | null; offBal?: () => void; offNotif?: () => void };
 
 const app = new Elysia()
+  // make the upgrade request's cookie available inside the ws context (ws.data)
+  .derive(({ request }) => ({ cookieHeader: request.headers.get("cookie") || "" }))
   .ws("/ws", {
     async open(ws) {
-      const uid = await resolveSession(ws.data.request as Request);
+      const cookie = (ws.data as any)?.cookieHeader || (ws.data as any)?.headers?.cookie || "";
+      const uid = await resolveSessionCookie(cookie);
       (ws.data as any).uid = uid;
       if (!uid) { ws.send(JSON.stringify({ type: "auth", ok: false })); return; }
       await stdb.ensureAccount(uid).catch(() => {});

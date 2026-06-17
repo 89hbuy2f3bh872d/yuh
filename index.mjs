@@ -4,7 +4,6 @@ import { fileURLToPath } from "url";
 import { Client, Events } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
-import { WebServer } from "./src/WebServer.mjs";
 import { StdbBridge } from "./src/stdbBridge.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,16 +24,15 @@ const db = new Database(config.mongodb.uri, config.mongodb.database);
 await db.connect();
 setInterval(() => db.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
 
-// When SpacetimeDB is configured, the Bun/Elysia service (web/server.ts) serves the
-// site + owns STDB; the bot just routes balance ops to it over localhost. Otherwise
-// fall back to the legacy in-process Node web server.
+// The website runs exclusively on the Bun + Elysia service (web/server.ts).
+// This Node process is ONLY the Discord/Fluxer bot; for balance ops it routes to
+// the Elysia service over localhost (which owns SpacetimeDB).
 if (config.spacetime && config.web?.internalSecret) {
   const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 8080);
   db.attachBalanceBridge(new StdbBridge(webUrl, config.web.internalSecret));
-  console.log(`[Startup] STDB balance bridge → ${webUrl} (Bun web service serves the site)`);
+  console.log(`[Startup] Balance bridge → ${webUrl}. Web is served by the Elysia service (bun run web/server.ts).`);
 } else {
-  const web = new WebServer(db, config);
-  await web.start();
+  console.warn("[Startup] config.spacetime / config.web.internalSecret missing — bot will use Mongo balances and won't bridge. Start the Elysia service (web/server.ts) to serve the website.");
 }
 
 const client = new Client({ intents: 0, suppressIntentWarning: true, ...config["fluxer.js"] });
