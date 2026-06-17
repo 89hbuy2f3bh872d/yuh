@@ -235,11 +235,13 @@ export class ArenaServer {
     // NOTE: caller (WebServer) performs the actual atomicDeduct BEFORE calling this,
     // since balance I/O must be awaited. We just record the charged amount.
     const id = crypto.randomBytes(8).toString("hex");
+    const slots = new Array(maxPlayers).fill(null);
+    slots[0] = this._mkSlot(0, uid, tag, avatar, sk);
     const match = {
-      id, creatorUid: uid, mode: m, fragLimit: fl, stake: sk,
+      id, creatorUid: uid, mode: m, fragLimit: fl, stake: sk, maxPlayers,
       phase: "pending", createdAt: Date.now(),
       startsAt: 0, liveStartedAt: 0, resolvedAt: 0, resolved: false,
-      slots: [this._mkSlot(0, uid, tag, avatar, sk)],
+      slots,
       state: new Map(),
       events: [], winnerTeam: null, reason: null,
       forfeitAt: new Map(),

@@ -119,17 +119,17 @@ __SIDEBAR__
     </div>
   </div>
 
-</main>
-</div>
-
-<!-- Result -->
-<div id="resultOverlay" class="overlay hidden">
-  <div class="result-card">
-    <div class="result-icon" id="rIcon"></div>
-    <div class="result-title" id="rTitle"></div>
-    <div class="result-sub" id="rSub"></div>
-    <div class="result-actions"><button class="btn btn-primary" onclick="backToList()">Back to arena</button></div>
+  <!-- Result -->
+  <div id="resultOverlay" class="overlay hidden">
+    <div class="result-card">
+      <div class="result-icon" id="rIcon"></div>
+      <div class="result-title" id="rTitle"></div>
+      <div class="result-sub" id="rSub"></div>
+      <div class="result-actions"><button class="btn btn-primary" onclick="backToList()">Back to arena</button></div>
+    </div>
   </div>
+
+</main>
 </div>
 
 <script>
@@ -204,7 +204,7 @@ $('practiceBtn').onclick=function(){ ensureThree(function(){ startGame('practice
 $('quitBtn').onclick=function(){ if(GS&&GS.mode==='pvp'&&curMatch){ if(confirm('Leaving forfeits the match. Continue?')) api('/api/arena/'+curMatch+'/abandon',{}); else return; } backToList(); };
 
 var GS=null; // game state
-function teardownGame(){ if(GS){ GS.alive=false; if(GS.raf)cancelAnimationFrame(GS.raf); if(GS.cleanup)GS.cleanup(); if(GS.ws){try{GS.ws.close();}catch(e){}} document.exitPointerLock&&document.exitPointerLock(); GS=null; } }
+function teardownGame(){ pvpStarting=false; if(GS){ GS.alive=false; if(GS.raf)cancelAnimationFrame(GS.raf); if(GS.cleanup)GS.cleanup(); document.exitPointerLock&&document.exitPointerLock(); GS=null; } if(wsConn){try{wsConn.close();}catch(e){} wsConn=null;} }
 
 // World constants — MUST match ArenaServer.mjs
 var ROOM=30, HALF=15, EYE=1.7;
@@ -314,14 +314,20 @@ function openWs(){
   wsConn.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;} handleWs(d); };
   wsConn.onclose=function(){ wsConn=null; };
 }
-var pvpReady=false;
+var GS_you=null, pvpStarting=false;
+function ensurePvpGame(cb){
+  stopLobby();
+  if(GS&&GS.mode==='pvp'){ if(cb)cb(); return; }
+  if(pvpStarting) return;             // start already in flight — drop until ready
+  pvpStarting=true;
+  ensureThree(function(){ if(GS)teardownGame(); startGame('pvp'); GS.ws=wsConn; pvpStarting=false; if(cb)cb(); });
+}
 function handleWs(d){
-  if(d.t==='hello'){ if(d.match&&d.you){ GS_you=d.you; } return; }
-  if(d.t==='live'){ stopLobby(); if(!GS||GS.mode!=='pvp'){ ensureThree(function(){ startGame('pvp'); GS.ws=wsConn; }); } return; }
-  if(d.t==='state'){ if(GS&&GS.onState)GS.onState(d); return; }
+  if(d.t==='hello'){ if(d.you)GS_you=d.you; if(d.match&&(d.match.phase==='live'||d.match.phase==='countdown')) ensurePvpGame(); return; }
+  if(d.t==='live'){ ensurePvpGame(); return; }
+  if(d.t==='state'){ ensurePvpGame(function(){ if(GS&&GS.onState)GS.onState(d); }); return; }
   if(d.t==='end'){ pvpEnd(d); return; }
 }
-var GS_you=null;
 function startPvp(THREE,W,IN){
   var camera=W.camera, scene=W.scene; GS.ws=wsConn;
   var foes={}; // uid -> fighter
