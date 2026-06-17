@@ -176,7 +176,7 @@ const rlMoney = new Map<string, number>();
 // ── per-server tax (winnings cut → server bank) ──────────────────────────────
 // Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
 // 50%. The selected server (`srv` cookie) decides the rate + receives the cut.
-const DEFAULT_TAX_BPS = 1500, MAX_TAX_BPS = 5000;
+const DEFAULT_TAX_BPS = 1500, MAX_TAX_BPS = 5000, MIN_TAX_BPS = 1500; // 15% floor for normal owners; the bot owner is exempt
 const taxCache = new Map<string, { bps: number; until: number }>();
 async function guildTax(gid: string): Promise<number> {
   if (!gid) return 0;
@@ -779,13 +779,15 @@ app.get("/api/server/tax", async ({ request, query, set }) => {
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
   const owner = g.ownerId === uid;
-  const voted = owner ? await hasVoted(uid) : false; // only the owner needs the gate checked
+  const isBotOwner = owner && OWNERS.includes(uid);            // the bot owner bypasses the floor + vote
+  const voted = owner ? await hasVoted(uid) : false;
   return {
-    gid, owner, voted,
+    gid, owner, voted, botOwner: isBotOwner,
     taxBps: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
-    maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS,
+    minBps: isBotOwner ? 0 : MIN_TAX_BPS, maxBps: MAX_TAX_BPS, defaultBps: DEFAULT_TAX_BPS,
     bank: stdb.getServerBank(gid),
-    canChange: owner && voted,
+    canChange: owner,                                          // owners can always lower; raising needs a vote
+    needVoteToRaise: owner && !isBotOwner && !voted,
     voteUrl: "https://fluxerlist.com/servers/fabrikken",
   };
 });
@@ -796,10 +798,16 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
   if (g.ownerId !== uid) { set.status = 403; return { error: "Only the server owner can change the tax" }; }
-  if (!(await hasVoted(uid))) { set.status = 403; return { error: "Vote for the bot on FluxerList to change your server's tax", needVote: true, voteUrl: "https://fluxerlist.com/servers/fabrikken" }; }
+  const isBotOwner = OWNERS.includes(uid);
+  const minBps = isBotOwner ? 0 : MIN_TAX_BPS;                 // 15% floor unless bot owner
+  const currentBps = Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS;
   const pct = Number(b?.percent), bpsRaw = Number(b?.taxBps);
   const bps = Number.isFinite(bpsRaw) ? bpsRaw : Number.isFinite(pct) ? Math.round(pct * 100) : NaN;
-  if (!Number.isFinite(bps) || bps < 0 || bps > MAX_TAX_BPS) { set.status = 400; return { error: `Tax must be between 0% and ${MAX_TAX_BPS / 100}%` }; }
+  if (!Number.isFinite(bps) || bps < minBps || bps > MAX_TAX_BPS) { set.status = 400; return { error: `Tax must be between ${minBps / 100}% and ${MAX_TAX_BPS / 100}%` }; }
+  // Lowering the tax is always allowed; raising it requires an active FluxerList vote.
+  if (!isBotOwner && bps > currentBps && !(await hasVoted(uid))) {
+    set.status = 403; return { error: "Vote for the bot on FluxerList to raise your server's tax", needVote: true, voteUrl: "https://fluxerlist.com/servers/fabrikken" };
+  }
   const saved = await (db as any).setGuildTax(gid, bps).catch(() => null);
   if (saved == null) { set.status = 500; return { error: "Failed to save" }; }
   taxCache.set(gid, { bps: saved, until: Date.now() + 60_000 }); // refresh hot cache immediately

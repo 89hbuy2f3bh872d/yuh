@@ -37,10 +37,6 @@
     <span>House Games</span>
     <span class="sb-badge">Live</span>
   </a>
-  <a href="/leaderboard" class="sb-item __ACTIVE_leaderboard__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-    <span>Leaderboard</span>
-  </a>
 
   <span class="sb-section">Account</span>
   <a href="/notifications" class="sb-item __ACTIVE_notifications__">
@@ -48,13 +44,19 @@
     <span>Notifications</span>
     <span class="sb-badge sb-notif-badge hidden" id="sbNotifBadge">0</span>
   </a>
-  <a href="/misc" class="sb-item __ACTIVE_misc__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-    <span>Send Money</span>
-  </a>
   <a href="/settings" class="sb-item __ACTIVE_settings__">
     <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     <span>Settings</span>
+  </a>
+
+  <span class="sb-section">Misc</span>
+  <a href="/leaderboard" class="sb-item __ACTIVE_leaderboard__">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+    <span>Leaderboard</span>
+  </a>
+  <a href="/misc" class="sb-item __ACTIVE_misc__">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    <span>Send Money</span>
   </a>
   __SERVERS_NAV__
   __ADMIN_NAV__
@@ -330,14 +332,18 @@
     var back=document.createElement('div'); back.className='sg-dlg-back';
     var voteUrl=d.voteUrl||'https://fluxerlist.com';
     var bank=Number(d.bank||0).toLocaleString();
+    var minPct=(d.minBps||0)/100, maxPct=(d.maxBps/100), curPct=(d.taxBps/100);
+    var raiseNote = d.needVoteToRaise
+      ? '<div class="sg-dlg-gate">You can <b>lower</b> your tax anytime. To <b>raise</b> it above '+curPct+'%, you need an active <a href="'+voteUrl+'" target="_blank" rel="noopener">FluxerList vote</a>.</div>'
+      : '';
     var body = d.canChange
       ? '<label class="sg-dlg-lab">Tax on winnings (% of profit)</label>'
-        +'<div class="sg-dlg-row"><input id="sgTaxIn" type="number" min="0" max="'+(d.maxBps/100)+'" step="0.5" value="'+(d.taxBps/100)+'"><span>%</span></div>'
-        +'<div class="sg-dlg-hint">Players pay this share of any profit into your server bank. Max '+(d.maxBps/100)+'%.</div>'
+        +'<div class="sg-dlg-row"><input id="sgTaxIn" type="number" min="'+minPct+'" max="'+maxPct+'" step="0.5" value="'+curPct+'"><span>%</span></div>'
+        +'<div class="sg-dlg-hint">Min '+minPct+'%, max '+maxPct+'%. The cut feeds your server bank.</div>'
+        +raiseNote
         +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Cancel</button><button class="btn btn-primary" id="sgTaxSave">Save</button></div>'
-      : '<div class="sg-dlg-hint">Current tax: <b>'+(d.taxBps/100)+'%</b>.</div>'
-        +'<div class="sg-dlg-gate">To change your server\'s tax you must have an active <b>vote for the bot on FluxerList</b>.</div>'
-        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Close</button><a class="btn btn-primary" href="'+voteUrl+'" target="_blank" rel="noopener">Vote on FluxerList</a></div>';
+      : '<div class="sg-dlg-hint">Current tax: <b>'+curPct+'%</b>. Only the server owner can change it.</div>'
+        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Close</button></div>';
     back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()"><div class="sg-dlg-h"><b>'+esc(sv.name)+'</b> · Server tax</div><div class="sg-dlg-bank">Bank: <b>'+bank+' FC</b></div>'+body+'</div>';
     function close(){ try{document.body.removeChild(back);}catch(e){} }
     back.addEventListener('click',close);

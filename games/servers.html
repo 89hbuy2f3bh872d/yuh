@@ -115,7 +115,7 @@ function load(){
     var list=d.servers||[]; SRV={}; ITEMS=d.shopItems||[];
     var vb=document.getElementById('voteBanner');
     vb.innerHTML = (list.length && !d.voted)
-      ? '<div class="svc-vote"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 4 7v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7Z"/></svg><span>Want to change your tax rate? <a href="'+esc(d.voteUrl||'https://fluxerlist.com')+'" target="_blank" rel="noopener">Vote for the bot on FluxerList</a> to unlock it.</span></div>'
+      ? '<div class="svc-vote"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 4 7v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7Z"/></svg><span>Want to <b>raise</b> your tax above 15%? <a href="'+esc(d.voteUrl||'https://fluxerlist.com')+'" target="_blank" rel="noopener">Vote for the bot on FluxerList</a> to unlock it. (You can always lower it.)</span></div>'
       : '';
     if(!list.length){ wrap.innerHTML='<div class="empty">You don\'t own any servers with the bot yet.</div>'; return; }
     list.forEach(function(s){ SRV[s.id]=s; });
