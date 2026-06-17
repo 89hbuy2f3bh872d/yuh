@@ -71,9 +71,6 @@ __SIDEBAR__
   </div>
 </div>
 
-</main>
-</div>
-
 <!-- Paytable modal -->
 <div id="infoOverlay" class="overlay hidden" onclick="if(event.target===this)hideInfo()">
   <div class="info-card">
@@ -89,6 +86,8 @@ __SIDEBAR__
     <div class="bigwin-amt" id="bigwinAmt">0 FC</div>
     <button class="btn btn-primary" onclick="$('winOverlay').classList.add('hidden')">Collect</button>
   </div>
+</div>
+</main>
 </div>
 
 <script>
@@ -228,33 +227,36 @@ function doSpin(buy){
 }
 
 async function animateRound(d){
-  var TURBO = false;
   var roundWin = 0;
   var hadFree = d.spins.some(function(s){return s.free;});
-  if(hadFree && window.SG && SG.music) SG.music.play('bonus'); // uplifting bonus theme
+  // per-machine bonus theme (a brighter variant of THIS slot's song)
+  if(hadFree && window.SG && SG.music) SG.music.play(GAME.id+'B');
   var fast = d.spins.length > 14; // long bonus → speed up
-  for(var si=0; si<d.spins.length; si++){
-    var sp = d.spins[si];
-    if(sp.free){
-      var idx = d.spins.slice(0,si+1).filter(function(x){return x.free;}).length;
-      var totalFree = d.spins.filter(function(x){return x.free;}).length;
-      $('fsBanner').classList.remove('hidden');
-      $('fsText').textContent='Free Spin '+idx+' / '+totalFree;
+  try {
+    for(var si=0; si<d.spins.length; si++){
+      var sp = d.spins[si];
+      if(sp.free){
+        var idx = d.spins.slice(0,si+1).filter(function(x){return x.free;}).length;
+        var totalFree = d.spins.filter(function(x){return x.free;}).length;
+        var fb=$('fsBanner'); if(fb)fb.classList.remove('hidden');
+        var ft=$('fsText'); if(ft)ft.textContent='Free Spin '+idx+' / '+totalFree;
+      }
+      if(si>0 && d.spins[si-1] && !d.spins[si-1].free && sp.free){
+        if(window.SG)SG.sfx('scatter'); stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
+      }
+      await animateSpin(sp, roundWin, fast);
+      roundWin += sp.total;
+      setWinMeter(roundWin);
+      await sleep(fast?120:300);
     }
-    if(si>0 && d.spins[si-1] && !d.spins[si-1].free && sp.free){
-      if(window.SG)SG.sfx('scatter'); stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
-    }
-    await animateSpin(sp, roundWin, fast);
-    roundWin += sp.total;
-    setWinMeter(roundWin);
-    await sleep(fast?120:300);
+    if(d.totalWin>0){ await bigWin(d.totalWin, d.bet); }
+    bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
+  } catch(e){ console.error('animateRound', e); }
+  finally {
+    var fb2=$('fsBanner'); if(fb2)fb2.classList.add('hidden');
+    if(window.SG && SG.music && GAME) SG.music.play(GAME.id); // always return to base theme
+    busy=false; setControls(true);
   }
-  // finish
-  if(d.totalWin>0){ await bigWin(d.totalWin, d.bet); }
-  bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
-  $('fsBanner').classList.add('hidden');
-  if(hadFree && window.SG && SG.music) SG.music.play(GAME.id); // back to game theme
-  busy=false; setControls(true);
 }
 
 async function animateSpin(sp, runningBefore, fast){
@@ -303,10 +305,12 @@ async function animateSpin(sp, runningBefore, fast){
 async function bigWin(total, betAmt){
   var x = total / betAmt;
   if(x < 15) return; // only celebrate sizeable wins
+  var lbl=$('bigwinLabel'), amt=$('bigwinAmt'), ov=$('winOverlay');
+  if(!lbl||!amt||!ov) return; // overlay not present — skip safely
   var label = x>=200?'MEGA WIN':(x>=75?'EPIC WIN':'BIG WIN');
-  $('bigwinLabel').textContent=label;
+  lbl.textContent=label;
   if(window.SG)SG.sfx('bigwin');
-  var amt=$('bigwinAmt'); $('winOverlay').classList.remove('hidden');
+  ov.classList.remove('hidden');
   var start=0, dur=1400, t0=Date.now();
   return new Promise(function(resolve){
     (function tick(){

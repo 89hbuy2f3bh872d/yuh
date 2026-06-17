@@ -170,9 +170,6 @@ __SIDEBAR__
   </div>
 </div>
 
-</main>
-</div><!-- /.app -->
-
 <div id="countdownOverlay" class="overlay hidden">
   <div class="countdown-num" id="countdownNum">3</div>
   <div class="countdown-label">Cases opening…</div>
@@ -202,6 +199,9 @@ __SIDEBAR__
     <div class="jp-strip" id="jpStrip"></div>
   </div>
 </div>
+
+</main>
+</div><!-- /.app -->
 
 <script>
 var MY_UID = "__UID__";
@@ -611,6 +611,27 @@ function fillStatic(b, p, N){
   setLabels(N, N, [p]);
 }
 
+// Tick offsets (ms) matching when reel items cross the marker line. Uses the
+// same easing as the spin (cubic-bezier .12,.74,.18,1 over the first 72%), so
+// ticks start fast and decelerate exactly like the reel.
+function caseTickTimes(dur){
+  var REEL = 42, d1 = dur * 0.72;
+  var p1x=0.12,p1y=0.74,p2x=0.18,p2y=1, S=[];
+  for(var t=0;t<=1.0001;t+=0.004){
+    var u=1-t;
+    var x=3*u*u*t*p1x+3*u*t*t*p2x+t*t*t;
+    var y=3*u*u*t*p1y+3*u*t*t*p2y+t*t*t;
+    S.push([x,y]);
+  }
+  var times=[], si=0;
+  for(var i=1;i<=REEL;i++){
+    var f=i/REEL;
+    while(si<S.length-1 && S[si][1]<f) si++;
+    times.push(S[si][0]*d1);
+  }
+  return times;
+}
+
 function startReels(b, players, isPlayer){
   var N = (b.cases || []).length;
   var FAST = b.speed === 'fast';
@@ -643,7 +664,7 @@ function startReels(b, players, isPlayer){
     if (idx >= N) { currentBattle.reelsDone = true; finishReels(); return; }
     var thisIdx = idx;
     players.forEach(function (p) { if (animated(p)) spinPlayerCase(b, p, thisIdx, SPIN_MS); });
-    if (window.SG) SG.caseSpin(SPIN_MS);
+    if (window.SG && SG.caseTicks) SG.caseTicks(caseTickTimes(SPIN_MS));
     setLabels(thisIdx + 1, N, players);
     setTimeout(function () {
       if (!currentBattle || currentBattle.id !== b.id) return;

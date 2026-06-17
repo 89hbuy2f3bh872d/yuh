@@ -88,10 +88,14 @@
   // Each theme is a short looping sequence; quiet by default. Bonus theme is
   // brighter/faster. Switching themes crossfades the music bus.
   var THEMES = {
+    // base machine themes
     candy:   { tempo: 430, type: "triangle", cut: 1150, gain: 0.085, lead: [523, 659, 784, 659, 587, 784, 880, 784], bass: [131, 0, 165, 0, 175, 0, 196, 0] },
     olympus: { tempo: 500, type: "sine",     cut: 950,  gain: 0.085, lead: [440, 523, 659, 523, 587, 440, 392, 523], bass: [110, 0, 131, 0, 98, 0, 110, 0] },
     bandit:  { tempo: 520, type: "triangle", cut: 880,  gain: 0.095, lead: [392, 0, 494, 587, 0, 494, 440, 0],       bass: [98, 0, 0, 123, 0, 0, 110, 0] },
-    bonus:   { tempo: 300, type: "sawtooth", cut: 1700, gain: 0.10,  lead: [659, 784, 880, 1046, 988, 880, 784, 1046, 1175, 1046, 880, 784], bass: [131, 165, 196, 165, 175, 220, 196, 165] },
+    // bonus = brighter, faster variant of the SAME machine's song (one octave up, denser)
+    candyB:  { tempo: 300, type: "triangle", cut: 1700, gain: 0.10, lead: [1046, 1318, 1568, 1318, 1175, 1568, 1760, 1568, 1318, 1175, 1046, 1175], bass: [262, 330, 349, 392, 350, 392, 392, 330] },
+    olympusB:{ tempo: 330, type: "sawtooth", cut: 1500, gain: 0.10, lead: [880, 1046, 1318, 1046, 1175, 880, 784, 1046, 1318, 1046, 880, 784], bass: [220, 262, 196, 220, 196, 262, 220, 196] },
+    banditB: { tempo: 320, type: "square",   cut: 1300, gain: 0.10, lead: [784, 988, 1175, 988, 880, 1175, 1318, 1175, 988, 880, 784, 988], bass: [196, 247, 196, 220, 196, 247, 220, 196] },
   };
   var mKey = null, mStep = 0, mTimer = 0, mPlaying = false;
   function mTick() {
@@ -129,6 +133,8 @@
   window.SG = {
     sfx: function (name) { if (cfg.muted) return; var f = SFX[name]; if (f) try { f(); } catch (e) {} },
     caseSpin: function (d) { if (!cfg.muted) try { caseSpin(d); } catch (e) {} },
+    // schedule ticks at exact ms offsets (synced to the reel crossing dividers)
+    caseTicks: function (times) { if (cfg.muted || !times) return; ensure(); resume(); for (var i = 0; i < times.length; i++) { (function (t) { setTimeout(function () { if (!cfg.muted) try { SFX.tick(); } catch (e) {} }, t); })(times[i]); } },
     music: { play: function (k) { try { playTheme(k); } catch (e) {} }, stop: stopMusic },
     get: function () { return Object.assign({}, cfg); },
     setMusic: function (v) { cfg.music = Math.max(0, Math.min(100, v | 0)); save(); if (musicGain) musicGain.gain.value = cfg.muted ? 0 : cfg.music / 100; if (cfg.music === 0) stopMusic(); },

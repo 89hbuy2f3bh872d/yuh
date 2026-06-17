@@ -183,25 +183,34 @@ function pkDrop(){
 }
 function pkAnimate(path,slot,done){
   var P=PK; if(!P){done&&done();return;}
-  // waypoints: peg contacts per row, then final slot
+  // Peg-contact targets per row (x derived from the server path), final = slot.
   var pts=[], rights=0;
   for(var k=0;k<=ROWS;k++){
     if(k>0) rights+=path[k-1];
     pts.push({x:P.margin+(rights+(ROWS-k)/2+0.5)*P.slotW, y:P.topY+k*P.rowH});
   }
-  pts.push({x:P.margin+(slot+0.5)*P.slotW, y:P.botY+14});
-  var seg=0, segDur=88, t0=null;
+  pts.push({x:P.margin+(slot+0.5)*P.slotW, y:P.botY+10});
+  // Real-ish physics: gravity accelerates the fall; each peg deflects the ball
+  // (vy bounces, vx kicks toward the next gap). Looks like an actual Plinko drop.
+  var seg=0, x=pts[0].x, y=P.topY-10, vx=0, vy=0;
+  var g=2600, last=null, R=7;
   function frame(ts){
-    if(t0==null)t0=ts;
-    var p=(ts-t0)/segDur; if(p>1)p=1;
-    var a=pts[seg], b=pts[seg+1];
-    var x=a.x+(b.x-a.x)*p;
-    var ease=1-Math.pow(1-p,2);
-    var y=a.y+(b.y-a.y)*ease;
-    y-=Math.sin(p*Math.PI)*6; // little bounce arc
+    if(last==null)last=ts; var dt=Math.min(0.026,(ts-last)/1000); last=ts;
+    var tgt=pts[seg+1];
+    vy += g*dt;                       // gravity
+    vx += (tgt.x - x) * 26 * dt;      // spring toward next gap
+    vx *= 0.86;                       // damping
+    x += vx*dt;
+    y += vy*dt;
+    if(y >= tgt.y){            // hit the peg row
+      y = tgt.y;
+      seg++;
+      if(seg >= pts.length-1){ P.ball=null; pkDraw(); done&&done(); return; }
+      vy = -vy*0.45;           // bounce
+      vx += (Math.random()*2-1)*40 + (pts[seg+1].x - x)*2; // deflect toward next gap
+      if(seg < 11) sfx('tick');
+    }
     P.ball={x:x,y:y}; pkDraw();
-    if(p>=1){ seg++; t0=null; if(seg<10)sfx('tick');
-      if(seg>=pts.length-1){ P.ball=null; pkDraw(); done&&done(); return; } }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
