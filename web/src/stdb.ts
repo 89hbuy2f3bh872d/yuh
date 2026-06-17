@@ -47,8 +47,13 @@ export class Stdb {
           this.connected = true;
           conn.db.account.onInsert((_c: any, r: any) => this.#setBal(r.owner, num(r.balance)));
           conn.db.account.onUpdate((_c: any, _o: any, n: any) => this.#setBal(n.owner, num(n.balance)));
-          conn.db.serverBank?.onInsert?.((_c: any, r: any) => this.#setBank(r.gid, num(r.balance)));
-          conn.db.serverBank?.onUpdate?.((_c: any, _o: any, n: any) => this.#setBank(n.gid, num(n.balance)));
+          // The codegen camelCases reducers (settleWin) but may keep snake_case table
+          // accessors (server_bank) — resolve whichever name exists so the bank cache
+          // actually populates. (This mismatch was leaving the bank stuck at 0.)
+          const bank = this.#bankTable(conn);
+          if (!bank) { try { console.warn("[stdb] server_bank table accessor not found. conn.db keys:", Object.keys(conn.db || {}).join(", ")); } catch {} }
+          bank?.onInsert?.((_c: any, r: any) => this.#setBank(r.gid, num(r.balance)));
+          bank?.onUpdate?.((_c: any, _o: any, n: any) => this.#setBank(n.gid, num(n.balance)));
           // account gates ready(); server_bank is its own subscription so a multi-query
           // quirk can't stop bank rows from syncing. Seed both caches from iter() on apply.
           conn.subscriptionBuilder().onApplied(() => { this.#seedBanks(conn); resolve(); }).subscribe(["SELECT * FROM account"]);
@@ -73,9 +78,12 @@ export class Stdb {
     if (cbs) for (const cb of cbs) try { cb(balance); } catch {}
   }
 
+  // Resolve the server_bank table accessor regardless of codegen casing.
+  #bankTable(conn: any): any { return conn?.db?.serverBank ?? conn?.db?.server_bank ?? conn?.db?.serverbank ?? null; }
+
   // Reconcile the bank cache from whatever rows the server_bank subscription holds.
   #seedBanks(conn: any) {
-    try { for (const r of conn.db.serverBank?.iter?.() ?? []) this.#setBank(r.gid, num(r.balance)); } catch {}
+    try { for (const r of this.#bankTable(conn)?.iter?.() ?? []) this.#setBank(r.gid, num(r.balance)); } catch {}
   }
 
   // Resolve once `owner`'s balance row changes (server reconciliation), or after `ms`.

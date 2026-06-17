@@ -260,6 +260,16 @@ function broadcastTicket(ownerUid: string, payload: any) {
     if (d.uid && (d.uid === ownerUid || d.isAdmin)) { try { ws.send(msg); } catch {} }
   }
 }
+// Push a live stat delta for a server to every socket watching it (owners + managers).
+// Keeps the Servers dashboard's stat tiles updating in real time without polling.
+function broadcastServerPlay(gid: string, patch: Record<string, number | boolean>) {
+  if (!gid) return;
+  const msg = JSON.stringify({ type: "server-play", gid, ...patch });
+  for (const ws of wsClients) {
+    const d = ws.data as any;
+    if (d.watchGids && d.watchGids.has(gid)) { try { ws.send(msg); } catch {} }
+  }
+}
 
 // Global per-IP rate limit — blocks extreme spam (real client IP via Cloudflare header).
 const ipHits = new Map<string, number[]>();
@@ -303,6 +313,7 @@ const app = new Elysia()
           if (gids.length) watch = (await db.getGuildsByIds(gids).catch(() => [])).filter((g: any) => g.ownerId === uid).map((g: any) => g._id);
         }
         if (watch.length) {
+          (ws.data as any).watchGids = new Set(watch);          // for live server-play stat pushes
           const offs: Array<() => void> = [];
           for (const gid of watch) {
             ws.send(JSON.stringify({ type: "bank", gid, bal: stdb.getServerBank(gid) }));
@@ -378,6 +389,7 @@ const app = new Elysia()
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
     (db as any).recordServerPayout?.(srv.gid, result.totalWin, tax).catch(() => {});
+    broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost, dPayout: result.totalWin, dTax: tax, big: result.totalWin });
     return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid) };
   })
 
@@ -394,11 +406,12 @@ const app = new Elysia()
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
     const bal = () => stdb.getBalance(uid);
-    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); };
+    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
     // Credit a payout, routing the server's tax on profit (payout − stake) to its bank.
     const payWin = (payout: number, stake: number) => {
       const tax = payout > 0 ? taxOnProfit(payout - stake, srv.taxBps) : 0;
       (db as any).recordServerPayout?.(srv.gid, payout, tax).catch(() => {});
+      if (payout > 0) broadcastServerPlay(srv.gid, { dPayout: payout, dTax: tax, big: payout });
       if (!(payout > 0)) return Promise.resolve();
       return stdb.creditWin(uid, payout, srv.gid, tax).catch(() => {});
     };
