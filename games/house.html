@@ -267,10 +267,11 @@ function mnStart(){
     msg(GAME._mines+' bombs hidden — pick a tile');
   }).catch(function(){busy=false;});
 }
+function mnReset(){ GAME._active=false; busy=false; for(var k=0;k<25;k++){var e=$('mn-'+k);if(e)e.disabled=true;} var s=$('mnStart'),c=$('mnCash'); if(s)s.classList.remove('hidden'); if(c)c.classList.add('hidden'); }
 function mnReveal(i){
   if(!GAME._active||busy)return; var t=$('mn-'+i); if(t.classList.contains('safe'))return; busy=true;
   post('mines/reveal',{idx:i}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
+    busy=false; if(d.error){ msg(d.error,'bad'); if(/active|found/i.test(d.error)) mnReset(); return; }
     if(d.hit){
       GAME._active=false; sfx('lose');
       d.bombs.forEach(function(b){var e=$('mn-'+b);e.classList.add('bomb');e.textContent='💣';});
@@ -320,10 +321,11 @@ function hlStart(){
     $('hlCash').textContent='Cash out'; msg('Higher or lower?');
   }).catch(function(){busy=false;});
 }
+function hlReset(){ GAME._active=false; busy=false; var g=$('hlGuess'),s=$('hlStart'),m=$('hlMult'); if(g)g.classList.add('hidden'); if(s)s.classList.remove('hidden'); if(m)m.textContent=''; }
 function hlGuess(dir){
   if(!GAME._active||busy)return; busy=true;
   post('hilo/guess',{dir:dir}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
+    busy=false; if(d.error){ msg(d.error,'bad'); if(/active|found/i.test(d.error)) hlReset(); return; }
     showCard(d.next);
     if(!d.win){ GAME._active=false; sfx('lose'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent=''; msg('Busted! ('+RANKS[d.prev]+' → '+RANKS[d.next]+')','bad'); return; }
     sfx('pop'); hlBtns(d); $('hlMult').textContent=d.mult.toFixed(2)+'×'; $('hlCash').textContent='Cash out '+fmt(d.payout)+' FC'; msg('Streak! '+d.mult.toFixed(2)+'×','good');

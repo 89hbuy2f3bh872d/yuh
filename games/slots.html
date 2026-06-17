@@ -14,26 +14,19 @@ __SIDEBAR__
 
 <!-- ── Lobby ─────────────────────────────────────────────────────────── -->
 <div id="view-list">
-  <div class="page-head">
-    <div>
-      <h1 class="page-title">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
-        Slots
-      </h1>
-      <div class="page-sub">Tumble pays · free spins · buy bonus — provably server-resolved.</div>
-    </div>
-  </div>
+  <div class="page-head"><div>
+    <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg> Slots</h1>
+    <div class="page-sub">Cluster pays · tumbling reels · free spins & buy bonus.</div>
+  </div></div>
   <div class="slot-grid" id="slotGrid"><div class="empty">Loading…</div></div>
 </div>
 
 <!-- ── Game ──────────────────────────────────────────────────────────── -->
 <div id="view-game" class="hidden">
   <div class="page-head">
-    <div>
-      <h1 class="page-title" id="gameTitle"><span></span></h1>
-      <div class="page-sub" id="gameTag"></div>
-    </div>
+    <div><h1 class="page-title" id="gameTitle"><span></span></h1><div class="page-sub" id="gameTag"></div></div>
     <div class="page-actions">
+      <button class="btn btn-ghost" id="muteBtn" onclick="toggleMute()" title="Mute music"><svg class="icon" viewBox="0 0 24 24" id="muteIcon"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg></button>
       <button class="btn btn-ghost" onclick="showInfo()"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Paytable</button>
       <button class="btn btn-ghost" onclick="backToLobby()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Lobby</button>
     </div>
@@ -43,6 +36,7 @@ __SIDEBAR__
     <div class="machine-top">
       <div class="meter"><span class="meter-lbl">Win</span><b id="winMeter">0</b> FC</div>
       <div class="fs-banner hidden" id="fsBanner"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg> <span id="fsText">Free Spins</span></div>
+      <div class="gmult hidden" id="gmult">Global <b id="gmultVal">×1</b></div>
       <div class="meter right"><span class="meter-lbl">Balance</span><b id="balMeter">0</b> FC</div>
     </div>
 
@@ -59,13 +53,12 @@ __SIDEBAR__
         <button class="step-btn" onclick="adjustBet(1)">+</button>
       </div>
       <button class="spin-btn" id="spinBtn" onclick="doSpin(false)">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.5 1 6 2.5L21 3M21 3v6h-6"/></svg>
-        <span>SPIN</span>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.5 1 6 2.5L21 3M21 3v6h-6"/></svg><span>SPIN</span>
       </button>
-      <button class="buy-btn" id="buyBtn" onclick="doSpin(true)">
-        <span class="buy-top">Buy Bonus</span>
-        <span class="buy-cost" id="buyCost">—</span>
-      </button>
+      <div class="buy-col">
+        <button class="buy-btn reg" id="buyReg" onclick="doSpin('regular')"><span class="buy-top">Buy Bonus</span><span class="buy-cost" id="costReg">—</span></button>
+        <button class="buy-btn sup" id="buySup" onclick="doSpin('super')"><span class="buy-top">Buy SUPER</span><span class="buy-cost" id="costSup">—</span></button>
+      </div>
     </div>
     <div class="quick-bets" id="quickBets"></div>
   </div>
@@ -79,12 +72,24 @@ __SIDEBAR__
   </div>
 </div>
 
+<!-- Free-spins intro -->
+<div id="fsIntro" class="overlay hidden">
+  <div class="fsi-card">
+    <div class="fsi-burst" id="fsiBurst">⚡</div>
+    <div class="fsi-title" id="fsiTitle">FREE SPINS!</div>
+    <div class="fsi-count"><b id="fsiCount">10</b> spins</div>
+    <div class="fsi-sub" id="fsiSub"></div>
+    <button class="btn btn-primary fsi-ok" id="fsiOk">Start bonus</button>
+  </div>
+</div>
+
 <!-- Big-win overlay -->
 <div id="winOverlay" class="overlay hidden">
   <div class="bigwin-card">
+    <div class="bigwin-rays" id="bigwinRays"></div>
     <div class="bigwin-label" id="bigwinLabel">BIG WIN</div>
     <div class="bigwin-amt" id="bigwinAmt">0 FC</div>
-    <button class="btn btn-primary" onclick="$('winOverlay').classList.add('hidden')">Collect</button>
+    <button class="btn btn-primary" id="bwCollect">Collect</button>
   </div>
 </div>
 </main>
@@ -95,42 +100,22 @@ function $(id){return document.getElementById(id);}
 function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 
-var GAMES = [];
-var GAME = null;          // active game config
-var bal = 0;
-var BET_LEVELS = [1,2,5,10,20,40,80,150,300,600,1000,2000];
-var betIdx = 4;           // 20
-var busy = false;
-var winMeterVal = 0;
+var GAMES=[], GAME=null, bal=0, busy=false;
+var BET_LEVELS=[1,2,5,10,20,40,80,150,300,600,1000,2000], betIdx=4;
 
-function refreshBal(){
-  return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){
-    if(d&&d.bal!==undefined){ bal=Number(d.bal); var e=$('sbBal'); if(e)e.textContent=fmt(bal); var bm=$('balMeter'); if(bm)bm.textContent=fmt(bal); }
-  }).catch(function(){});
-}
-refreshBal(); setInterval(function(){ if(!busy) refreshBal(); },8000);
+function refreshBal(){ return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&d.bal!==undefined){bal=Number(d.bal);var e=$('sbBal');if(e)e.textContent=fmt(bal);var bm=$('balMeter');if(bm)bm.textContent=fmt(bal);} }).catch(function(){}); }
+refreshBal(); setInterval(function(){ if(!busy)refreshBal(); },8000);
 
 function bet(){ return BET_LEVELS[betIdx]; }
-function setBetMeters(){
-  $('betVal').textContent = fmt(bet());
-  if(GAME){ $('buyCost').textContent = fmt(bet()*GAME.buyX)+' FC'; }
-}
+function setBetMeters(){ $('betVal').textContent=fmt(bet()); if(GAME&&GAME.buy){ $('costReg').textContent=fmt(bet()*(GAME.buy.regular||0))+' FC'; $('costSup').textContent=fmt(bet()*(GAME.buy.super||0))+' FC'; } }
 function adjustBet(d){ betIdx=Math.max(0,Math.min(BET_LEVELS.length-1,betIdx+d)); setBetMeters(); renderQuick(); }
-function renderQuick(){
-  var el=$('quickBets'); if(!el) return; el.innerHTML='';
-  BET_LEVELS.forEach(function(v,i){
-    var b=document.createElement('button'); b.className='qbet'+(i===betIdx?' on':''); b.textContent=fmt(v);
-    b.onclick=function(){ betIdx=i; setBetMeters(); renderQuick(); };
-    el.appendChild(b);
-  });
-}
+function renderQuick(){ var el=$('quickBets'); if(!el)return; el.innerHTML=''; BET_LEVELS.forEach(function(v,i){ var b=document.createElement('button'); b.className='qbet'+(i===betIdx?' on':''); b.textContent=fmt(v); b.onclick=function(){betIdx=i;setBetMeters();renderQuick();}; el.appendChild(b); }); }
+
+function toggleMute(){ if(!window.SG)return; var m=!SG.get().muted; SG.setMuted(m); updateMuteIcon(); }
+function updateMuteIcon(){ var muted=window.SG?SG.get().muted:false; var ic=$('muteIcon'); if(ic) ic.innerHTML=muted?'<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M23 9l-6 6M17 9l6 6"/>':'<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/>'; }
 
 // ── Lobby ───────────────────────────────────────────────────────────────
-fetch('/api/slots/games').then(function(r){return r.json()}).then(function(d){
-  GAMES=d.games||[]; renderLobby();
-}).catch(function(){ $('slotGrid').innerHTML='<div class="empty">Failed to load games.</div>'; });
-
-// Game-logo glyphs (Lucide paths, 24×24) composed into a branded badge.
+fetch('/api/slots/games').then(function(r){return r.json()}).then(function(d){ GAMES=d.games||[]; renderLobby(); }).catch(function(){ $('slotGrid').innerHTML='<div class="empty">Failed to load games.</div>'; });
 var LOGOS={
   candy:'<path d="m9.5 7.5-2 2a4.95 4.95 0 1 0 7 7l2-2a4.95 4.95 0 1 0-7-7Z"/><path d="M14 6.5v10"/><path d="M10 7.5v10"/><path d="m16 7 1-5 1.37.68A3 3 0 0 1 20 5.4V7l1.5 1.5a3 3 0 0 1 0 4.2L20 14"/><path d="m8 17-1 5-1.37-.68A3 3 0 0 1 4 18.6V17l-1.5-1.5a3 3 0 0 1 0-4.2L4 10"/>',
   olympus:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
@@ -138,28 +123,21 @@ var LOGOS={
 };
 function slotLogo(g){
   var glyph=LOGOS[g.id]||LOGOS.candy, id='lg-'+g.id;
-  return '<svg class="slot-logo" viewBox="0 0 64 64" aria-hidden="true">'+
-    '<defs>'+
-      '<linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+g.color+'"/><stop offset="1" stop-color="#0c0c12"/></linearGradient>'+
-      '<radialGradient id="'+id+'-h" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'+
-    '</defs>'+
+  return '<svg class="slot-logo" viewBox="0 0 64 64" aria-hidden="true"><defs>'+
+    '<linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+g.color+'"/><stop offset="1" stop-color="#0c0c12"/></linearGradient>'+
+    '<radialGradient id="'+id+'-h" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.28"/><stop offset="0.6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>'+
     '<rect x="4" y="4" width="56" height="56" rx="17" fill="url(#'+id+')"/>'+
     '<rect x="4.75" y="4.75" width="54.5" height="54.5" rx="16.25" fill="none" stroke="'+g.color+'" stroke-opacity="0.55"/>'+
     '<rect x="4" y="4" width="56" height="56" rx="17" fill="url(#'+id+'-h)"/>'+
-    '<g transform="translate(20 20)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+glyph+'</g>'+
-  '</svg>';
+    '<g transform="translate(20 20)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+glyph+'</g></svg>';
 }
 function renderLobby(){
   var el=$('slotGrid'); el.innerHTML='';
   GAMES.forEach(function(g){
     var card=document.createElement('div'); card.className='slot-card'; card.style.setProperty('--gc',g.color);
-    card.innerHTML=
-      '<div class="slot-card-art">'+slotLogo(g)+'</div>'+
-      '<div class="slot-card-body">'+
-        '<div class="slot-card-name">'+g.name+'</div>'+
-        '<div class="slot-card-tag">'+g.tag+'</div>'+
-        '<div class="slot-card-meta">'+g.W+'×'+g.H+' · '+g.scatter.count+'+ scatters = '+g.scatter.spins+' free spins</div>'+
-      '</div>'+
+    card.innerHTML='<div class="slot-card-art">'+slotLogo(g)+'</div>'+
+      '<div class="slot-card-body"><div class="slot-card-name">'+g.name+'</div><div class="slot-card-tag">'+g.tag+'</div>'+
+      '<div class="slot-card-meta">'+g.W+'×'+g.H+' · clusters of '+g.minCluster+'+ · '+g.scatter.count+'+ scatters = '+g.scatter.regular+' free</div></div>'+
       '<button class="btn btn-primary slot-play">Play</button>';
     card.querySelector('.slot-play').onclick=function(){ openGame(g.id); };
     el.appendChild(card);
@@ -167,198 +145,181 @@ function renderLobby(){
 }
 
 function openGame(id){
-  GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME) return;
-  $('view-list').classList.add('hidden');
-  $('view-game').classList.remove('hidden');
-  $('gameTitle').querySelector('span').textContent=GAME.name;
-  $('gameTitle').style.setProperty('--gc',GAME.color);
-  $('gameTag').textContent=GAME.tag;
-  document.querySelector('.machine').style.setProperty('--gc',GAME.color);
-  setBetMeters(); renderQuick();
-  buildEmptyGrid(); fillRandom();
+  GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME)return;
+  $('view-list').classList.add('hidden'); $('view-game').classList.remove('hidden');
+  $('gameTitle').querySelector('span').textContent=GAME.name; $('gameTitle').style.setProperty('--gc',GAME.color);
+  $('gameTag').textContent=GAME.tag; document.querySelector('.machine').style.setProperty('--gc',GAME.color);
+  setBetMeters(); renderQuick(); updateMuteIcon();
+  buildGrid(); fillIdle();
   if(window.SG&&SG.music)SG.music.play(GAME.id);
   refreshBal();
 }
-function backToLobby(){ if(busy) return; if(window.SG&&SG.music)SG.music.stop(); $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
+function backToLobby(){ if(busy)return; if(window.SG&&SG.music)SG.music.stop(); $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
 
 // ── Grid ────────────────────────────────────────────────────────────────
-function buildEmptyGrid(){
-  var r=$('reels'); r.style.setProperty('--w',GAME.W); r.style.setProperty('--h',GAME.H);
-  r.innerHTML='';
-  for(var i=0;i<GAME.W*GAME.H;i++){
-    var c=document.createElement('div'); c.className='cell'; c.id='cell-'+i;
-    c.innerHTML='<div class="sym"></div>';
-    r.appendChild(c);
-  }
+function buildGrid(){
+  var r=$('reels'); r.style.setProperty('--w',GAME.W); r.style.setProperty('--h',GAME.H); r.innerHTML='';
+  for(var i=0;i<GAME.W*GAME.H;i++){ var c=document.createElement('div'); c.className='cell'; c.id='cell-'+i; c.innerHTML='<div class="sym"></div>'; r.appendChild(c); }
 }
-function symEmoji(s){
-  if(s===GAME.scatter.id||s==='SC') return GAME.scatter.emoji;
-  if(typeof s==='string'&&s.indexOf('M:')===0) return GAME.mult.emoji;
+function symHtml(s){
+  if(s===GAME.scatter.id||s==='SC') return GAME.scatter.emoji+'<span class="scglow"></span>';
+  if(isMult(s)) return GAME.mult.emoji+'<span class="mbadge">×'+multVal(s)+'</span>';
   return GAME.sym[s]||'❔';
 }
 function isMult(s){ return typeof s==='string'&&s.indexOf('M:')===0; }
 function multVal(s){ return parseInt(s.slice(2),10)||0; }
+function setCell(i,s,fall,delay){ var c=$('cell-'+i); if(!c)return; c.className='cell'+(fall?' fall':''); if(fall&&delay!=null)c.style.setProperty('--fd',delay+'ms'); c.innerHTML='<div class="sym">'+symHtml(s)+'</div>'; }
+function renderGrid(cells,fall){ for(var i=0;i<cells.length;i++) setCell(i,cells[i],fall, fall?((GAME.H-1-((i/GAME.W)|0))*0):0); }
+function fillIdle(){ var keys=Object.keys(GAME.sym),cells=[]; for(var i=0;i<GAME.W*GAME.H;i++)cells.push(keys[Math.floor(Math.random()*keys.length)]); renderGrid(cells,false); }
 
-function renderGrid(cells, opts){
-  opts=opts||{};
-  for(var i=0;i<cells.length;i++){
-    var cell=$('cell-'+i); if(!cell) continue;
-    var s=cells[i];
-    cell.className='cell'+(opts.drop?' drop':'');
-    var badge = isMult(s) ? '<span class="mbadge">x'+multVal(s)+'</span>' : (s===GAME.scatter.id?'<span class="scbadge"></span>':'');
-    cell.innerHTML='<div class="sym">'+symEmoji(s)+badge+'</div>';
+// drop the whole grid in (spin entrance) — staggered by row
+function dropGrid(cells){
+  for(var i=0;i<cells.length;i++){ var row=(i/GAME.W)|0; setCell(i,cells[i],true,(GAME.H-1-row)*45); }
+}
+// tumble: only re-drop columns whose contents changed, staggered top→bottom
+function applyTumble(prev,next){
+  for(var col=0;col<GAME.W;col++){
+    var changed=false; for(var row=0;row<GAME.H;row++){ var idx=row*GAME.W+col; if(prev[idx]!==next[idx]){changed=true;break;} }
+    for(var row2=0;row2<GAME.H;row2++){ var i=row2*GAME.W+col; if(changed) setCell(i,next[i],true,(GAME.H-1-row2)*40); else setCell(i,next[i],false,0); }
   }
 }
-function fillRandom(){
-  var keys=Object.keys(GAME.sym); var cells=[];
-  for(var i=0;i<GAME.W*GAME.H;i++) cells.push(keys[Math.floor(Math.random()*keys.length)]);
-  renderGrid(cells);
-}
+function clearFx(){ for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.remove('win','dim','pop','mhit'); } }
 
-function highlight(positions, on){
-  positions.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.toggle('win', on); });
-}
-function dim(except){
-  var set={}; (except||[]).forEach(function(i){set[i]=1;});
-  for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c) c.classList.toggle('dim', !set[i]); }
-}
-function clearFx(){
-  for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c){ c.classList.remove('win','dim','pop','mhit'); } }
-}
-
-// ── Spin / round animation ──────────────────────────────────────────────
-function setWinMeter(v){ winMeterVal=v; $('winMeter').textContent=fmt(v); }
-function stageMsg(t){ var m=$('stageMsg'); if(!t){m.classList.add('hidden');return;} m.textContent=t; m.classList.remove('hidden'); }
+// ── Spin / round ─────────────────────────────────────────────────────────
+function setWin(v){ $('winMeter').textContent=fmt(v); }
+function stageMsg(t){ var m=$('stageMsg'); if(!t){m.classList.add('hidden');return;} m.innerHTML=t; m.classList.remove('hidden'); }
+function setControls(on){ $('spinBtn').disabled=!on; $('buyReg').disabled=!on; $('buySup').disabled=!on; document.querySelectorAll('.step-btn,.qbet').forEach(function(b){b.disabled=!on;}); }
 
 function doSpin(buy){
-  if(busy||!GAME) return;
-  var b=bet(); var cost=buy?b*GAME.buyX:b;
+  if(busy||!GAME)return;
+  var b=bet(); var cost = buy==='super'?b*(GAME.buy.super||0) : buy==='regular'?b*(GAME.buy.regular||0) : b;
   if(cost>bal){ stageMsg('Not enough balance'); setTimeout(function(){stageMsg('');},1200); return; }
-  busy=true; setControls(false); setWinMeter(0); $('fsBanner').classList.add('hidden'); stageMsg('');
+  busy=true; setControls(false); setWin(0); $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden'); stageMsg('');
   if(window.SG)SG.sfx(buy?'coin':'spin');
   bal-=cost; $('balMeter').textContent=fmt(bal);
-  fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:!!buy})})
+  fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:buy||false})})
     .then(function(r){return r.json()}).then(function(d){
       if(d.error){ stageMsg(d.error); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); setTimeout(function(){stageMsg('');},1400); return; }
       animateRound(d);
     }).catch(function(){ stageMsg('Network error'); bal+=cost; $('balMeter').textContent=fmt(bal); busy=false; setControls(true); });
 }
 
+function freeIntro(count, isSuper){
+  return new Promise(function(resolve){
+    $('fsiBurst').textContent=GAME.scatter.emoji;
+    $('fsiTitle').textContent=isSuper?'SUPER FREE SPINS!':'FREE SPINS!';
+    $('fsiTitle').className='fsi-title'+(isSuper?' super':'');
+    $('fsiCount').textContent=count;
+    $('fsiSub').innerHTML=isSuper
+      ? 'Every '+GAME.mult.emoji+' adds to a <b>global multiplier</b> applied to every win.'
+      : 'Multipliers boost each winning spin. Good luck!';
+    $('fsIntro').classList.remove('hidden');
+    if(window.SG)SG.sfx('scatter');
+    var ok=$('fsiOk'); var done=function(){ ok.removeEventListener('click',done); $('fsIntro').classList.add('hidden'); resolve(); };
+    ok.addEventListener('click',done);
+  });
+}
+
 async function animateRound(d){
-  var roundWin = 0;
-  var hadFree = d.spins.some(function(s){return s.free;});
-  // per-machine bonus theme (a brighter variant of THIS slot's song)
-  if(hadFree && window.SG && SG.music) SG.music.play(GAME.id+'B');
-  var fast = d.spins.length > 14; // long bonus → speed up
+  var roundWin=0;
+  var fast = d.spins.length>16;
+  var isSuper = d.mode==='super';
   try {
-    for(var si=0; si<d.spins.length; si++){
-      var sp = d.spins[si];
-      if(sp.free){
-        var idx = d.spins.slice(0,si+1).filter(function(x){return x.free;}).length;
-        var totalFree = d.spins.filter(function(x){return x.free;}).length;
-        var fb=$('fsBanner'); if(fb)fb.classList.remove('hidden');
-        var ft=$('fsText'); if(ft)ft.textContent='Free Spin '+idx+' / '+totalFree;
+    // base spins (before bonus)
+    var bi=0;
+    while(bi<d.spins.length && !d.spins[bi].free){ await animateSpin(d.spins[bi], roundWin, fast, false); roundWin+=d.spins[bi].total; setWin(roundWin); bi++; await sleep(fast?100:260); }
+    // bonus
+    if(d.freeTriggered){
+      var freeCount=d.spins.filter(function(s){return s.free;}).length;
+      await freeIntro(d.freeAwarded||freeCount, isSuper);
+      if(window.SG&&SG.music)SG.music.play(GAME.id+'B');
+      $('fsBanner').classList.remove('hidden');
+      if(isSuper){ $('gmult').classList.remove('hidden'); $('gmultVal').textContent='×1'; }
+      var fdone=0;
+      for(var i=bi;i<d.spins.length;i++){ var sp=d.spins[i]; fdone++;
+        $('fsText').textContent='Free Spin '+fdone+' / '+freeCount;
+        await animateSpin(sp, roundWin, fast, true);
+        roundWin+=sp.total; setWin(roundWin);
+        if(isSuper && sp.globalMult){ $('gmultVal').textContent='×'+sp.globalMult; }
+        await sleep(fast?90:230);
       }
-      if(si>0 && d.spins[si-1] && !d.spins[si-1].free && sp.free){
-        if(window.SG)SG.sfx('scatter'); stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
-      }
-      await animateSpin(sp, roundWin, fast);
-      roundWin += sp.total;
-      setWinMeter(roundWin);
-      await sleep(fast?120:300);
     }
-    if(d.totalWin>0){ await bigWin(d.totalWin, d.bet); }
+    if(d.totalWin>0) await bigWin(d.totalWin, d.bet);
     bal=d.balance; $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal);
-  } catch(e){ console.error('animateRound', e); }
+  } catch(e){ console.error('animateRound',e); }
   finally {
-    var fb2=$('fsBanner'); if(fb2)fb2.classList.add('hidden');
-    if(window.SG && SG.music && GAME) SG.music.play(GAME.id); // always return to base theme
+    $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden');
+    if(window.SG&&SG.music&&GAME)SG.music.play(GAME.id);
     busy=false; setControls(true);
   }
 }
 
-async function animateSpin(sp, runningBefore, fast){
-  var STEP=fast?320:620, POP=fast?180:330;
+async function animateSpin(sp, runningBefore, fast, free){
+  var STEP=fast?300:560, POP=fast?170:300;
   clearFx();
-  // initial grid drops in
-  renderGrid(sp.steps[0].grid, {drop:true});
-  await sleep(fast?180:340);
+  dropGrid(sp.steps[0].grid);
+  await sleep(fast?260:460);
   var spinWin=0;
   for(var st=0; st<sp.steps.length; st++){
     var step=sp.steps[st];
-    if(!step.wins||!step.wins.length) break; // last (no win) step
-    var winPos=[];
-    step.wins.forEach(function(w){ w.positions.forEach(function(p){winPos.push(p);}); });
-    dim(winPos); highlight(winPos,true);
+    if(!step.wins||!step.wins.length) break;
+    var winPos=[]; step.wins.forEach(function(w){ w.positions.forEach(function(p){winPos.push(p);}); });
+    dimExcept(winPos); winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('win');});
     if(window.SG)SG.sfx('win');
-    spinWin += step.stepWin;
-    setWinMeter(runningBefore + spinWin);
+    spinWin+=step.stepWin; setWin(runningBefore+spinWin);
     await sleep(STEP);
-    // pop winners
     if(window.SG)SG.sfx('pop');
-    winPos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('pop'); });
+    winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('pop');});
     await sleep(POP);
     clearFx();
-    // drop to next grid
-    if(sp.steps[st+1]) renderGrid(sp.steps[st+1].grid,{drop:true});
-    await sleep(fast?150:280);
+    if(sp.steps[st+1]) applyTumble(step.grid, sp.steps[st+1].grid);
+    await sleep(fast?180:330);
   }
-  // multipliers
-  if(sp.multApplied>0){
-    var fin = sp.steps[sp.steps.length-1].grid;
-    var mpos=[];
-    for(var i=0;i<fin.length;i++){ if(isMult(fin[i])) mpos.push(i); }
-    mpos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('mhit'); });
+  // multiplier reveal
+  if(free && sp.multApplied>0){
+    var fin=sp.steps[sp.steps.length-1].grid, mpos=[];
+    for(var i=0;i<fin.length;i++){ if(isMult(fin[i]))mpos.push(i); }
+    mpos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('mhit');});
     if(window.SG)SG.sfx('mult');
-    stageMsg('×'+sp.multApplied);
-    await sleep(fast?500:900);
-    stageMsg('');
-    clearFx();
-  }
-  if(sp.scatters>=GAME.scatter.count && sp.scatterWin>0 && !sp.free){
-    // base trigger glow handled by FREE SPINS msg in round loop
+    stageMsg(sp.super?('GLOBAL ×'+sp.globalMult):('×'+sp.multApplied));
+    await sleep(fast?450:850); stageMsg(''); clearFx();
   }
 }
+function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.toggle('dim',!set[i]); } }
 
+// ── Big win count-up ─────────────────────────────────────────────────────
 async function bigWin(total, betAmt){
-  var x = total / betAmt;
-  if(x < 15) return; // only celebrate sizeable wins
-  var lbl=$('bigwinLabel'), amt=$('bigwinAmt'), ov=$('winOverlay');
-  if(!lbl||!amt||!ov) return; // overlay not present — skip safely
-  var label = x>=200?'MEGA WIN':(x>=75?'EPIC WIN':'BIG WIN');
-  lbl.textContent=label;
+  var x=total/betAmt; if(x<10) return;
+  var label = x>=500?'INSANE WIN':x>=150?'MEGA WIN':x>=50?'HUGE WIN':'BIG WIN';
+  var lbl=$('bigwinLabel'), amt=$('bigwinAmt'), ov=$('winOverlay'); if(!lbl||!amt||!ov)return;
+  lbl.textContent=label; lbl.setAttribute('data-tier', x>=150?'mega':x>=50?'huge':'big');
   if(window.SG)SG.sfx('bigwin');
   ov.classList.remove('hidden');
-  var start=0, dur=1400, t0=Date.now();
-  return new Promise(function(resolve){
-    (function tick(){
-      var p=Math.min(1,(Date.now()-t0)/dur);
-      amt.textContent=fmt(total*p)+' FC';
-      if(p<1) requestAnimationFrame(tick);
-      else { amt.textContent=fmt(total)+' FC'; setTimeout(function(){ $('winOverlay').classList.add('hidden'); resolve(); }, 1100); }
-    })();
+  var dur=Math.min(4000,1400+Math.log10(x)*900), t0=performance.now(), skipped=false;
+  var col=$('bwCollect'); var onSkip=function(){ skipped=true; }; col.addEventListener('click',onSkip);
+  await new Promise(function(resolve){
+    (function tick(now){
+      var p=Math.min(1,(now-t0)/dur); if(skipped)p=1;
+      amt.textContent=fmt(total*(p*p*(3-2*p)))+' FC';   // smoothstep count-up
+      if(window.SG && p<1 && Math.random()<0.25) SG.sfx('tick');
+      if(p<1) requestAnimationFrame(tick); else { amt.textContent=fmt(total)+' FC'; resolve(); }
+    })(performance.now());
   });
+  col.removeEventListener('click',onSkip);
+  await new Promise(function(res){ var f=function(){ $('bwCollect').removeEventListener('click',f); $('winOverlay').classList.add('hidden'); res(); }; $('bwCollect').addEventListener('click',f); setTimeout(f,2500); });
 }
 
-function setControls(on){
-  $('spinBtn').disabled=!on; $('buyBtn').disabled=!on;
-  document.querySelectorAll('.step-btn,.qbet').forEach(function(b){ b.disabled=!on; });
-}
-
-// ── Paytable ────────────────────────────────────────────────────────────
+// ── Paytable ─────────────────────────────────────────────────────────────
 function showInfo(){
-  if(!GAME) return;
+  if(!GAME)return;
   $('infoTitle').textContent=GAME.name+' — Paytable';
-  var html='<div class="pt-note">Pays for '+GAME.minPay+'+ matching symbols anywhere. Wins tumble — winners vanish, new symbols drop. '+GAME.scatter.count+'+ '+GAME.scatter.emoji+' awards '+GAME.scatter.spins+' free spins. '+GAME.mult.emoji+' multipliers apply '+(GAME.mult.when==='always'?'every spin':'in free spins')+'.</div>';
-  html+='<div class="pt-grid">';
+  var html='<div class="pt-note">Win when <b>'+GAME.minCluster+'+ identical symbols connect</b> horizontally or vertically (no diagonals). Wins tumble — winners vanish, new symbols fall in. '+GAME.scatter.count+'+ '+GAME.scatter.emoji+' = '+GAME.scatter.regular+' free spins. In <b>Super</b> bonus, every '+GAME.mult.emoji+' adds to a global multiplier on every win.</div><div class="pt-grid">';
   Object.keys(GAME.pays).reverse().forEach(function(k){
-    var tiers=GAME.pays[k];
-    var rows=tiers.map(function(t){return '<span>'+t[0]+'+ &nbsp;<b>'+t[1]+'×</b></span>';}).join('');
+    var rows=GAME.pays[k].map(function(t){return '<span>'+t[0]+'+ <b>'+t[1]+'×</b></span>';}).join('');
     html+='<div class="pt-row"><div class="pt-sym">'+GAME.sym[k]+'</div><div class="pt-tiers">'+rows+'</div></div>';
   });
   html+='</div>';
-  $('infoBody').innerHTML=html;
-  $('infoOverlay').classList.remove('hidden');
+  $('infoBody').innerHTML=html; $('infoOverlay').classList.remove('hidden');
 }
 function hideInfo(){ $('infoOverlay').classList.add('hidden'); }
 </script>

@@ -895,8 +895,9 @@ export class WebServer {
       if (!cfg) return this._json(res, 400, { error: "Unknown game" });
       const bet = Math.floor(Number(data.bet) || 0);
       if (!(bet >= 1) || bet > 1_000_000) return this._json(res, 400, { error: "Invalid bet" });
-      const buy = !!data.buy;
-      const cost = buy ? bet * cfg.buyX : bet;
+      const buy = data.buy === "super" ? "super" : (data.buy === "regular" ? "regular" : false);
+      const cost = buy ? bet * Slots.buyCost(cfg.id, buy) : bet;
+      if (cost > 50_000_000) return this._json(res, 400, { error: "Bet too large for a buy" });
 
       // Deduct stake atomically, resolve round, credit winnings.
       const ok = await this.db.atomicDeduct(uid, -cost);
