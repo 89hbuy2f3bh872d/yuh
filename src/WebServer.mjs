@@ -925,7 +925,7 @@ export class WebServer {
     if (p.startsWith("/api/house/") && req.method === "POST") {
       const uid = this._uid(req);
       if (!uid) return this._json(res, 401, { error: "Not logged in" });
-      if (this._rl(uid, "house", 250)) return this._json(res, 429, { error: "Slow down a moment" });
+      if (this._rl(uid, "house", 120)) return this._json(res, 429, { error: "Slow down a moment" });
       let data; try { data = JSON.parse(await readBody(req)); } catch { data = {}; }
       const bet = Math.floor(Number(data.bet) || 0);
       const goodBet = bet >= 1 && bet <= 1_000_000;

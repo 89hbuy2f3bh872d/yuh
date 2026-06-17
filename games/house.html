@@ -127,93 +127,113 @@ function donPlay(){
   }).catch(function(){busy=false;});
 }
 
-// ── Plinko (canvas) ─────────────────────────────────────────────────────
-var PK=null, ROWS=12;
+// ── Plinko — Stake-style board, smooth physics, multi-ball (max 10) ───────
+var PK=null, ROWS=12, MAXBALLS=10;
 RENDER.plinko=function(){
   GAME._risk='med';
-  var table=PLINKO.med;
-  $('hgBoard').innerHTML='<canvas id="pkCanvas" class="pk-canvas"></canvas>'+
-    '<div class="pk-slots" id="pkSlots">'+table.map(function(m,i){return '<span class="pk-slot" id="pks-'+i+'">'+m+'×</span>';}).join('')+'</div>';
+  $('hgBoard').innerHTML='<canvas id="pkCanvas" class="pk-canvas"></canvas>';
   $('hgControls').innerHTML=
     '<div class="seg"><button class="seg-b" onclick="pkRisk(\'low\',this)">Low</button><button class="seg-b on" onclick="pkRisk(\'med\',this)">Med</button><button class="seg-b" onclick="pkRisk(\'high\',this)">High</button></div>'+
-    '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>';
+    '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>'+
+    '<div class="pk-count" id="pkCount" style="text-align:center;font-size:.66rem;color:var(--text-3);margin-top:.3rem">0 / '+MAXBALLS+' balls</div>';
+  if(!window._pkResize){ window._pkResize=true; window.addEventListener('resize',function(){ if(GAME&&GAME.id==='plinko')pkInit(); }); }
   setTimeout(pkInit,30);
-  window.addEventListener('resize',pkInit);
 };
+function pkColor(m){ return m>=20?'#ff3b3b':m>=8?'#ff6b1a':m>=3?'#ff9d1a':m>=1.5?'#ffc933':m>=1?'#ffe14d':'#6b7280'; }
 function pkInit(){
   var cv=$('pkCanvas'); if(!cv)return;
-  var w=cv.parentNode.clientWidth-22; if(w<240)w=240;
-  var h=Math.min(340,w*0.82);
+  var w=cv.parentNode.clientWidth-4; if(w<260)w=260; if(w>620)w=620;
+  var h=Math.min(480,Math.round(w*0.92));
   var dpr=Math.min(window.devicePixelRatio||1,2);
   cv.width=w*dpr; cv.height=h*dpr; cv.style.width=w+'px'; cv.style.height=h+'px';
   var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
-  var margin=16, topY=20, botY=h-30;
-  PK={cv:cv,ctx:ctx,w:w,h:h,margin:margin,topY:topY,botY:botY,
-      slotW:(w-2*margin)/(ROWS+1), rowH:(botY-topY)/ROWS, ball:null};
+  var pad=26, topY=26, bottomPegY=h-58, bucketY=h-30;
+  var gx=(w-2*pad)/(ROWS+1);            // horizontal peg/bucket spacing (13 gaps)
+  var ry=(bottomPegY-topY)/(ROWS-1);
+  var balls=(PK&&PK.balls)||[];
+  PK={cv:cv,ctx:ctx,w:w,h:h,cx:w/2,gx:gx,ry:ry,topY:topY,bottomPegY:bottomPegY,bucketY:bucketY,
+      table:PLINKO[GAME._risk||'med'],balls:balls,flash:{},raf:PK&&PK.raf,last:0,lastActivity:0};
+  if(!PK.raf) pkDraw(); else {}
   pkDraw();
 }
-function pkPegs(){ // peg grid: row r has r+1 pegs, centered triangle
-  var P=PK,a=[];
-  for(var r=1;r<=ROWS;r++){ for(var j=0;j<=r;j++){ a.push({x:P.w/2+(j-r/2)*P.slotW, y:P.topY+(r)*P.rowH}); } }
-  return a;
-}
+function pkPegs(P){ var a=[]; for(var r=0;r<ROWS;r++){ var n=r+3; for(var j=0;j<n;j++){ a.push({x:P.cx+(j-(n-1)/2)*P.gx, y:P.topY+r*P.ry}); } } return a; }
 function pkDraw(){
-  var P=PK; if(!P)return; var ctx=P.ctx; ctx.clearRect(0,0,P.w,P.h);
-  pkPegs().forEach(function(p){ ctx.beginPath(); ctx.arc(p.x,p.y,2.6,0,6.28); ctx.fillStyle='rgba(160,170,180,.55)'; ctx.fill(); });
-  if(P.ball){ var b=P.ball; ctx.beginPath(); ctx.arc(b.x,b.y,7,0,6.28);
-    var g=ctx.createRadialGradient(b.x-2,b.y-2,1,b.x,b.y,8); g.addColorStop(0,'#fff'); g.addColorStop(1,getComputedStyle(document.querySelector('.hg-stage')).getPropertyValue('--gc')||'#a855f7');
-    ctx.fillStyle=g; ctx.shadowColor='#a855f7'; ctx.shadowBlur=10; ctx.fill(); ctx.shadowBlur=0; }
+  var P=PK; if(!P)return; var ctx=P.ctx, now=performance.now(); ctx.clearRect(0,0,P.w,P.h);
+  // pegs
+  var pr=Math.max(2,P.gx*0.12);
+  pkPegs(P).forEach(function(p){ ctx.beginPath(); ctx.arc(p.x,p.y,pr,0,6.28); ctx.fillStyle='rgba(180,190,205,.6)'; ctx.fill(); });
+  // buckets
+  var bw=P.gx*0.88, bh=20;
+  for(var i=0;i<P.table.length;i++){ var m=P.table[i]; var bx=P.cx+(i-6)*P.gx; var col=pkColor(m);
+    var fl=P.flash[i]&&(now-P.flash[i]<450)?(1-(now-P.flash[i])/450):0;
+    ctx.save(); ctx.translate(bx,P.bucketY+ (fl?fl*3:0)); var s=1+fl*0.18; ctx.scale(s,s);
+    ctx.fillStyle=col; ctx.globalAlpha=m<1?0.65:1; roundRect(ctx,-bw/2,-bh/2,bw,bh,4); ctx.fill(); ctx.globalAlpha=1;
+    ctx.fillStyle=m<1?'#1a1a1a':'#221500'; ctx.font='700 '+Math.max(8,Math.min(11,P.gx*0.34))+'px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText((m>=10?Math.round(m):m)+'×',0,0); ctx.restore();
+  }
+  // balls
+  P.balls.forEach(function(b){ var p=ballPos(b); var r=Math.max(5,Math.min(9,P.gx*0.26));
+    var g=ctx.createRadialGradient(p.x-r*0.3,p.y-r*0.3,1,p.x,p.y,r); g.addColorStop(0,'#fff'); g.addColorStop(1,'#ff5a3c');
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.28); ctx.fillStyle=g; ctx.shadowColor='rgba(255,90,60,.7)'; ctx.shadowBlur=8; ctx.fill(); ctx.shadowBlur=0; });
 }
-function pkRisk(r,b){ GAME._risk=r; document.querySelectorAll('#hgControls .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
-  var t=PLINKO[r]; t.forEach(function(m,i){var e=$('pks-'+i);if(e)e.textContent=m+'×';}); }
+function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function ballPos(b){
+  var a=b.pts[b.seg], c=b.pts[b.seg+1], t=b.t;
+  var ex=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;   // ease-in-out horizontal
+  var x=a.x+(c.x-a.x)*ex;
+  var y=a.y+(c.y-a.y)*(t*t) - b.hop*Math.sin(Math.PI*t); // accelerating drop + bounce arc
+  return {x:x,y:y};
+}
+function pkTick(now){
+  var P=PK; if(!P){return;}
+  if(!P.cv||!document.body.contains(P.cv)){ P.raf=0; if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; } // left plinko
+  if(!P.last)P.last=now; var dt=Math.min(0.05,(now-P.last)/1000); P.last=now;
+  for(var i=P.balls.length-1;i>=0;i--){ var b=P.balls[i];
+    b.t += dt/b.durs[b.seg];
+    if(b.t>=1){ b.t=0; b.seg++; if(b.seg<ROWS)sfx('tick');
+      if(b.seg>=b.pts.length-1){ pkLand(b); P.balls.splice(i,1); } }
+  }
+  pkDraw();
+  var anyFlash=false, t2=performance.now(); for(var k in P.flash){ if(t2-P.flash[k]<500)anyFlash=true; }
+  if(P.balls.length||anyFlash){ P.raf=requestAnimationFrame(pkTick); } else { P.raf=0; P.last=0; }
+}
+function pkLand(b){
+  var P=PK; P.flash[b.slot]=performance.now();
+  sfx(b.mult>=1?'win':'pop');
+  msg((b.payout>0?'+':'')+fmt(b.payout)+' FC · '+b.mult+'×', b.mult>=1?'good':'bad');
+}
+function pkRisk(r,b){ GAME._risk=r; document.querySelectorAll('#hgControls .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on'); if(PK){PK.table=PLINKO[r]; pkDraw();} }
+function pkActive(){ return PK?(PK.balls.length+pkInFlight):0; }
+var pkInFlight=0, pkPending=0, pkPumpT=null;
 function pkDrop(){
-  if(busy)return; if(!PK){pkInit();} if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true; msg(''); sfx('coin');
-  post('plinko',{bet:bet(),risk:GAME._risk}).then(function(d){
-    if(d.error){msg(d.error,'bad');busy=false;return;}
-    bal=d.balance;
-    pkAnimate(d.path,d.slot,function(){
-      setBal();
-      var s=$('pks-'+d.slot); if(s){s.classList.add('hit');setTimeout(function(){s.classList.remove('hit');},1300);}
-      sfx(d.mult>=1?'win':'pop');
-      msg((d.payout>0?'+':'')+fmt(d.payout)+' FC · '+d.mult+'×', d.mult>=1?'good':'bad');
-      busy=false;
-    });
-  }).catch(function(){busy=false;});
+  if(!PK){pkInit();}
+  if(pkActive()+pkPending>=MAXBALLS){ msg('Max '+MAXBALLS+' balls at once','bad'); return; }
+  if(bet()>bal){ msg('Not enough balance','bad'); return; }
+  pkPending++; updateCount();
+  if(!pkPumpT) pkPumpT=setInterval(pkPump,170);
+  pkPump();
 }
-function pkAnimate(path,slot,done){
-  var P=PK; if(!P){done&&done();return;}
-  // Peg-contact targets per row (x derived from the server path), final = slot.
+function pkPump(){
+  if(pkPending<=0){ if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; }
+  if(PK.balls.length+pkInFlight>=MAXBALLS) return;     // wait for a ball to land
+  pkPending--; pkInFlight++; updateCount();
+  post('plinko',{bet:bet(),risk:GAME._risk}).then(function(d){
+    pkInFlight--; updateCount();
+    if(d.error){ msg(d.error,'bad'); return; }
+    bal=d.balance; setBal();
+    pkSpawn(d);
+  }).catch(function(){ pkInFlight--; updateCount(); });
+}
+function updateCount(){ var e=$('pkCount'); if(e)e.textContent=(PK?PK.balls.length:0)+pkInFlight+' / '+MAXBALLS+' balls'; }
+function pkSpawn(d){
+  var P=PK; if(!P){pkInit();P=PK;}
   var pts=[], rights=0;
-  for(var k=0;k<=ROWS;k++){
-    if(k>0) rights+=path[k-1];
-    pts.push({x:P.margin+(rights+(ROWS-k)/2+0.5)*P.slotW, y:P.topY+k*P.rowH});
-  }
-  pts.push({x:P.margin+(slot+0.5)*P.slotW, y:P.botY+10});
-  // Real-ish physics: gravity accelerates the fall; each peg deflects the ball
-  // (vy bounces, vx kicks toward the next gap). Looks like an actual Plinko drop.
-  var seg=0, x=pts[0].x, y=P.topY-10, vx=0, vy=0;
-  var g=2600, last=null, R=7;
-  function frame(ts){
-    if(last==null)last=ts; var dt=Math.min(0.026,(ts-last)/1000); last=ts;
-    var tgt=pts[seg+1];
-    vy += g*dt;                       // gravity
-    vx += (tgt.x - x) * 26 * dt;      // spring toward next gap
-    vx *= 0.86;                       // damping
-    x += vx*dt;
-    y += vy*dt;
-    if(y >= tgt.y){            // hit the peg row
-      y = tgt.y;
-      seg++;
-      if(seg >= pts.length-1){ P.ball=null; pkDraw(); done&&done(); return; }
-      vy = -vy*0.45;           // bounce
-      vx += (Math.random()*2-1)*40 + (pts[seg+1].x - x)*2; // deflect toward next gap
-      if(seg < 11) sfx('tick');
-    }
-    P.ball={x:x,y:y}; pkDraw();
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+  for(var r=0;r<=ROWS;r++){ pts.push({x:P.cx+(rights*2-r)*P.gx/2, y:P.topY+r*P.ry}); if(r<ROWS)rights+=(d.path[r]?1:0); }
+  pts.push({x:P.cx+(d.slot-6)*P.gx, y:P.bucketY});      // drop into the bucket
+  var durs=[]; for(var s=0;s<pts.length-1;s++) durs.push(0.155*Math.pow(0.945,s));
+  P.balls.push({pts:pts,durs:durs,seg:0,t:0,slot:d.slot,mult:d.mult,payout:d.payout,hop:P.ry*0.28});
+  sfx('coin'); updateCount();
+  if(!P.raf) P.raf=requestAnimationFrame(pkTick);
 }
 
 // ── Mines ───────────────────────────────────────────────────────────────
