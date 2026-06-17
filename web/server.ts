@@ -85,8 +85,8 @@ function redirectWithCookies(url: string, cookies: string[]): Response {
 }
 // Ask the Node bot (which holds the Fluxer client) to DM a user — used for ticket transcripts.
 const BOT_DM_URL = "http://127.0.0.1:" + (cfg.web?.botPort ?? 8091);
-async function sendDM(uid: string, text: string) {
-  try { await fetch(BOT_DM_URL + "/dm", { method: "POST", headers: { "Content-Type": "application/json", "x-internal": INTERNAL_SECRET }, body: JSON.stringify({ uid, text }) }); } catch {}
+async function sendDM(uid: string, text: string, title?: string) {
+  try { await fetch(BOT_DM_URL + "/dm", { method: "POST", headers: { "Content-Type": "application/json", "x-internal": INTERNAL_SECRET }, body: JSON.stringify({ uid, text, title }) }); } catch {}
 }
 // Verify the session server-side (sid must exist + be unexpired in Mongo), 30s cache.
 const sessCache = new Map<string, { uid: string; until: number }>();
@@ -386,7 +386,7 @@ app.get("/oauth/callback", async ({ query, set, request }) => {
   if (old) await db.rotateSession(uid, old, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
   else await db.createSession(uid, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
   const base = "HttpOnly; Path=/; Max-Age=7200; SameSite=Lax";
-  return redirectWithCookies(OWNERS.includes(uid) ? "/admin/panel" : "/lobby", [
+  return redirectWithCookies("/lobby", [ // everyone lands on the lobby; admins use the sidebar Admin link
     `sid=${sid}; ${base}`, `uid=${uid}; ${base}`,
     `dtag=${encodeURIComponent(tag)}; Path=/; Max-Age=7200; SameSite=Lax`,
     `dav=${encodeURIComponent(avatar)}; Path=/; Max-Age=7200; SameSite=Lax`,
@@ -507,8 +507,8 @@ app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminAp
   const upd = await db.getTicket(id).catch(() => null);
   if (upd?.uid) broadcastTicket(upd.uid, { type: "ticket", action: "status", ticket: upd });
   if (a === "close" && upd?.uid) {
-    const lines = (upd.messages || []).map((m: any) => `${m.from === "admin" ? "Support" : "You"}: ${m.body}`).join("\n");
-    sendDM(upd.uid, `Your support ticket "${upd.subject}" was closed.\n\n— Transcript —\n${lines}`); // Fluxer DM via the bot
+    const lines = (upd.messages || []).map((m: any) => `**${m.from === "admin" ? "Support" : "You"}:** ${m.body}`).join("\n");
+    sendDM(upd.uid, lines || "(no messages)", `🎫 Ticket closed — ${upd.subject}`); // Fluxer DM (embed) via the bot
     stdb.addNotification(upd.uid, "ticket", 0, "Support", `Ticket closed: ${upd.subject}`).catch(() => {});
   }
   return { ok: true };

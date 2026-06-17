@@ -2,10 +2,11 @@ import fs from "fs";
 import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Client, Events } from "@fluxerjs/core";
+import { Client, Events, EmbedBuilder } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
 import { StdbBridge } from "./src/stdbBridge.mjs";
+import { COLORS } from "./src/theme.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,10 +55,15 @@ if (config.web?.internalSecret) {
     let body = ""; req.on("data", c => { body += c; if (body.length > 100_000) req.destroy(); });
     req.on("end", async () => {
       try {
-        const { uid, text } = JSON.parse(body || "{}");
+        const { uid, text, title } = JSON.parse(body || "{}");
         const user = await client.users.fetch(String(uid));
         const dm = await (user.createDM ? user.createDM() : null)?.catch?.(() => null);
-        await (dm ?? user).send({ content: String(text).slice(0, 4000) });
+        const e = new EmbedBuilder()
+          .setColor(COLORS.primary ?? COLORS.accent)
+          .setTitle(String(title || "SirGreen Casino").slice(0, 250))
+          .setDescription(String(text).slice(0, 4000))
+          .setFooter({ text: "SirGreen Casino · Support" });
+        await (dm ?? user).send({ embeds: [e] });
         res.writeHead(200); res.end("ok");
       } catch (e) { console.error("[bot/dm]", e?.message ?? e); res.writeHead(500); res.end("err"); }
     });

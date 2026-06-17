@@ -74,7 +74,7 @@ function renderTickets(){
       return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
     }).join('');
     var reply = t.status==='closed' ? '' :
-      '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
+      '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'" onkeydown="if(event.key===&quot;Enter&quot;)reply(\''+t._id+'\')"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
     var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
     div.innerHTML=
       '<div class="tk-head">'+

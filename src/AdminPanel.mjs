@@ -517,11 +517,15 @@ function buildPage(data, prefix) {
           return '<div style="font-size:.78rem;margin:.25rem 0;padding:.35rem .55rem;border-radius:7px;background:'+(m.from==='admin'?'rgba(34,197,94,.12)':'var(--surface)')+'"><b style="color:var(--text-dim);font-size:.62rem">'+(m.from==='admin'?'Admin':esc(t.tag||'User'))+'</b><br>'+esc(m.body)+'</div>';
         }).join('');
         var open=t.status!=='closed';
-        return '<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem .85rem;margin-bottom:.6rem">'+
-          '<div style="display:flex;align-items:center;gap:.5rem"><b style="flex:1">'+esc(t.subject)+'</b>'+
-          '<span style="font-size:.6rem;text-transform:uppercase;color:var(--text-dim)">'+esc(t.status)+'</span></div>'+
-          '<div style="margin:.4rem 0">'+msgs+'</div>'+
-          '<div style="display:flex;gap:.4rem;margin-top:.4rem">'+(open?('<input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button>'):'<span style="flex:1"></span>')+'<button class="btn-danger" onclick="adminTicketDelete(\\''+t._id+'\\')">Delete</button></div>'+
+        var controls='<div style="display:flex;gap:.4rem;margin-top:.4rem">'+(open?('<input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1" onkeydown="if(event.key===&quot;Enter&quot;)adminTicketReply(\\''+t._id+'\\')"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button>'):'<span style="flex:1"></span>')+'<button class="btn-danger" onclick="adminTicketDelete(\\''+t._id+'\\')">Delete</button></div>';
+        // collapsed by default — click the header to expand the thread
+        return '<div style="border:1px solid var(--border);border-radius:8px;padding:.45rem .65rem;margin-bottom:.4rem">'+
+          '<div style="display:flex;align-items:center;gap:.5rem;cursor:pointer" onclick="var b=this.nextElementSibling;b.style.display=b.style.display===&quot;none&quot;?&quot;block&quot;:&quot;none&quot;">'+
+            '<b style="flex:1;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(t.subject)+'</b>'+
+            '<span style="font-size:.58rem;text-transform:uppercase;color:var(--text-dim)">'+esc(t.status)+'</span>'+
+            '<span style="font-size:.55rem;color:var(--text-dim)">'+esc(t.tag||'')+'</span>'+
+          '</div>'+
+          '<div style="display:none;margin-top:.45rem">'+msgs+controls+'</div>'+
         '</div>';
       }).join('');
     }).catch(function(e){ console.error('tickets',e); });
