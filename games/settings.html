@@ -60,52 +60,54 @@ $('sfxVol').addEventListener('change',function(){ if(window.SG)SG.sfx('pop'); })
 function toggleMute(){ if(!window.SG)return; var m=!SG.get().muted; SG.setMuted(m); $('muteBtn').textContent=m?'Unmute all':'Mute all'; }
 initAudio();
 
-// ── Tickets ─────────────────────────────────────────────────────────────
-function loadTickets(){
-  fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){
-    var list=d.tickets||[]; var el=$('tkList');
-    // preserve which threads are open + any half-typed reply across the live re-render
-    var openSet={}, repVals={};
-    el.querySelectorAll('.tk.open-thread').forEach(function(x){ if(x.dataset.id)openSet[x.dataset.id]=1; });
-    el.querySelectorAll('.tk-reply input').forEach(function(i){ if(i.value)repVals[i.id]=i.value; });
-    if(!list.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
-    el.innerHTML='';
-    list.forEach(function(t){
-      var msgs=(t.messages||[]).map(function(m){
-        return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
-      }).join('');
-      var reply = t.status==='closed' ? '' :
-        '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
-      var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
-      div.innerHTML=
-        '<div class="tk-head" onclick="this.parentNode.classList.toggle(\'open-thread\')">'+
-          '<div class="tk-subj">'+esc(t.subject)+'</div>'+
-          '<span class="tk-status '+t.status+'">'+t.status+'</span>'+
-        '</div>'+
-        '<div class="tk-thread">'+msgs+reply+'</div>';
-      el.appendChild(div);
-    });
-    Object.keys(repVals).forEach(function(id){ var i=$(id); if(i)i.value=repVals[id]; }); // restore typed replies
-  }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; });
+// ── Tickets — one initial fetch, then live over the WebSocket (no polling) ───
+var tickets=[];
+function renderTickets(){
+  var el=$('tkList');
+  var openSet={}, repVals={};
+  el.querySelectorAll('.tk.open-thread').forEach(function(x){ if(x.dataset.id)openSet[x.dataset.id]=1; });
+  el.querySelectorAll('.tk-reply input').forEach(function(i){ if(i.value)repVals[i.id]=i.value; });
+  if(!tickets.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
+  el.innerHTML='';
+  tickets.forEach(function(t){
+    var msgs=(t.messages||[]).map(function(m){
+      return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
+    }).join('');
+    var reply = t.status==='closed' ? '' :
+      '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
+    var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
+    div.innerHTML=
+      '<div class="tk-head">'+
+        '<div class="tk-subj" onclick="this.parentNode.parentNode.classList.toggle(\'open-thread\')">'+esc(t.subject)+'</div>'+
+        '<span class="tk-status '+t.status+'">'+t.status+'</span>'+
+        '<button class="tk-del" title="Delete ticket" onclick="delTicket(\''+t._id+'\')">✕</button>'+
+      '</div>'+
+      '<div class="tk-thread">'+msgs+reply+'</div>';
+    el.appendChild(div);
+  });
+  Object.keys(repVals).forEach(function(id){ var i=$(id); if(i)i.value=repVals[id]; });
 }
+function upsertTicket(t){ if(!t||!t._id)return; var i=tickets.findIndex(function(x){return x._id===t._id;}); if(i>=0)tickets[i]=t; else tickets.unshift(t); renderTickets(); }
+function removeTicket(id){ tickets=tickets.filter(function(x){return x._id!==id;}); renderTickets(); }
+function loadTickets(){ fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){ tickets=d.tickets||[]; renderTickets(); }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; }); }
 function submitTicket(){
   var subject=$('tkSubject').value.trim(), body=$('tkBody').value.trim();
   if(!subject||!body){ alert('Subject and message required.'); return; }
   fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:subject,body:body})})
-    .then(function(r){return r.json()}).then(function(d){
-      if(d.error){alert(d.error);return;}
-      $('tkSubject').value=''; $('tkBody').value=''; loadTickets();
-    }).catch(function(){alert('Network error');});
+    .then(function(r){return r.json()}).then(function(d){ if(d.error){alert(d.error);return;} $('tkSubject').value=''; $('tkBody').value=''; if(d.ticket)upsertTicket(d.ticket); })
+    .catch(function(){alert('Network error');});
 }
 function reply(id){
-  var inp=$('rep-'+id); var body=inp.value.trim(); if(!body)return;
+  var inp=$('rep-'+id); var body=inp.value.trim(); if(!body)return; inp.value='';
   fetch('/api/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
-    .then(function(r){return r.json()}).then(function(){ inp.value=''; loadTickets(); }).catch(function(){});
+    .then(function(r){return r.json()}).catch(function(){}); // the WS push updates the thread
 }
-loadTickets();
-// live ticket updates over the WS (new tickets, replies, status) — re-render on push
-window.addEventListener('sg:ws', function(e){ if(e.detail && e.detail.type==='ticket') loadTickets(); });
-setInterval(loadTickets, 30000); // slow fallback if the socket is down
+function delTicket(id){
+  if(!confirm('Delete this ticket permanently?'))return;
+  fetch('/api/tickets/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){ if(d&&d.error){alert(d.error);return;} removeTicket(id); }).catch(function(){});
+}
+loadTickets(); // one initial fetch; everything after is pushed over the WebSocket
+window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='ticket')return; if(d.action==='delete')removeTicket(d.id); else if(d.ticket)upsertTicket(d.ticket); });
 
 (function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
 </script>

@@ -12,16 +12,18 @@
 .field label{display:block;font-size:.72rem;color:var(--text3);font-weight:600;margin-bottom:.25rem}
 .field input,.field textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;color:var(--text);font-size:.85rem}
 .field textarea{min-height:90px;resize:vertical}
-.tk{border:1px solid var(--border);border-radius:10px;padding:.7rem .8rem;margin-bottom:.6rem;background:var(--surface2)}
-.tk-head{display:flex;align-items:center;gap:.5rem;cursor:pointer}
-.tk-subj{font-weight:700;font-size:.84rem;flex:1}
-.tk-status{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.12rem .45rem;border-radius:99px}
+.tk{border:1px solid var(--border);border-radius:8px;padding:.4rem .6rem;margin-bottom:.3rem;background:var(--surface2)}
+.tk-head{display:flex;align-items:center;gap:.45rem;cursor:pointer}
+.tk-subj{font-weight:700;font-size:.78rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tk-status{font-size:.56rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.1rem .4rem;border-radius:99px}
 .tk-status.open{background:#0a1a2e;color:var(--blue);border:1px solid #3b82f633}
 .tk-status.answered{background:var(--accent-soft);color:var(--accent);border:1px solid #22c55e33}
 .tk-status.closed{background:#1a0808;color:var(--text3);border:1px solid var(--border)}
-.tk-thread{margin-top:.6rem;display:none;flex-direction:column;gap:.4rem}
+.tk-del{flex-shrink:0;width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:.8rem;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.tk-del:hover{border-color:var(--red);color:var(--red)}
+.tk-thread{margin-top:.45rem;display:none;flex-direction:column;gap:.3rem}
 .tk.open-thread .tk-thread{display:flex}
-.msg{font-size:.78rem;padding:.45rem .6rem;border-radius:8px;max-width:90%}
+.msg{font-size:.76rem;padding:.35rem .5rem;border-radius:7px;max-width:90%}
 .msg.user{background:var(--surface3);align-self:flex-end}
 .msg.admin{background:var(--accent-soft);border:1px solid #22c55e33;align-self:flex-start}
 .msg .who{font-size:.6rem;color:var(--text3);font-weight:700;margin-bottom:.15rem}

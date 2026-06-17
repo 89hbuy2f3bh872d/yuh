@@ -521,7 +521,7 @@ function buildPage(data, prefix) {
           '<div style="display:flex;align-items:center;gap:.5rem"><b style="flex:1">'+esc(t.subject)+'</b>'+
           '<span style="font-size:.6rem;text-transform:uppercase;color:var(--text-dim)">'+esc(t.status)+'</span></div>'+
           '<div style="margin:.4rem 0">'+msgs+'</div>'+
-          (open?('<div style="display:flex;gap:.4rem;margin-top:.4rem"><input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button></div>'):'')+
+          '<div style="display:flex;gap:.4rem;margin-top:.4rem">'+(open?('<input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button>'):'<span style="flex:1"></span>')+'<button class="btn-danger" onclick="adminTicketDelete(\\''+t._id+'\\')">Delete</button></div>'+
         '</div>';
       }).join('');
     }).catch(function(e){ console.error('tickets',e); });
@@ -534,6 +534,10 @@ function buildPage(data, prefix) {
   window.adminTicketClose=function(id){
     fetch('/api/admin/tickets/'+id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
       .then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
+  };
+  window.adminTicketDelete=function(id){
+    if(!confirm('Delete this ticket permanently?'))return;
+    fetch('/api/admin/tickets/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
   };
   // Live tickets: the admin page is standalone (no sidebar socket), so open our own
   // WS and refresh the ticket list whenever any ticket changes (new / reply / status).

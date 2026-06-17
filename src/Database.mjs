@@ -555,6 +555,7 @@ export class Database {
     );
   }
   async setTicketStatus(id, status) { if (!this._db) return; await this._db.collection("tickets").updateOne({ _id: id }, { $set: { status, updatedAt: Date.now() } }); }
+  async deleteTicket(id) { if (!this._db) return; await this._db.collection("tickets").deleteOne({ _id: id }); }
 
   // ─── Destructive: wipe every collection (owner-gated at the route) ──────────
   async wipeAll() {

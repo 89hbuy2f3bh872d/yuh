@@ -83,6 +83,11 @@ function redirectWithCookies(url: string, cookies: string[]): Response {
   for (const c of cookies) h.append("Set-Cookie", c);
   return new Response(null, { status: 302, headers: h });
 }
+// Ask the Node bot (which holds the Fluxer client) to DM a user — used for ticket transcripts.
+const BOT_DM_URL = "http://127.0.0.1:" + (cfg.web?.botPort ?? 8091);
+async function sendDM(uid: string, text: string) {
+  try { await fetch(BOT_DM_URL + "/dm", { method: "POST", headers: { "Content-Type": "application/json", "x-internal": INTERNAL_SECRET }, body: JSON.stringify({ uid, text }) }); } catch {}
+}
 // Verify the session server-side (sid must exist + be unexpired in Mongo), 30s cache.
 const sessCache = new Map<string, { uid: string; until: number }>();
 async function resolveSessionCookie(cookieHeader: string): Promise<string | null> {
@@ -501,6 +506,17 @@ app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminAp
   await db.setTicketStatus(id, a === "close" ? "closed" : "open").catch(() => {});
   const upd = await db.getTicket(id).catch(() => null);
   if (upd?.uid) broadcastTicket(upd.uid, { type: "ticket", action: "status", ticket: upd });
+  if (a === "close" && upd?.uid) {
+    const lines = (upd.messages || []).map((m: any) => `${m.from === "admin" ? "Support" : "You"}: ${m.body}`).join("\n");
+    sendDM(upd.uid, `Your support ticket "${upd.subject}" was closed.\n\n— Transcript —\n${lines}`); // Fluxer DM via the bot
+    stdb.addNotification(upd.uid, "ticket", 0, "Support", `Ticket closed: ${upd.subject}`).catch(() => {});
+  }
+  return { ok: true };
+}));
+app.delete("/api/admin/tickets/:id", ({ request, params, set }) => adminApi(request, set, async () => {
+  const id = (params as any).id; const t = await db.getTicket(id).catch(() => null);
+  await db.deleteTicket(id).catch(() => {});
+  if (t?.uid) broadcastTicket(t.uid, { type: "ticket", action: "delete", id });
   return { ok: true };
 }));
 app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, async (uid) => {
@@ -543,6 +559,14 @@ app.post("/api/tickets/:id/reply", async ({ request, params, body, set }) => {
   for (const o of OWNERS) stdb.addNotification(o, "ticket", 0, t.tag || uid, `Reply on: ${t.subject || ""}`.trim()).catch(() => {});
   const upd = await db.getTicket(id).catch(() => null);
   broadcastTicket(uid, { type: "ticket", action: "reply", ticket: upd || t });
+  return { ok: true };
+});
+app.delete("/api/tickets/:id", async ({ request, params, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const id = (params as any).id; const t = await db.getTicket(id).catch(() => null);
+  if (!t || t.uid !== uid) { set.status = 404; return { error: "Not found" }; }
+  await db.deleteTicket(id).catch(() => {});
+  broadcastTicket(uid, { type: "ticket", action: "delete", id });
   return { ok: true };
 });
 
