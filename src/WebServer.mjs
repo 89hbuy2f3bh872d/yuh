@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { AdminPanel }    from "./AdminPanel.mjs";
 import * as Slots        from "./SlotEngine.mjs";
 import * as House        from "./HouseGames.mjs";
+import { ArenaServer }   from "./ArenaServer.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -237,6 +238,7 @@ export class WebServer {
     this._states      = new Map();
     this._admin       = new AdminPanel(db, config.prefix ?? "&");
     this._house       = new House.HouseState();
+    this._arena       = new ArenaServer(db);
 
     // ── Case Battle state ─────────────────────────────────────────────────────
     // battleId -> battle state
@@ -616,6 +618,9 @@ export class WebServer {
       })
     );
     this._server.listen(this.port, "0.0.0.0", () => console.log(`[Web] SirGreen Casino on port ${this.port}`));
+    // Authoritative FPS netcode: WebSockets on the same HTTP server.
+    this._arena.attach(this._server);
+    console.log("[Arena] Authoritative FPS server attached (/arena/ws)");
     setInterval(() => {
       const now = Date.now();
       for (const [s, entry] of this._states) {
@@ -1377,6 +1382,89 @@ export class WebServer {
           };
         }),
       });
+    }
+
+    // ── Arena FPS API (lobbies; the live match runs over /arena/ws) ───────────
+    if (p === "/api/arena/list" && req.method === "GET") {
+      return this._json(res, 200, { lobbies: this._arena.listLobbies() });
+    }
+
+    if (p === "/api/arena/create" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      if (this._rl(uid, "arenaCreate", 600)) return this._json(res, 429, { error: "Slow down a moment" });
+      let data; try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const mode = data.mode === "2v2" ? "2v2" : "1v1";
+      const fragLimit = [3, 5, 10, 15].includes(Number(data.fragLimit)) ? Number(data.fragLimit) : 5;
+      const stake = Math.floor(Number(data.stake) || 0);
+      if (!(stake >= 10) || stake > 1_000_000) return this._json(res, 400, { error: "Stake must be 10–1,000,000 FC" });
+
+      const cookies = parseCookies(req);
+      const tag = decodeURIComponent(cookies.dtag || uid);
+      // Escrow the stake atomically before the lobby is created.
+      const deducted = await this.db.atomicDeduct(uid, -stake);
+      if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
+      const user = await this.db.getUser(uid).catch(() => null);
+      const avatar = user?.av || fluxerAvatarUrl(uid, null);
+      const r = this._arena.createLobby({ uid, tag, avatar, mode, fragLimit, stake });
+      if (r.error) { // rollback escrow on failure
+        await this.db.updateBalance(uid, stake).catch(() => {});
+        return this._json(res, 200, r);
+      }
+      return this._json(res, 200, { matchId: r.matchId });
+    }
+
+    if (p.startsWith("/api/arena/") && p.endsWith("/join") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const matchId = p.slice("/api/arena/".length, -"/join".length);
+      const preview = this._arena.getMatch(uid, matchId);
+      if (!preview) return this._json(res, 200, { error: "Match not found" });
+      // Escrow the same stake the lobby charges.
+      const deducted = await this.db.atomicDeduct(uid, -preview.stake);
+      if (!deducted) return this._json(res, 200, { error: "Insufficient balance" });
+      const cookies = parseCookies(req);
+      const tag = decodeURIComponent(cookies.dtag || uid);
+      const user = await this.db.getUser(uid).catch(() => null);
+      const avatar = user?.av || fluxerAvatarUrl(uid, null);
+      const r = this._arena.joinLobby({ uid, tag, avatar, matchId });
+      if (r.error) { await this.db.updateBalance(uid, preview.stake).catch(() => {}); return this._json(res, 200, r); }
+      return this._json(res, 200, { matchId: r.matchId });
+    }
+
+    if (p.startsWith("/api/arena/") && p.endsWith("/leave") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const matchId = p.slice("/api/arena/".length, -"/leave".length);
+      const r = this._arena.leaveLobby({ uid, matchId });
+      if (r.error) return this._json(res, 200, r);
+      if (r.refund) await this.db.updateBalance(uid, r.refund).catch(() => {});
+      return this._json(res, 200, { ok: true });
+    }
+
+    // Abandon a live match → instant forfeit (lose the pot).
+    if (p.startsWith("/api/arena/") && p.endsWith("/abandon") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const matchId = p.slice("/api/arena/".length, -"/abandon".length);
+      const r = this._arena.abandonMatch({ uid, matchId });
+      return this._json(res, 200, r);
+    }
+
+    if (p.startsWith("/api/arena/") && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const matchId = p.slice("/api/arena/".length);
+      const match = this._arena.getMatch(uid, matchId);
+      if (!match) return this._json(res, 200, { notFound: true });
+      return this._json(res, 200, match);
+    }
+
+    // Active match for the current user (for "resume" / redirect on page load).
+    if (p === "/api/arena/active" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      return this._json(res, 200, { matchId: this._arena.userActiveMatch(uid) });
     }
 
     if (p === "/login" && req.method === "GET") {

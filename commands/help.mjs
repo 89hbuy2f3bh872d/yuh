@@ -44,9 +44,11 @@ export default {
             {
               name: "🌐 Web Casino",
               value:
-                `**\`${prefix}web\`** — Get your login link for the full site:\n` +
+                `**\`${prefix}web\`** — Get the website link (sent to your DMs)\n` +
+                `Link: **https://sirgreen.online**\n` +
                 `Case Battles · Slots (Candy Cascade, Thunder Gods, Wild Bandit) · ` +
-                `House Games (Plinko, Mines, Coinflip, HiLo, Double or Nothing)`,
+                `House Games (Plinko, Mines, Coinflip, HiLo, Double or Nothing) · ` +
+                `3D Arena (FPS duels)`
             }
           )
           .setFooter({ text: `Use ${prefix}help to see this again` }),
