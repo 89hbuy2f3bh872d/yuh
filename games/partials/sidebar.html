@@ -1,6 +1,6 @@
 <aside class="sidebar">
   <a href="/lobby" class="sb-brand">
-    <span class="sb-mark">G</span>
+    <span class="sb-mark"><span class="sb-mark-ring"></span><span class="sb-mark-g">G</span></span>
     <div>
       <div class="sb-brand-txt"><span class="sb-tw">Sir<b>Green</b></span></div>
       <div class="sb-brand-sub">Casino</div>
@@ -20,13 +20,22 @@
   <a href="/slots" class="sb-item __ACTIVE_slots__">
     <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
     <span>Slots</span>
-    <span class="sb-badge soon">Soon</span>
+    <span class="sb-badge">Live</span>
+  </a>
+  <a href="/house" class="sb-item __ACTIVE_house__">
+    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+    <span>House Games</span>
+    <span class="sb-badge">Live</span>
   </a>
 
   <span class="sb-section">Account</span>
   <a href="/misc" class="sb-item __ACTIVE_misc__">
     <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     <span>Send Money</span>
+  </a>
+  <a href="/settings" class="sb-item __ACTIVE_settings__">
+    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span>Settings</span>
   </a>
   __ADMIN_NAV__
 
@@ -46,6 +55,7 @@
     </a>
   </div>
 </aside>
+<script src="/assets/js/sound.js"></script>
 <script>
 /* Floating hexagon network background. Nodes drift + connect; cursor repels nearby
    nodes. Canvas = own compositor layer, so it never repaints page content. */

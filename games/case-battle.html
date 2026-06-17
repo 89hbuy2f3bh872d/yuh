@@ -643,9 +643,11 @@ function startReels(b, players, isPlayer){
     if (idx >= N) { currentBattle.reelsDone = true; finishReels(); return; }
     var thisIdx = idx;
     players.forEach(function (p) { if (animated(p)) spinPlayerCase(b, p, thisIdx, SPIN_MS); });
+    if (window.SG) SG.caseSpin(SPIN_MS);
     setLabels(thisIdx + 1, N, players);
     setTimeout(function () {
       if (!currentBattle || currentBattle.id !== b.id) return;
+      if (window.SG) SG.sfx('caseLand');
       players.forEach(function (p) { if (animated(p)) collectCase(p, thisIdx); });
       currentBattle.casesShown = thisIdx + 1;
       if (b.jackpot) updateLiveOdds();

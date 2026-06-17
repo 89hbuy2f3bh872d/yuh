@@ -10,6 +10,25 @@ export class CommandHandler {
     this.config = config;
     this.prefix = config.prefix ?? "&";
     this.commands = new Map();
+    this._petXpCd = new Map(); // uid -> last chat-XP timestamp
+  }
+
+  // Award pet XP for ordinary chatting (rate-limited; only if the user owns a pet).
+  async _awardPetXp(message) {
+    const uid = message.author?.id;
+    if (!uid || !this.db?.getPet) return;
+    const now = Date.now(), last = this._petXpCd.get(uid) || 0;
+    if (now - last < 25000) return;
+    this._petXpCd.set(uid, now);
+    const pet = await this.db.getPet(uid).catch(() => null);
+    if (!pet) return;
+    pet.xp = (pet.xp || 0) + 5 + Math.floor(Math.random() * 11);
+    let leveled = false, need = (pet.level || 1) * 100;
+    while (pet.xp >= need) { pet.xp -= need; pet.level = (pet.level || 1) + 1; leveled = true; need = pet.level * 100; }
+    await this.db.savePet(uid, pet).catch(() => {});
+    if (leveled) {
+      try { message.channel?.send?.({ embeds: [makeEmbed(COLORS.accent).setDescription(`⭐ <@${uid}> your **${pet.name}** grew to **Lv ${pet.level}**!`)] }); } catch (e) {}
+    }
   }
 
   async loadCommands(dir) {
@@ -28,6 +47,7 @@ export class CommandHandler {
 
   async handleMessage(message) {
     if (!message?.content || message?.author?.bot) return;
+    this._awardPetXp(message).catch(() => {});
     if (!message.content.startsWith(this.prefix)) return;
 
     const args = message.content.slice(this.prefix.length).trim().split(/\s+/);

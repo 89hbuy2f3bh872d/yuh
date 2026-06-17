@@ -31,6 +31,22 @@ export default {
                 `**\`${prefix}crash <bet>\`** — Ride the multiplier & cash out\n` +
                 `**\`${prefix}mines <bet> <mines>\`** — Navigate the minefield\n` +
                 `**\`${prefix}wildwest @user <bet>\`** — 1v1 duel (fastest draw wins)`,
+            },
+            {
+              name: "🐾 Pets",
+              value:
+                `**\`${prefix}pet\`** — View your pet\n` +
+                `**\`${prefix}pet shop\`** / **\`${prefix}pet buy <id>\`** — Adopt a pet\n` +
+                `**\`${prefix}pet name <name>\`** — Rename your pet\n` +
+                `**\`${prefix}pet gift @user\`** — Trade/gift your pet\n` +
+                `Chat in the server to level your pet up!`,
+            },
+            {
+              name: "🌐 Web Casino",
+              value:
+                `**\`${prefix}web\`** — Get your login link for the full site:\n` +
+                `Case Battles · Slots (Candy Cascade, Thunder Gods, Wild Bandit) · ` +
+                `House Games (Plinko, Mines, Coinflip, HiLo, Double or Nothing)`,
             }
           )
           .setFooter({ text: `Use ${prefix}help to see this again` }),

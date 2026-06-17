@@ -1,0 +1,68 @@
+/* House Games — loaded after app.css. */
+:root{--surface-2:var(--surface2);--surface-3:var(--surface3);--text-2:var(--text2);--text-3:var(--text3)}
+.empty{color:var(--text3);font-size:.85rem;padding:1.4rem;text-align:center}
+
+/* lobby cards (shared look with slots) */
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+.slot-card{--gc:#22c55e;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,border-color .15s,box-shadow .2s}
+.slot-card:hover{transform:translateY(-3px);border-color:var(--gc);box-shadow:0 12px 40px -14px var(--gc)}
+.slot-card-art{height:96px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--gc) 34%,transparent),transparent 70%),linear-gradient(160deg,var(--surface-2),var(--bg))}
+.slot-card-body{padding:.8rem 1rem;flex:1}
+.slot-card-name{font-size:1rem;font-weight:800}
+.slot-card-tag{font-size:.72rem;color:var(--text-2);margin-top:.2rem}
+.slot-play{margin:0 1rem 1rem;justify-content:center;background:var(--gc);border-color:var(--gc)}
+
+/* game stage */
+.hg-bal{font-size:.74rem;color:var(--text-2)}.hg-bal b{color:var(--text);font-weight:800}
+.hg-stage{--gc:#22c55e;display:grid;grid-template-columns:1fr 260px;gap:1rem;align-items:start}
+.hg-board{background:var(--surface);border:1px solid var(--border);border-radius:14px;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;padding:1.1rem;position:relative;overflow:hidden}
+.hg-side{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1rem;display:flex;flex-direction:column;gap:.7rem}
+.bet-box{display:flex;align-items:center;gap:.4rem;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:.4rem .5rem;justify-content:space-between}
+.bet-lbl{font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);font-weight:700}
+.bet-val{font-size:1rem;font-weight:800;font-variant-numeric:tabular-nums}
+.step-btn{width:28px;height:28px;border-radius:7px;background:var(--surface);border:1px solid var(--border);color:var(--gc);font-size:1.1rem;font-weight:700}
+.play-btn{width:100%;padding:.7rem;border-radius:10px;font-weight:800;font-size:.88rem;color:#06150b;background:linear-gradient(180deg,color-mix(in srgb,var(--gc) 88%,white),var(--gc));margin-top:.2rem}
+.play-btn:hover{filter:brightness(1.08)}
+.play-btn.cash{background:linear-gradient(180deg,#facc15,#eab308);color:#1a1400}
+.seg{display:flex;gap:.3rem;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:.25rem}
+.seg-b{flex:1;padding:.4rem;border-radius:6px;font-size:.76rem;font-weight:700;color:var(--text-2)}
+.seg-b.on{background:var(--gc);color:#06150b}
+.hg-msg{min-height:1.2rem;text-align:center;font-size:.82rem;font-weight:700;font-variant-numeric:tabular-nums}
+.hg-msg.good{color:var(--accent)} .hg-msg.bad{color:var(--red)}
+.hidden{display:none!important}
+
+/* coinflip */
+.coin{width:120px;height:120px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fde68a,#eab308);display:flex;align-items:center;justify-content:center;font-size:3rem;box-shadow:0 8px 30px -8px #eab308}
+.coin.spin{animation:coinSpin .9s ease-in-out}
+@keyframes coinSpin{0%{transform:rotateY(0)}100%{transform:rotateY(1980deg)}}
+.coin-face{transform:translateZ(1px)}
+
+/* double */
+.don{font-size:3rem;font-weight:900;color:var(--gc);transition:all .2s}
+.don.win{color:var(--accent);transform:scale(1.3)} .don.lose{color:var(--red)}
+
+/* plinko */
+.pk{position:relative;width:100%;max-width:420px;height:300px}
+.pk-row{display:flex;justify-content:center;gap:14px;margin:6px 0}
+.peg{width:6px;height:6px;border-radius:50%;background:var(--border2)}
+.pk-ball{position:absolute;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--gc));box-shadow:0 0 10px var(--gc);opacity:0;z-index:3;transform:translate(-50%,0)}
+.pk-slots{position:absolute;left:0;right:0;bottom:-6px;display:flex;gap:2px}
+.pk-slot{flex:1;text-align:center;font-size:.56rem;font-weight:800;padding:.3rem 0;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);font-variant-numeric:tabular-nums}
+.pk-slot.hit{background:var(--gc);color:#06150b;transform:scale(1.1)}
+
+/* mines */
+.mn-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.45rem;width:100%;max-width:360px}
+.mn-tile{aspect-ratio:1;border-radius:9px;background:var(--surface-2);border:1px solid var(--border2);font-size:1.4rem;display:flex;align-items:center;justify-content:center;transition:transform .1s}
+.mn-tile:not(:disabled):hover{border-color:var(--gc);transform:translateY(-2px)}
+.mn-tile.safe{background:#021a08;border-color:var(--accent)}
+.mn-tile.bomb{background:#1a0808;border-color:var(--red)}
+.mn-tile.boom{background:var(--red);animation:boom .4s ease}
+@keyframes boom{50%{transform:scale(1.2)}}
+
+/* hilo */
+.hl-card{width:120px;height:160px;border-radius:14px;background:linear-gradient(160deg,#fff,#e5e7eb);color:#111;font-size:3.2rem;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 34px -10px rgba(0,0,0,.6)}
+.hl-card.flip{animation:hlFlip .25s ease}
+@keyframes hlFlip{0%{transform:rotateY(90deg);opacity:.3}100%{transform:rotateY(0);opacity:1}}
+.hl-mult{font-size:1.2rem;font-weight:900;color:var(--gc);font-variant-numeric:tabular-nums}
+
+@media(max-width:760px){.hg-stage{grid-template-columns:1fr}}

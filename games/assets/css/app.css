@@ -30,6 +30,8 @@
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Fluid root scale: shrinks on phones, grows on big displays — whole UI is rem-based. */
+html{font-size:clamp(13px, 0.34vw + 12px, 18px)}
 html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;font-feature-settings:"cv11","ss01";position:relative}
 /* Canvas hexagon network sits behind content (created in JS). */
@@ -54,7 +56,18 @@ input,select,textarea{font:inherit;color:inherit}
   display:flex;flex-direction:column;gap:.15rem;padding:1rem .75rem;overflow-y:auto;
 }
 .sb-brand{display:flex;align-items:center;gap:.55rem;padding:.4rem .55rem 1rem;margin-bottom:.5rem;border-bottom:1px solid var(--border)}
-.sb-mark{width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:900;font-size:.95rem;flex-shrink:0}
+/* Animated GFX logo: hollow rounded square; frame + G spin at matched intervals (3:2). */
+.sb-mark{position:relative;width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 0 5px color-mix(in srgb,var(--accent) 55%,transparent));animation:markGlow 4s ease-in-out infinite}
+.sb-mark-ring{position:absolute;inset:0;border:2.5px solid var(--accent);border-radius:9px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 14%,transparent),transparent);
+  animation:markRing 9s linear infinite}
+.sb-mark-ring::after{content:'';position:absolute;inset:-2.5px;border-radius:9px;border:2.5px solid transparent;border-top-color:color-mix(in srgb,var(--accent) 90%,white);opacity:.8}
+.sb-mark-g{position:relative;z-index:1;color:var(--accent);font-weight:900;font-size:1rem;line-height:1;animation:markG 6s linear infinite}
+@keyframes markRing{to{transform:rotate(360deg)}}
+@keyframes markG{to{transform:rotate(-360deg)}}
+@keyframes markGlow{50%{filter:drop-shadow(0 0 10px color-mix(in srgb,var(--accent) 80%,transparent))}}
+@media(prefers-reduced-motion:reduce){.sb-mark,.sb-mark-ring,.sb-mark-g{animation:none}}
 .sb-brand-txt{font-weight:800;font-size:.95rem;letter-spacing:-.01em}
 .sb-brand-txt b{color:var(--accent)}
 /* Looping typewriter for the brand wordmark: type → hold → erase → repeat. */

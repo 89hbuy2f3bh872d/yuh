@@ -16,6 +16,7 @@ const PERMS = [
   { id: "cases",    label: "Manage cases",  desc: "Create and delete case tiers" },
   { id: "battles",  label: "Manage battles", desc: "View and force-cancel battles" },
   { id: "users",    label: "Manage users",   desc: "Grant or revoke admin permissions" },
+  { id: "tickets",  label: "Support tickets", desc: "View and reply to support tickets" },
 ];
 const PERM_IDS = PERMS.map(p => p.id);
 
@@ -87,6 +88,7 @@ const PAGES = [
   { id: "cases", label: "Case Tiers", color: "var(--teal)", perm: "cases" },
   { id: "battles", label: "Battles", color: "var(--orange)", perm: "battles" },
   { id: "userlist", label: "User List", color: "var(--red)", perm: "userlist" },
+  { id: "tickets", label: "Support", color: "var(--blue)", perm: "tickets" },
 ];
 
 function shell(body, title) {
@@ -434,6 +436,10 @@ function buildPage(data, prefix) {
       </table>
     </div>`;
 
+  const pageTickets = `
+    ${pageHeader({ eyebrow: "Support", title: "Support Tickets", color: "var(--blue)", sub: "Reply to and close player tickets" })}
+    <div class="tbl-wrap"><div id="tkAdminList"><div style="padding:1.4rem;text-align:center;color:var(--text-dim)">Loading…</div></div></div>`;
+
   const pageBodies = {
     overview: pageOverview,
     servers: pageServers,
@@ -443,6 +449,7 @@ function buildPage(data, prefix) {
     cases: pageCases,
     userlist: pageUserList,
     battles: pageBattles,
+    tickets: pageTickets,
   };
 
   // Only render tabs/pages the viewer is allowed to see.
@@ -492,7 +499,36 @@ function buildPage(data, prefix) {
     if (id === 'cases')    { try { window.adminLoadCases();    } catch(e) { console.error(e); } }
     if (id === 'userlist') { try { window.adminLoadAdmins();   } catch(e) { console.error(e); } }
     if (id === 'battles')  { try { window.adminLoadBattles();  } catch(e) { console.error(e); } }
+    if (id === 'tickets')  { try { window.adminLoadTickets();  } catch(e) { console.error(e); } }
   }
+
+  window.adminLoadTickets = function adminLoadTickets(){
+    fetch('/api/admin/tickets').then(function(r){return r.json()}).then(function(d){
+      var list=(d&&d.tickets)||[]; var el=document.getElementById('tkAdminList'); if(!el)return;
+      if(!list.length){ el.innerHTML='<div style="padding:1.4rem;text-align:center;color:var(--text-dim)">No tickets.</div>'; return; }
+      el.innerHTML=list.map(function(t){
+        var msgs=(t.messages||[]).map(function(m){
+          return '<div style="font-size:.78rem;margin:.25rem 0;padding:.35rem .55rem;border-radius:7px;background:'+(m.from==='admin'?'rgba(34,197,94,.12)':'var(--surface)')+'"><b style="color:var(--text-dim);font-size:.62rem">'+(m.from==='admin'?'Admin':esc(t.tag||'User'))+'</b><br>'+esc(m.body)+'</div>';
+        }).join('');
+        var open=t.status!=='closed';
+        return '<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem .85rem;margin-bottom:.6rem">'+
+          '<div style="display:flex;align-items:center;gap:.5rem"><b style="flex:1">'+esc(t.subject)+'</b>'+
+          '<span style="font-size:.6rem;text-transform:uppercase;color:var(--text-dim)">'+esc(t.status)+'</span></div>'+
+          '<div style="margin:.4rem 0">'+msgs+'</div>'+
+          (open?('<div style="display:flex;gap:.4rem;margin-top:.4rem"><input class="input" id="atk-'+t._id+'" placeholder="Reply…" style="flex:1"><button class="btn btn-primary" onclick="adminTicketReply(\\''+t._id+'\\')">Send</button><button class="btn-danger" onclick="adminTicketClose(\\''+t._id+'\\')">Close</button></div>'):'')+
+        '</div>';
+      }).join('');
+    }).catch(function(e){ console.error('tickets',e); });
+  };
+  window.adminTicketReply=function(id){
+    var inp=document.getElementById('atk-'+id); var body=inp?inp.value.trim():''; if(!body)return;
+    fetch('/api/admin/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
+      .then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
+  };
+  window.adminTicketClose=function(id){
+    fetch('/api/admin/tickets/'+id+'/close',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(function(r){return r.json()}).then(function(){ window.adminLoadTickets(); }).catch(function(){});
+  };
 
   navButtons.forEach(function(b){
     b.addEventListener('click', function(ev){

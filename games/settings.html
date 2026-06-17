@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.set-wrap{display:flex;flex-direction:column;gap:1.1rem;max-width:640px}
+.set-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1.1rem 1.2rem}
+.set-card h2{font-size:.95rem;font-weight:800;margin-bottom:.2rem}
+.set-card .sub{font-size:.74rem;color:var(--text2);margin-bottom:.9rem}
+.row{display:flex;align-items:center;gap:.8rem;margin-bottom:.9rem}
+.row label{flex:0 0 90px;font-size:.78rem;color:var(--text2);font-weight:600}
+.row input[type=range]{flex:1;accent-color:var(--accent)}
+.row .val{width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem}
+.muterow{display:flex;align-items:center;gap:.6rem;margin-top:.4rem}
+.field{margin-bottom:.7rem}
+.field label{display:block;font-size:.72rem;color:var(--text3);font-weight:600;margin-bottom:.25rem}
+.field input,.field textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;color:var(--text);font-size:.85rem}
+.field textarea{min-height:90px;resize:vertical}
+.tk{border:1px solid var(--border);border-radius:10px;padding:.7rem .8rem;margin-bottom:.6rem;background:var(--surface2)}
+.tk-head{display:flex;align-items:center;gap:.5rem;cursor:pointer}
+.tk-subj{font-weight:700;font-size:.84rem;flex:1}
+.tk-status{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.12rem .45rem;border-radius:99px}
+.tk-status.open{background:#0a1a2e;color:var(--blue);border:1px solid #3b82f633}
+.tk-status.answered{background:var(--accent-soft);color:var(--accent);border:1px solid #22c55e33}
+.tk-status.closed{background:#1a0808;color:var(--text3);border:1px solid var(--border)}
+.tk-thread{margin-top:.6rem;display:none;flex-direction:column;gap:.4rem}
+.tk.open-thread .tk-thread{display:flex}
+.msg{font-size:.78rem;padding:.45rem .6rem;border-radius:8px;max-width:90%}
+.msg.user{background:var(--surface3);align-self:flex-end}
+.msg.admin{background:var(--accent-soft);border:1px solid #22c55e33;align-self:flex-start}
+.msg .who{font-size:.6rem;color:var(--text3);font-weight:700;margin-bottom:.15rem}
+.tk-reply{display:flex;gap:.4rem;margin-top:.4rem}
+.tk-reply input{flex:1}
+.empty{color:var(--text3);font-size:.82rem;padding:1rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Settings</h1>
+      <div class="page-sub">Audio, sound effects, and support.</div>
+    </div>
+  </div>
+
+  <div class="set-wrap">
+    <div class="set-card">
+      <h2>Audio</h2>
+      <div class="sub">Volumes save automatically and apply across the whole casino.</div>
+      <div class="row"><label>Music</label><input id="musicVol" type="range" min="0" max="100"><span class="val" id="musicVal">0</span></div>
+      <div class="row"><label>Sound FX</label><input id="sfxVol" type="range" min="0" max="100"><span class="val" id="sfxVal">0</span></div>
+      <div class="muterow">
+        <button class="btn btn-secondary btn-sm" id="muteBtn" onclick="toggleMute()">Mute all</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.SG&&SG.test()">Test sound</button>
+      </div>
+    </div>
+
+    <div class="set-card">
+      <h2>Support</h2>
+      <div class="sub">Open a ticket — an admin will reply here.</div>
+      <div class="field"><label>Subject</label><input id="tkSubject" maxlength="120" placeholder="Brief summary"></div>
+      <div class="field"><label>Message</label><textarea id="tkBody" maxlength="2000" placeholder="Describe your issue…"></textarea></div>
+      <button class="btn btn-primary" onclick="submitTicket()">Submit ticket</button>
+      <div style="margin-top:1.2rem;font-size:.8rem;font-weight:700;color:var(--text2)">Your tickets</div>
+      <div id="tkList" style="margin-top:.6rem"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+// ── Audio settings ──────────────────────────────────────────────────────
+function initAudio(){
+  var s = window.SG ? SG.get() : {music:35,sfx:65,muted:false};
+  $('musicVol').value=s.music; $('musicVal').textContent=s.music;
+  $('sfxVol').value=s.sfx; $('sfxVal').textContent=s.sfx;
+  $('muteBtn').textContent = s.muted ? 'Unmute all' : 'Mute all';
+}
+$('musicVol').addEventListener('input',function(){ $('musicVal').textContent=this.value; if(window.SG)SG.setMusic(+this.value); });
+$('sfxVol').addEventListener('input',function(){ $('sfxVal').textContent=this.value; if(window.SG)SG.setSfx(+this.value); });
+$('sfxVol').addEventListener('change',function(){ if(window.SG)SG.sfx('pop'); });
+function toggleMute(){ if(!window.SG)return; var m=!SG.get().muted; SG.setMuted(m); $('muteBtn').textContent=m?'Unmute all':'Mute all'; }
+initAudio();
+
+// ── Tickets ─────────────────────────────────────────────────────────────
+function loadTickets(){
+  fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){
+    var list=d.tickets||[]; var el=$('tkList');
+    if(!list.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
+    el.innerHTML='';
+    list.forEach(function(t){
+      var msgs=(t.messages||[]).map(function(m){
+        return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
+      }).join('');
+      var reply = t.status==='closed' ? '' :
+        '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
+      var div=document.createElement('div'); div.className='tk';
+      div.innerHTML=
+        '<div class="tk-head" onclick="this.parentNode.classList.toggle(\'open-thread\')">'+
+          '<div class="tk-subj">'+esc(t.subject)+'</div>'+
+          '<span class="tk-status '+t.status+'">'+t.status+'</span>'+
+        '</div>'+
+        '<div class="tk-thread">'+msgs+reply+'</div>';
+      el.appendChild(div);
+    });
+  }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; });
+}
+function submitTicket(){
+  var subject=$('tkSubject').value.trim(), body=$('tkBody').value.trim();
+  if(!subject||!body){ alert('Subject and message required.'); return; }
+  fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:subject,body:body})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){alert(d.error);return;}
+      $('tkSubject').value=''; $('tkBody').value=''; loadTickets();
+    }).catch(function(){alert('Network error');});
+}
+function reply(id){
+  var inp=$('rep-'+id); var body=inp.value.trim(); if(!body)return;
+  fetch('/api/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
+    .then(function(r){return r.json()}).then(function(){ inp.value=''; loadTickets(); }).catch(function(){});
+}
+loadTickets(); setInterval(loadTickets, 15000);
+
+(function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
+</script>
+</body>
+</html>

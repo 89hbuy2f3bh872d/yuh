@@ -8,6 +8,7 @@ import path    from "path";
 import { fileURLToPath } from "url";
 import { AdminPanel }    from "./AdminPanel.mjs";
 import * as Slots        from "./SlotEngine.mjs";
+import * as House        from "./HouseGames.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -206,7 +207,7 @@ function loadSidebar() {
  */
 function buildSidebar({ active, uid, tag, avatar, bal, showAdmin }) {
   let s = loadSidebar();
-  const pages = ["lobby", "case-battle", "slots", "misc"];
+  const pages = ["lobby", "case-battle", "slots", "house", "settings", "misc"];
   for (const p of pages) s = s.replace(`__ACTIVE_${p}__`, p === active ? "active" : "");
   const adminNav = showAdmin
     ? `<a href="/admin/panel" class="sb-item admin ${active === "admin" ? "active" : ""}"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Admin</span></a>`
@@ -235,6 +236,7 @@ export class WebServer {
     this._sessionIpTolerance = Number(config.sessionIpToleranceMs ?? 0); // grace period for flaky IPs
     this._states      = new Map();
     this._admin       = new AdminPanel(db, config.prefix ?? "&");
+    this._house       = new House.HouseState();
 
     // ── Case Battle state ─────────────────────────────────────────────────────
     // battleId -> battle state
@@ -795,6 +797,26 @@ export class WebServer {
         return this._json(res, 200, { ok: true });
       }
 
+      // ── Support tickets (admin) ──────────────────────────────────────────────
+      if (p === "/api/admin/tickets" && req.method === "GET") {
+        const list = await this.db.listTickets({}).catch(() => []);
+        return this._json(res, 200, { tickets: list });
+      }
+      {
+        const rm = p.match(/^\/api\/admin\/tickets\/([a-f0-9]+)\/reply$/);
+        if (rm && req.method === "POST") {
+          const body = String(data.body || "").trim().slice(0, 2000);
+          if (!body) return this._json(res, 400, { error: "Message required" });
+          await this.db.addTicketMessage(rm[1], { from: "admin", uid, body, at: Date.now() }).catch(() => {});
+          return this._json(res, 200, { ok: true });
+        }
+        const cm = p.match(/^\/api\/admin\/tickets\/([a-f0-9]+)\/(close|open)$/);
+        if (cm && req.method === "POST") {
+          await this.db.setTicketStatus(cm[1], cm[2] === "close" ? "closed" : "open").catch(() => {});
+          return this._json(res, 200, { ok: true });
+        }
+      }
+
       return this._json(res, 404, { error: "Not found" });
     }
 
@@ -819,6 +841,10 @@ export class WebServer {
       return this._renderPage(req, res, "lobby.html", "lobby");
     if (p === "/slots" && req.method === "GET")
       return this._renderPage(req, res, "slots.html", "slots");
+    if (p === "/house" && req.method === "GET")
+      return this._renderPage(req, res, "house.html", "house");
+    if (p === "/settings" && req.method === "GET")
+      return this._renderPage(req, res, "settings.html", "settings");
     if (p === "/misc" && req.method === "GET")
       return this._renderPage(req, res, "misc.html", "misc");
 
@@ -881,6 +907,122 @@ export class WebServer {
         freeAwarded: result.freeAwarded,
         balance: Number(user?.bal ?? 0),
       });
+    }
+
+    // ── House Games ───────────────────────────────────────────────────────────
+    if (p.startsWith("/api/house/") && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      let data; try { data = JSON.parse(await readBody(req)); } catch { data = {}; }
+      const bet = Math.floor(Number(data.bet) || 0);
+      const goodBet = bet >= 1 && bet <= 1_000_000;
+      const sub = p.slice("/api/house/".length);
+      const credit = async (amt) => { if (amt > 0) await this.db.updateBalance(uid, amt).catch(() => {}); };
+      const rec = (cost, payout) => this.db.recordGame(uid, payout >= cost, cost).catch(() => {});
+
+      if (sub === "coinflip") {
+        if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
+        const side = data.side === "tails" ? "tails" : "heads";
+        if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
+        const r = House.coinflip(bet, side); await credit(r.payout); rec(bet, r.payout);
+        const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "double") {
+        if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
+        if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
+        const r = House.doubleOrNothing(bet); await credit(r.payout); rec(bet, r.payout);
+        const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "plinko") {
+        if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
+        const risk = ["low", "med", "high"].includes(data.risk) ? data.risk : "med";
+        if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
+        const r = House.plinko(bet, risk); await credit(r.payout); rec(bet, r.payout);
+        const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "mines/start") {
+        if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
+        if (this._house.minesActive(uid)) return this._json(res, 200, { error: "Finish your current game first" });
+        if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
+        const r = this._house.startMines(uid, bet, data.mines);
+        const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { ok: true, balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "mines/reveal") {
+        const r = this._house.minesReveal(uid, data.idx);
+        if (r.error) return this._json(res, 200, r);
+        if (r.hit) { rec(0, 0); const u = await this.db.getUser(uid).catch(() => null); return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) })); }
+        return this._json(res, 200, r);
+      }
+      if (sub === "mines/cashout") {
+        const r = this._house.minesCashout(uid);
+        if (r.error) return this._json(res, 200, r);
+        await credit(r.payout); const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "hilo/start") {
+        if (!goodBet) return this._json(res, 400, { error: "Invalid bet" });
+        if (this._house.hiloActive(uid)) return this._json(res, 200, { error: "Finish your current game first" });
+        if (!(await this.db.atomicDeduct(uid, -bet))) return this._json(res, 200, { error: "Insufficient balance" });
+        const r = this._house.startHilo(uid, bet);
+        const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { ok: true, balance: Number(u?.bal ?? 0) }));
+      }
+      if (sub === "hilo/guess") {
+        const r = this._house.hiloGuess(uid, data.dir === "lower" ? "lower" : "higher");
+        return this._json(res, 200, r);
+      }
+      if (sub === "hilo/cashout") {
+        const r = this._house.hiloCashout(uid);
+        if (r.error) return this._json(res, 200, r);
+        await credit(r.payout); const u = await this.db.getUser(uid).catch(() => null);
+        return this._json(res, 200, Object.assign(r, { balance: Number(u?.bal ?? 0) }));
+      }
+      return this._json(res, 404, { error: "Unknown game" });
+    }
+    if (p === "/api/house/games" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      return this._json(res, 200, { games: House.HOUSE_GAMES, plinko: { low: House.plinko(0, "low").table, med: House.plinko(0, "med").table, high: House.plinko(0, "high").table } });
+    }
+
+    // ── Support tickets (user) ────────────────────────────────────────────────
+    if (p === "/api/tickets" && req.method === "GET") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const list = await this.db.listTickets({ uid }).catch(() => []);
+      return this._json(res, 200, { tickets: list });
+    }
+    if (p === "/api/tickets" && req.method === "POST") {
+      const uid = this._uid(req);
+      if (!uid) return this._json(res, 401, { error: "Not logged in" });
+      const cookies = parseCookies(req);
+      const tag = decodeURIComponent(cookies.dtag || uid);
+      let data; try { data = JSON.parse(await readBody(req)); } catch { return this._json(res, 400, { error: "Invalid JSON" }); }
+      const subject = String(data.subject || "").trim().slice(0, 120);
+      const body = String(data.body || "").trim().slice(0, 2000);
+      if (!subject || !body) return this._json(res, 400, { error: "Subject and message required" });
+      const now = Date.now();
+      const t = { _id: crypto.randomBytes(8).toString("hex"), uid, tag, subject, status: "open", createdAt: now, updatedAt: now, messages: [{ from: "user", uid, body, at: now }] };
+      await this.db.createTicket(t).catch(() => {});
+      return this._json(res, 200, { ticket: t });
+    }
+    {
+      const m = p.match(/^\/api\/tickets\/([a-f0-9]+)\/reply$/);
+      if (m && req.method === "POST") {
+        const uid = this._uid(req);
+        if (!uid) return this._json(res, 401, { error: "Not logged in" });
+        const t = await this.db.getTicket(m[1]).catch(() => null);
+        if (!t || t.uid !== uid) return this._json(res, 404, { error: "Not found" });
+        let data; try { data = JSON.parse(await readBody(req)); } catch { data = {}; }
+        const body = String(data.body || "").trim().slice(0, 2000);
+        if (!body) return this._json(res, 400, { error: "Message required" });
+        await this.db.addTicketMessage(m[1], { from: "user", uid, body, at: Date.now() }).catch(() => {});
+        return this._json(res, 200, { ok: true });
+      }
     }
 
     // ── Send-money picker: search users (no balance leak) ─────────────────────

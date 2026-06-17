@@ -489,4 +489,26 @@ export class Database {
       { upsert: true },
     );
   }
+
+  // ─── Support tickets ──────────────────────────────────────────────────────
+  async createTicket(t) { if (!this._db) return null; await this._db.collection("tickets").insertOne(t); return t; }
+  async listTickets(filter = {}) { if (!this._db) return []; return this._db.collection("tickets").find(filter).sort({ updatedAt: -1 }).limit(200).toArray(); }
+  async getTicket(id) { if (!this._db) return null; return this._db.collection("tickets").findOne({ _id: id }); }
+  async addTicketMessage(id, msg) {
+    if (!this._db) return;
+    await this._db.collection("tickets").updateOne(
+      { _id: id },
+      { $push: { messages: msg }, $set: { updatedAt: msg.at, status: msg.from === "admin" ? "answered" : "open" } },
+    );
+  }
+  async setTicketStatus(id, status) { if (!this._db) return; await this._db.collection("tickets").updateOne({ _id: id }, { $set: { status, updatedAt: Date.now() } }); }
+
+  // ─── Pets ─────────────────────────────────────────────────────────────────
+  async getPet(uid) { const u = await this.getUser(uid); return u?.pet ?? null; }
+  async savePet(uid, pet) {
+    if (!this._users) return;
+    const set = pet ? { pet } : {};
+    const op = pet ? { $set: { pet } } : { $unset: { pet: "" } };
+    await this._users.updateOne({ _id: String(uid) }, op, { upsert: true });
+  }
 }

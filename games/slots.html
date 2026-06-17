@@ -217,6 +217,7 @@ function doSpin(buy){
   var b=bet(); var cost=buy?b*GAME.buyX:b;
   if(cost>bal){ stageMsg('Not enough balance'); setTimeout(function(){stageMsg('');},1200); return; }
   busy=true; setControls(false); setWinMeter(0); $('fsBanner').classList.add('hidden'); stageMsg('');
+  if(window.SG)SG.sfx(buy?'coin':'spin');
   bal-=cost; $('balMeter').textContent=fmt(bal);
   fetch('/api/slots/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:GAME.id,bet:b,buy:!!buy})})
     .then(function(r){return r.json()}).then(function(d){
@@ -238,7 +239,7 @@ async function animateRound(d){
       $('fsText').textContent='Free Spin '+idx+' / '+totalFree;
     }
     if(si>0 && d.spins[si-1] && !d.spins[si-1].free && sp.free){
-      stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
+      if(window.SG)SG.sfx('scatter'); stageMsg('FREE SPINS!'); await sleep(900); stageMsg('');
     }
     await animateSpin(sp, roundWin, fast);
     roundWin += sp.total;
@@ -265,10 +266,12 @@ async function animateSpin(sp, runningBefore, fast){
     var winPos=[];
     step.wins.forEach(function(w){ w.positions.forEach(function(p){winPos.push(p);}); });
     dim(winPos); highlight(winPos,true);
+    if(window.SG)SG.sfx('win');
     spinWin += step.stepWin;
     setWinMeter(runningBefore + spinWin);
     await sleep(STEP);
     // pop winners
+    if(window.SG)SG.sfx('pop');
     winPos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('pop'); });
     await sleep(POP);
     clearFx();
@@ -282,6 +285,7 @@ async function animateSpin(sp, runningBefore, fast){
     var mpos=[];
     for(var i=0;i<fin.length;i++){ if(isMult(fin[i])) mpos.push(i); }
     mpos.forEach(function(i){ var c=$('cell-'+i); if(c) c.classList.add('mhit'); });
+    if(window.SG)SG.sfx('mult');
     stageMsg('×'+sp.multApplied);
     await sleep(fast?500:900);
     stageMsg('');
@@ -297,6 +301,7 @@ async function bigWin(total, betAmt){
   if(x < 15) return; // only celebrate sizeable wins
   var label = x>=200?'MEGA WIN':(x>=75?'EPIC WIN':'BIG WIN');
   $('bigwinLabel').textContent=label;
+  if(window.SG)SG.sfx('bigwin');
   var amt=$('bigwinAmt'); $('winOverlay').classList.remove('hidden');
   var start=0, dur=1400, t0=Date.now();
   return new Promise(function(resolve){
