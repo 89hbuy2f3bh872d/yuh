@@ -475,6 +475,14 @@ app.post("/api/admin/wipe", ({ request, body, set }) => adminApi(request, set, a
   const ok = await db.wipeAll().catch(() => false); return { ok };
 }));
 
+// ── user search (send-money picker) ─────────────────────────────────────────
+app.get("/api/users/search", async ({ request, query, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  let rows: any[] = [];
+  try { rows = await db.searchUsers((query as any).q || "", 25, uid); } catch (e) { console.error("[users/search]", e); }
+  return { users: rows.map((r: any) => ({ id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null) })) };
+});
+
 // ── Bun server tuning for a cheap VPS (high concurrency, low memory) ──────────
 app.listen({ port: PORT, reusePort: true, hostname: "0.0.0.0" });
 console.log(`[web] Elysia on :${PORT} · STDB ${ST.module} · realtime WS at /ws`);

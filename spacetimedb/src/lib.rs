@@ -16,6 +16,7 @@ use spacetimedb::{reducer, table, ReducerContext, Table};
 const MAX_BALANCE: i64 = 1_000_000_000_000; // 1e12 FC
 const MAX_DELTA: i64 = 1_000_000_000;       // 1e9 FC per single op
 const MAX_NOTIFS: usize = 50;               // keep only the newest N per user
+const STARTER_BALANCE: i64 = 1000;          // granted once, on first login (ensure_account)
 
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,11 @@ fn push_notification(ctx: &ReducerContext, owner: &str, kind: &str, amount: i64,
 #[reducer]
 pub fn ensure_account(ctx: &ReducerContext, owner: String) -> Result<(), String> {
     if owner.is_empty() { return Err("empty owner".into()); }
-    ensure(ctx, &owner);
+    // First touch (login) → seed the starter balance once. Internal ensure() stays 0,
+    // so deduct/credit on a missing account can never mint the starter amount.
+    if ctx.db.account().owner().find(owner.clone()).is_none() {
+        ctx.db.account().insert(Account { owner, balance: STARTER_BALANCE });
+    }
     Ok(())
 }
 
