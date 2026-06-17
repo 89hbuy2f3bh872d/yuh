@@ -13,12 +13,12 @@
     <span>Lobby</span>
   </a>
   <a href="/case-battle" class="sb-item __ACTIVE_case-battle__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6 3 3-6 6-3-3z"/></svg>
+    <svg class="icon" viewBox="0 0 24 24"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>
     <span>Case Battle</span>
     <span class="sb-badge">Live</span>
   </a>
   <a href="/slots" class="sb-item __ACTIVE_slots__">
-    <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M7 6V4M12 6V4M17 6V4M7 12h.01M12 12h.01M17 12h.01"/></svg>
+    <svg class="icon" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
     <span>Slots</span>
     <span class="sb-badge">Live</span>
   </a>
@@ -84,11 +84,17 @@
     if(window.SG&&SG.music)SG.music.stop(); // music is slot-page only
     ensureCss(doc);
     cur.innerHTML=nm.innerHTML;
-    // re-execute inline scripts inside the new main
-    cur.querySelectorAll('script').forEach(function(s){
+    // Page scripts live OUTSIDE <main> (end of body) — re-execute them so the
+    // new section initialises. Skip the persistent sidebar/partial scripts
+    // (sound.js, pjax, hex-bg) which already run and are window-guarded.
+    doc.querySelectorAll('body script').forEach(function(s){
+      var txt=s.textContent||'';
+      if(s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
+      if(!s.src && /__pjax|__bgHex/.test(txt)) return;
       var n=document.createElement('script');
-      if(s.src)n.src=s.src; else n.textContent=s.textContent;
-      s.parentNode.replaceChild(n,s);
+      if(s.src)n.src=s.src; else n.textContent=txt;
+      document.body.appendChild(n);
+      n.parentNode.removeChild(n);
     });
     document.title=doc.title||document.title;
     updateActive(new URL(url,location.href).pathname);
