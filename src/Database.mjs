@@ -500,11 +500,17 @@ export class Database {
   }
 
   // ─── Per-server shop / economy (owner perks bought with the server bank) ─────
-  /** Read a guild's economy bits: tax + shop perk state. */
+  /** Read a guild's economy bits: tax + shop perk state + verified flag. */
   async getGuildEconomy(id) {
-    if (!this._guilds) return { taxBps: DEFAULT_TAX_BPS, shop: {} };
-    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1, shop: 1 } }).catch(() => null);
-    return { taxBps: Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS, shop: g?.shop || {} };
+    if (!this._guilds) return { taxBps: DEFAULT_TAX_BPS, shop: {}, verified: false };
+    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1, shop: 1, verified: 1 } }).catch(() => null);
+    return { taxBps: Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS, shop: g?.shop || {}, verified: !!g?.verified };
+  }
+
+  /** Admin: mark a server verified (blue badge) or remove it. */
+  async setGuildVerified(id, on) {
+    if (!this._guilds) return;
+    await this._guilds.updateOne({ _id: String(id) }, on ? { $set: { verified: true } } : { $unset: { verified: "" } }, { upsert: true });
   }
   /** Merge fields into a guild's `shop` sub-document (e.g. { featuredUntil: ts }). */
   async mergeGuildShop(id, patch) {

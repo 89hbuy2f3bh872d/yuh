@@ -312,7 +312,7 @@ async function broadcastServerEcon(gid: string) {
   const now = Date.now(), shop = econ.shop || {};
   const msg = JSON.stringify({
     type: "server-econ", gid,
-    taxBps: econ.taxBps, effTax: effectiveTaxBps(econ.taxBps, shop, now),
+    taxBps: econ.taxBps, effTax: effectiveTaxBps(econ.taxBps, shop, now), verified: !!econ.verified,
     shop: { featuredUntil: shop.featuredUntil || 0, taxHolidayUntil: shop.taxHolidayUntil || 0,
             accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
             featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
@@ -928,6 +928,7 @@ app.get("/api/my-servers", async ({ request, set }) => {
       members: g.memberCount ?? null,
       owner: g.ownerId === uid, manage: manageAll || g.ownerId === uid,
       invite: typeof g.invite === "string" ? g.invite : null,
+      verified: !!g.verified,
       tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
       bank: stdb.getServerBank(g._id),
       stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
@@ -1050,13 +1051,33 @@ app.post("/api/server/invite", async ({ request, body, set }) => {
   return { ok: true, invite: invite || null };
 });
 
+// Admin (the "servers" permission): mark a server verified (blue badge on the leaderboard).
+app.post("/api/server/verify", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (!(await canManageServers(uid))) { set.status = 403; return { error: "Forbidden" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  const verified = !!b?.verified;
+  await (db as any).setGuildVerified(gid, verified).catch(() => {});
+  console.log(`[audit] verify by ${uid} on ${gid}: ${verified}`);
+  broadcastServerEcon(gid); // live badge update on dashboard + leaderboard
+  return { ok: true, verified };
+});
+
 // ── global server leaderboard (any logged-in user) ───────────────────────────
 app.get("/api/leaderboard", async ({ request, query, set }) => {
   const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
   const sort = String((query as any)?.sort || "wagered");
   const byBank = sort === "bank";
-  // Mongo can sort by stat fields; for bank we pull a wider pool and sort in-process.
-  const rows: any[] = await (db as any).getTopServerStats(byBank ? "wagered" : sort, byBank ? 100 : 50).catch(() => []);
+  // Filters
+  const q = String((query as any)?.q || "").trim().toLowerCase().slice(0, 60);
+  const wantVerified = ["1", "true", "on"].includes(String((query as any)?.verified || "").toLowerCase());
+  const minM = Number((query as any)?.minMembers); const maxM = Number((query as any)?.maxMembers);
+  const hasFilter = !!q || wantVerified || Number.isFinite(minM) || Number.isFinite(maxM);
+  // Pull a wider pool when filtering or bank-sorting so post-filter results still fill the board.
+  const rows: any[] = await (db as any).getTopServerStats(byBank ? "wagered" : sort, hasFilter || byBank ? 200 : 50).catch(() => []);
   const guilds = await db.getGuildsByIds(rows.map(r => r._id)).catch(() => []);
   const gmap = new Map(guilds.map((g: any) => [g._id, g]));
   const me = await db.getUser(uid).catch(() => null);
@@ -1070,8 +1091,15 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
       bank: stdb.getServerBank(r._id), wagered: r.wagered || 0, taxed: r.taxed || 0, games: r.gp || 0, payout: r.payout || 0,
       players: Array.isArray(r.players) ? r.players.length : 0,
       tax: holiday ? 0 : taxBps, taxHoliday: holiday, member: myGids.has(r._id),
-      invite: typeof g.invite === "string" ? g.invite : null,
+      invite: typeof g.invite === "string" ? g.invite : null, verified: !!g.verified,
       featured: (shop.featuredUntil || 0) > now, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null };
+  });
+  if (hasFilter) entries = entries.filter((e: any) => {
+    if (wantVerified && !e.verified) return false;
+    if (q && !String(e.name).toLowerCase().includes(q)) return false;
+    if (Number.isFinite(minM) && (e.members ?? 0) < minM) return false;
+    if (Number.isFinite(maxM) && (e.members ?? Infinity) > maxM) return false;
+    return true;
   });
   const metric = byBank ? "bank" : (sort === "taxed" ? "taxed" : sort === "games" ? "games" : "wagered");
   // Featured servers float to the top; then by the chosen metric.

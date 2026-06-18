@@ -32,6 +32,20 @@
 .lb-actions{flex:none;margin-left:.2rem}
 .lb-join{display:inline-block;font-size:.7rem;font-weight:700;color:var(--bg);background:var(--accent);border-radius:8px;padding:.4rem .7rem;white-space:nowrap;text-decoration:none;transition:filter .15s}
 .lb-join:hover{filter:brightness(1.08)}
+.lb-verified{display:inline-flex;color:#3b9dff;flex:none}
+.lb-verified .icon{width:15px;height:15px;stroke-width:2.4}
+/* filters */
+.lb-filters{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-bottom:1rem}
+.lb-f-search{display:flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.35rem .6rem;flex:1;min-width:160px}
+.lb-f-search .icon{width:15px;height:15px;color:var(--text3);flex:none}
+.lb-f-search input{flex:1;background:transparent;border:0;color:var(--text);font-size:.78rem;outline:none}
+.lb-chk{display:flex;align-items:center;gap:.4rem;font-size:.74rem;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.4rem .6rem;cursor:pointer;white-space:nowrap}
+.lb-chk input{accent-color:var(--accent)}
+.lb-num{width:120px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.4rem .6rem;color:var(--text);font-size:.76rem;outline:none}
+.lb-num:focus,.lb-f-search:focus-within{border-color:var(--accent)}
+.lb-clear{font-size:.74rem;color:var(--text3);background:transparent;border:1px solid var(--border);border-radius:9px;padding:.4rem .7rem}
+.lb-clear:hover{color:var(--text);border-color:var(--border2,var(--border))}
+@media(max-width:560px){.lb-num{width:calc(50% - .25rem)}}
 @media(max-width:680px){.lb-mini{display:none}}
 @media(max-width:520px){.lb-join{padding:.4rem .55rem;font-size:.64rem}}
 </style>
@@ -57,6 +71,17 @@ __SIDEBAR__
     <button class="lb-tab" data-sort="games">Most Games</button>
   </div>
 
+  <div class="lb-filters" id="lbFilters">
+    <div class="lb-f-search">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="lbQ" type="text" placeholder="Search servers…" autocomplete="off">
+    </div>
+    <label class="lb-chk"><input type="checkbox" id="lbVerified"> Verified only</label>
+    <input class="lb-num" id="lbMin" type="number" min="0" placeholder="Min members">
+    <input class="lb-num" id="lbMax" type="number" min="0" placeholder="Max members">
+    <button class="lb-clear" id="lbClear" type="button">Clear</button>
+  </div>
+
   <div class="lb-list" id="lbList"><div class="empty">Loading…</div></div>
 </main>
 </div>
@@ -67,6 +92,7 @@ function fmt(n){return Number(n||0).toLocaleString()}
 function initials(n){return String(n||'?').trim().slice(0,1).toUpperCase();}
 var SORT='wagered';
 var METRIC_LABEL={wagered:'Wagered',bank:'Bank',taxed:'Tax Earned',games:'Games'};
+var VERIFIED='<span class="lb-verified" title="Verified server"><svg class="icon" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></span>';
 
 function rowHtml(s,i){
   var accent = s.accent ? 'style="--accent:'+esc(s.accent)+'"' : '';
@@ -79,7 +105,7 @@ function rowHtml(s,i){
   return '<div class="lb-row'+(s.featured?' feat':'')+'" '+accent+'>'
     + '<div class="lb-rank">'+(i+1)+'</div>'
     + '<div class="lb-av">'+esc(initials(s.name))+'</div>'
-    + '<div class="lb-meta"><div class="lb-name">'+esc(s.name)+(s.featured?'<span class="lb-feat-badge">✨ Featured</span>':'')+taxBadge+'</div>'
+    + '<div class="lb-meta"><div class="lb-name">'+esc(s.name)+(s.verified?VERIFIED:'')+(s.featured?'<span class="lb-feat-badge">✨ Featured</span>':'')+taxBadge+'</div>'
       + '<div class="lb-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+fmt(s.players)+' players · '+fmt(s.games)+' games</div></div>'
     + '<div class="lb-mini">'
       + '<div class="mi"><div class="v">'+fmt(s.bank)+'</div><div class="k">Bank</div></div>'
@@ -90,13 +116,22 @@ function rowHtml(s,i){
   + '</div>';
 }
 
+function val(id){ var el=document.getElementById(id); return el?el.value:''; }
+function filterQuery(){
+  var p='sort='+encodeURIComponent(SORT);
+  var q=val('lbQ').trim(); if(q) p+='&q='+encodeURIComponent(q);
+  var vc=document.getElementById('lbVerified'); if(vc&&vc.checked) p+='&verified=1';
+  var mn=val('lbMin'); if(mn!=='') p+='&minMembers='+encodeURIComponent(mn);
+  var mx=val('lbMax'); if(mx!=='') p+='&maxMembers='+encodeURIComponent(mx);
+  return p;
+}
 function load(){
   var listEl=document.getElementById('lbList');
-  fetch('/api/leaderboard?sort='+encodeURIComponent(SORT),{credentials:'same-origin'})
+  fetch('/api/leaderboard?'+filterQuery(),{credentials:'same-origin'})
     .then(function(r){return r.ok?r.json():null}).then(function(d){
       if(!d){ listEl.innerHTML='<div class="empty">Failed to load.</div>'; return; }
       var list=d.servers||[];
-      if(!list.length){ listEl.innerHTML='<div class="empty">No server activity yet — be the first to play on a server!</div>'; return; }
+      if(!list.length){ listEl.innerHTML='<div class="empty">No servers match your filters.</div>'; return; }
       listEl.innerHTML=list.map(rowHtml).join('');
     }).catch(function(){ listEl.innerHTML='<div class="empty">Failed to load.</div>'; });
 }
@@ -107,6 +142,14 @@ Array.prototype.forEach.call(document.querySelectorAll('#lbTabs .lb-tab'),functi
     Array.prototype.forEach.call(document.querySelectorAll('#lbTabs .lb-tab'),function(x){x.classList.toggle('on',x===t);});
     load();
   });
+});
+// Filter controls (debounced text/number inputs; instant checkbox).
+var fT=null; function deb(){ if(fT)clearTimeout(fT); fT=setTimeout(load,300); }
+['lbQ','lbMin','lbMax'].forEach(function(id){ var el=document.getElementById(id); if(el)el.addEventListener('input',deb); });
+var vEl=document.getElementById('lbVerified'); if(vEl)vEl.addEventListener('change',load);
+var clr=document.getElementById('lbClear'); if(clr)clr.addEventListener('click',function(){
+  ['lbQ','lbMin','lbMax'].forEach(function(id){ var el=document.getElementById(id); if(el)el.value=''; });
+  if(vEl)vEl.checked=false; load();
 });
 // Live: a tax/bank change anywhere refreshes the board (debounced, WS-driven — no polling).
 if(!window.__lbWs){ window.__lbWs=1; var lbT=null;
