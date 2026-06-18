@@ -59,7 +59,6 @@ __SIDEBAR__
       <button class="spin-btn" id="spinBtn" onclick="doSpin(false)">
         <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.5 1 6 2.5L21 3M21 3v6h-6"/></svg><span>SPIN</span>
       </button>
-      <button class="collect-btn hidden" id="collectBtn" onclick="collectWin()"><span>COLLECT</span><b id="collectAmt"></b></button>
       <div class="buy-col">
         <button class="buy-btn reg" id="buyReg" onclick="doSpin('regular')"><span class="buy-top">Buy Bonus</span><span class="buy-cost" id="costReg">—</span></button>
         <button class="buy-btn sup" id="buySup" onclick="doSpin('super')"><span class="buy-top">Buy SUPER</span><span class="buy-cost" id="costSup">—</span></button>
@@ -157,8 +156,7 @@ function openGame(id){
   $('gameTag').textContent=GAME.tag; document.querySelector('.machine').style.setProperty('--gc',GAME.color);
   setBetMeters(); renderQuick(); updateMuteIcon();
   buildGrid(); fillIdle();
-  // fresh state (defensive: never enter a game with a stuck Collect/spin button)
-  var cb=$('collectBtn'); if(cb)cb.classList.add('hidden'); $('spinBtn').classList.remove('hidden'); busy=false; setControls(true);
+  busy=false; setControls(true); // fresh state
   if(window.SG&&SG.music)SG.music.play(GAME.id);
   refreshBal();
 }
@@ -308,20 +306,18 @@ async function animateRound(d){
   finally {
     $('fsBanner').classList.add('hidden'); $('gmult').classList.add('hidden');
     if(window.SG&&SG.music&&GAME)SG.music.play(GAME.id);
-    if(d && d.totalWin>0){ showCollect(d.totalWin); }   // win waits for the player to collect
+    if(d && d.totalWin>0){ collectWin(); }   // auto-collect the win once the animation ends
     else { busy=false; setControls(true); }
   }
 }
-function showCollect(win){ var cb=$('collectBtn'); if(!cb)return; $('collectAmt').textContent='+'+fmt(win)+' FC'; cb.classList.remove('hidden'); $('spinBtn').classList.add('hidden'); }
-function finishCollect(){ var cb=$('collectBtn'); if(cb){ cb.classList.add('hidden'); cb.disabled=false; } $('spinBtn').classList.remove('hidden'); busy=false; setControls(true); }
+// Credit the held win (server pays it now) and re-enable play. No button — automatic.
 function collectWin(){
-  var cb=$('collectBtn'); if(cb)cb.disabled=true;
   if(window.SG)SG.sfx('coin');
   fetch('/api/slots/collect',{method:'POST',headers:{'Content-Type':'application/json'}})
     .then(function(r){return r.json()}).then(function(j){
       if(j&&j.balance!=null){ bal=Number(j.balance); $('balMeter').textContent=fmt(bal); var sb=$('sbBal'); if(sb)sb.textContent=fmt(bal); }
-      finishCollect();
-    }).catch(function(){ finishCollect(); });
+    }).catch(function(){})
+    .finally(function(){ busy=false; setControls(true); });
 }
 
 async function animateSpin(sp, runningBefore, free){
