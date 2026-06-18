@@ -194,6 +194,9 @@ async function renderPage(request: Request, set: any, file: string, active: stri
   for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
   html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
   set.headers["content-type"] = "text/html; charset=utf-8";
+  // Pages carry per-user data AND inline <script> — never let the browser/Cloudflare serve a
+  // stale copy, or client-side fixes silently never reach the user after a deploy.
+  set.headers["cache-control"] = "private, no-cache, no-store, must-revalidate";
   return html;
 }
 

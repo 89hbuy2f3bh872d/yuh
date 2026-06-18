@@ -158,6 +158,16 @@ All multipliers on the board count regardless of placement — they always survi
 tumble to the final grid, where `gridMultCells` reads them. Math/RTP unchanged
 (~89.7/87.2/86.9% candy/olympus/bandit); this was purely a reveal/field-plumbing fix.
 
+### Pages were uncached-busted → stale inline `<script>` (likely root cause of "fix didn't work")
+`renderPage` reads the page fresh server-side and `?v=`-busts only `/assets/*.css|js`. The
+page's **inline `<script>`** had **no cache-bust and no `Cache-Control`**, so the
+browser/Cloudflare could serve a stale `slots.html` with old JS — client-side fixes silently
+never reached the user after a deploy. Fix: `renderPage` now sends
+`Cache-Control: private, no-cache, no-store, must-revalidate` on every rendered page. After
+any page edit, a normal reload now gets fresh inline JS (no hard-refresh needed). **Locked
+design: all bonuses keep the split (Regular per-spin, Super/Hidden global) — global-in-all
+spiked RTP to ~174%, reverted.**
+
 ### Super/Hidden global multiplier — verified + hardened (design locked)
 Rule (confirmed with the owner): on a **winning** spin (`baseWin>0`), **every** multiplier
 on the board adds to the global, regardless of placement; multipliers on **non-winning**
