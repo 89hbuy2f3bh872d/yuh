@@ -259,18 +259,21 @@ function pkTick(now){
     // rows so its arc doesn't clip through neighbouring pegs (no phasing).
     var nextX = b.hitIdx<b.hits.length ? b.hits[b.hitIdx].x : b.landX;
     b.vx += (nextX - b.x) * 7 * dt;
-    // integrate
-    b.vy+=G*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    // integrate — gravity ALWAYS pulls down; the ball never stalls
+    b.vy = Math.max(b.vy + G*dt, G*dt*0.5);   // clamp so vy stays positive (downward) — no hover
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
     b.vx*= (1-3.5*dt);   // horizontal damping
-    // Bounce off the exact scripted peg for the current row (deterministic → correct bucket).
+    // Deflect off the exact scripted peg for the current row (deterministic → correct bucket).
+    // A real Plinko ball ricochets sideways and keeps falling — no big upward bounce, so it
+    // can never get stuck. The lateral kick + gravity gives the natural bouncing arc.
     if(b.hitIdx<b.hits.length){
       var h=b.hits[b.hitIdx];
       if(b.y >= h.y){
         b.y=h.y;
         var dir=b.path[h.row]?1:-1;
         b.x=h.x;                                         // snap to peg for a clean ricochet
-        b.vx = dir*P.gx*2.8 + (Math.random()*2-1)*P.gx*0.25;  // mild lateral + small jiggle
-        b.vy = -P.ry*2.4;                                // bounce up
+        b.vx = dir*P.gx*3.2 + (Math.random()*2-1)*P.gx*0.3;  // lateral kick + natural jiggle
+        b.vy = P.ry*1.8;                                 // keep moving DOWN (small speed boost)
         P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;
         b.hitIdx++;
         if(window.SG)SG.sfx('tick');

@@ -133,8 +133,13 @@ export class CaseBattle {
       const payout = battle.pot;
       players.forEach(p => { p.netWin = (p === winner) ? payout - p.cost : -p.cost; if (p === winner) credit(p, payout); record(p); });
     } else if (mode === "shared") {
+      // Shared mode: the total VALUE of everything everyone opened is pooled and split
+      // equally (minus a 5% rake). This way good pulls actually profit everyone — the
+      // previous version split only the entry pot, so the rake guaranteed a loss regardless
+      // of what was opened.
       battle.winnerUid = "shared";
-      const rake = Math.floor(battle.pot * 0.05), share = Math.floor((battle.pot - rake) / players.length);
+      const totalValue = players.reduce((s, p) => s + (p.totalValue || 0), 0);
+      const rake = Math.floor(totalValue * 0.05), share = Math.floor((totalValue - rake) / players.length);
       players.forEach(p => { p.netWin = share - p.cost; credit(p, share); record(p); });
     } else {
       const vals = players.map(p => p.totalValue);
