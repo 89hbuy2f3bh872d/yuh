@@ -208,11 +208,14 @@ function pkDraw(){
   // pegs — glow when recently hit by a ball
   var pr=Math.max(2.5,P.gx*0.135);
   pkPegs(P).forEach(function(p){
-    // glow lookup: a peg hit is keyed by row+pegX; match on x proximity
-    var glow=0; for(var k in P.pegHits){ var age=now-P.pegHits[k]; if(age<350){ var xs=k.split('_'); var hx=parseFloat(xs[xs.length-1]); if(Math.abs(hx-p.x)<2){ glow=1-age/350; break; } } }
-    if(glow>0){ ctx.shadowColor='rgba(255,200,120,'+(0.8*glow)+')'; ctx.shadowBlur=10*glow; }
-    ctx.beginPath(); ctx.arc(p.x,p.y,pr*(1+glow*0.4),0,6.28);
-    ctx.fillStyle = glow>0 ? 'rgba(255,210,140,'+(0.6+0.4*glow)+')' : 'rgba(180,190,205,.6)';
+    // glow lookup: match the EXACT peg (row + x). A hit key is row+'_'+round(x*10).
+    var row = Math.round((p.y - P.topY) / P.ry);
+    var key = row + '_' + Math.round(p.x * 10);
+    var glow = 0;
+    if(P.pegHits[key] != null){ var age = now - P.pegHits[key]; if(age < 350) glow = 1 - age/350; }
+    if(glow>0){ ctx.shadowColor='rgba(255,200,120,'+(0.85*glow)+')'; ctx.shadowBlur=12*glow; }
+    ctx.beginPath(); ctx.arc(p.x,p.y,pr*(1+glow*0.45),0,6.28);
+    ctx.fillStyle = glow>0 ? 'rgba(255,215,145,'+(0.7+0.3*glow)+')' : 'rgba(180,190,205,.6)';
     ctx.fill(); ctx.shadowBlur=0;
   });
   // buckets
@@ -251,11 +254,13 @@ function pkTick(now){
     if(b.hitIdx<b.hits.length){
       var h=b.hits[b.hitIdx];
       if(b.y>=h.y){
-        P.pegHits[h.row+'_'+Math.round(h.x)]=now;   // glow the peg (key by row+x for uniqueness)
+        b.y=h.y;                                      // snap onto the peg (no sink-through)
+        P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;  // glow ONLY this peg (row+x key)
+        b.pegGlow={row:h.row, x:h.x, at:now};         // track the exact hit for the draw pass
         // lateral kick toward the NEXT peg (or the landing bucket); keeps the ball on-path
         var next = b.hitIdx+1<b.hits.length ? b.hits[b.hitIdx+1].x : b.landX;
-        b.vx = (next-h.x) * 7.5;                      // proportional lateral velocity
-        b.vy = P.ry*2.8;                              // bounce downward off the peg
+        b.vx = (next-h.x) * 6.5;                       // proportional lateral velocity
+        b.vy = -P.ry*4.2;                              // bounce UP off the peg (gravity brings it back)
         b.hitIdx++;
         if(window.SG)SG.sfx('tick');
       }
