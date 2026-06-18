@@ -343,21 +343,25 @@ function normalizeFluxerInvite(raw: any): string | null {
 //    writer, the bot trades via /internal/invest/*). Mark-to-market against a
 //    mean-reverting random walk + demand pressure; a 2% trade fee is a sink so the
 //    system stays net-deflationary and bounded (plus STDB's hard balance clamps). ──
-type Asset = { _id: string; kind: string; name: string; emoji: string; color: string; price: number; baseline: number; vol: number; bias: number; supply: number; prevPrice: number; hist: [number, number][]; updatedAt: number };
-const INVEST = { assets: new Map<string, Asset>(), ready: false };
+type Asset = { _id: string; kind: string; name: string; emoji: string; color: string; price: number; baseline: number; vol: number; bias: number; supply: number; prevPrice: number; hist: [number, number][]; updatedAt: number; mom: number; volState: number };
+const INVEST = { assets: new Map<string, Asset>(), ready: false, mktDrift: 0, mktVol: 0.01 };
 const INVEST_FEE = 0.02, INVEST_TICK_MS = 25_000, INVEST_HIST_MAX = 720;
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
 // Backfill a believable price history so the chart has a curve immediately,
-// instead of "No price history yet" until ticks accrue. Walks from baseline to
-// the asset's real current price; the last point is anchored to price/now.
+// instead of "No price history yet" until ticks accrue. Walks with momentum +
+// vol-clustering so it looks like a real chart, not static noise; tail anchored to price.
 function synthHist(a: Asset, n = 96): [number, number][] {
   const now = Date.now(), pts: [number, number][] = [];
-  let p = a.baseline || a.price || 1;
+  let p = a.baseline || a.price || 1, mom = 0, vs = a.vol || 0.03;
   for (let i = 0; i < n; i++) {
-    const meanRev = 0.04 * ((a.baseline || p) - p) / (a.baseline || p || 1);
-    const noise = (Math.random() * 2 - 1) * (a.vol || 0.03);
-    p = Math.max(0.5, p * (1 + Math.max(-0.18, Math.min(0.18, meanRev + noise))));
+    // vol-clustering: shocks persist a few ticks; mean-revert toward base vol
+    const shock = (Math.random() * 2 - 1) * (a.vol || 0.03);
+    vs = Math.max(0.005, 0.78 * vs + 0.22 * Math.abs(shock) + 0.004);
+    // slow fundamental drift (the baseline itself wanders), + autocorrelated momentum
+    mom = 0.82 * mom + 0.18 * shock;
+    const drift = mom * 0.6 + (Math.random() * 2 - 1) * vs;
+    p = Math.max(0.5, p * (1 + Math.max(-0.16, Math.min(0.16, drift))));
     pts.push([now - (n - 1 - i) * INVEST_TICK_MS, Math.round(p * 100) / 100]);
   }
   pts[pts.length - 1] = [now, a.price]; // anchor the tail to the live price
@@ -367,7 +371,7 @@ async function investInit() {
   const rows: any[] = await db.getAssets().catch(() => []);
   let backfilled = 0;
   for (const a of rows) {
-    const asset = { bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], ...a } as Asset;
+    const asset = { bias: 0, supply: 0, mom: 0, volState: a.vol || 0.03, prevPrice: a.price, hist: [[Date.now(), a.price]], ...a } as Asset;
     if (!Array.isArray(asset.hist) || asset.hist.length < 24) { asset.hist = synthHist(asset); backfilled++; }
     INVEST.assets.set(a._id, asset);
   }
@@ -376,16 +380,34 @@ async function investInit() {
   setInterval(() => { try { investTick(); } catch (e: any) { console.error("[invest] tick", e?.message); } }, INVEST_TICK_MS);
   console.log(`[invest] ${INVEST.assets.size} assets live (${backfilled} backfilled)`);
 }
+// A more realistic market model per tick:
+//  • a single MARKET FACTOR (mktDrift) moves all assets together — they correlate
+//  • per-asset MOMENTUM (autocorrelation): returns persist → trends emerge
+//  • VOLATILITY CLUSTERING (GARCH-lite): |shock| raises volState, decays to base
+//  • the FUNDAMENTAL (baseline) DRIFTS slowly with the price (a random walk of value,
+//    not a fixed rubber-band anchor) — so long trends can form and persist
+//  • demand `bias` (from trades) is a transient shove, decays each tick
 function investTick() {
   const now = Date.now();
+  // global market factor: slow drift + occasional regime shifts
+  const mktShock = (Math.random() * 2 - 1) * INVEST.mktVol;
+  INVEST.mktDrift = 0.92 * INVEST.mktDrift + 0.08 * mktShock;       // market trends + reverts
+  INVEST.mktVol = Math.max(0.004, 0.9 * INVEST.mktVol + 0.1 * Math.abs(mktShock) + 0.002);
+
   for (const a of INVEST.assets.values()) {
     a.prevPrice = a.price;
-    const meanRev = 0.035 * (a.baseline - a.price) / a.baseline; // pull back toward baseline
-    const rnd = (Math.random() * 2 - 1) * a.vol;
-    let drift = meanRev + rnd + (a.bias || 0);
-    drift = Math.max(-0.22, Math.min(0.22, drift));
+    const idio = (Math.random() * 2 - 1) * a.vol;                  // asset-specific shock
+    // vol-clustering on the asset
+    a.volState = Math.max(0.004, 0.8 * a.volState + 0.2 * Math.abs(idio) + a.vol * 0.04);
+    // momentum: last return persists (weak autocorrelation) — gives trends, not static
+    a.mom = 0.84 * a.mom + 0.16 * idio;
+    // fundamental value drifts toward price (random-walk-of-value), not a fixed anchor
+    a.baseline = Math.max(0.5, a.baseline * (1 + 0.02 * ((a.price - a.baseline) / a.baseline) + (Math.random() * 2 - 1) * 0.004));
+    const meanRev = 0.02 * (a.baseline - a.price) / a.baseline;    // gentle pull toward drifting value
+    let drift = INVEST.mktDrift * 0.75 + a.mom * 0.55 + meanRev + idio * 0.35 + (a.bias || 0);
+    drift = Math.max(-0.14, Math.min(0.14, drift));                 // sane per-tick bound (±14%)
     a.price = Math.max(0.5, Math.min(1e9, Math.round(a.price * (1 + drift) * 100) / 100));
-    a.bias = (a.bias || 0) * 0.55; // decay demand pressure
+    a.bias = (a.bias || 0) * 0.6;                                   // demand pressure fades
     (a.hist ||= []).push([now, a.price]);
     if (a.hist.length > INVEST_HIST_MAX) a.hist = a.hist.slice(-INVEST_HIST_MAX);
     a.updatedAt = now;
@@ -394,10 +416,12 @@ function investTick() {
   const msg = JSON.stringify({ type: "prices", assets: [...INVEST.assets.values()].map(a => ({ id: a._id, price: a.price, prev: a.prevPrice })) });
   for (const ws of wsClients) { try { ws.send(msg); } catch {} }
 }
+// A trade shoves demand into the asset's bias (transient) — bigger trades vs. the
+// asset's market cap move it more. Market impact is bounded and decays over ticks.
 function investNudge(a: Asset, side: "buy" | "sell", spendFC: number) {
   const mkt = a.price * Math.max(1, a.supply) + 5000;
-  const k = Math.min(0.12, (spendFC / mkt) * 0.6);
-  a.bias = Math.max(-0.2, Math.min(0.2, (a.bias || 0) + (side === "buy" ? k : -k)));
+  const k = Math.min(0.14, (spendFC / mkt) * 0.7);
+  a.bias = Math.max(-0.18, Math.min(0.18, (a.bias || 0) + (side === "buy" ? k : -k)));
 }
 function assetView(a: Asset) {
   const open = a.hist && a.hist.length ? a.hist[0][1] : a.price;

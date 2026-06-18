@@ -6,37 +6,45 @@
 <title>Servers — SirGreen Casino</title>
 <link rel="stylesheet" href="/assets/css/app.css">
 <style>
-.srv-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.1rem;align-items:start}
-.svc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md,14px);padding:1.1rem;display:flex;flex-direction:column;gap:.9rem}
-.svc-head{display:flex;align-items:center;gap:.7rem}
-.svc-av{width:42px;height:42px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:1.1rem;flex:none}
+.srv-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.85rem;align-items:start}
+.svc{background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--surface) 94%,#000));border:1px solid var(--border);border-radius:14px;padding:.85rem .85rem .7rem;display:flex;flex-direction:column;gap:.65rem;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px -16px rgba(0,0,0,.6);transition:border-color .15s,box-shadow .2s}
+.svc:hover{border-color:color-mix(in srgb,var(--accent) 35%,var(--border));box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 30px -16px rgba(0,0,0,.7)}
+.svc-head{display:flex;align-items:center;gap:.6rem}
+.svc-av{width:38px;height:38px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:1rem;flex:none}
 .svc-h-meta{min-width:0;flex:1}
-.svc-name{font-weight:700;font-size:.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:.3rem}
+.svc-name{font-weight:700;font-size:.94rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:.3rem}
 .svc-verified{display:inline-flex;color:#3b9dff;flex:none}
-.svc-verified .icon{width:16px;height:16px;stroke-width:2.4}
-.svc-sub{font-size:.66rem;color:var(--text3)}
-.svc-bank{background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:.8rem .9rem;display:flex;align-items:center;justify-content:space-between}
-.svc-bank .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
-.svc-bank .val{font-size:1.5rem;font-weight:800;color:var(--gold);line-height:1.1}
-.svc-bank .val small{font-size:.7rem;color:var(--text3);font-weight:600;margin-left:.2rem}
-.svc-bank-edit{flex:none;width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--text3);background:var(--surface)}
-.svc-bank-edit:hover{color:var(--accent);background:var(--surface3,var(--surface2))}
-.svc-bank-edit .icon{width:16px;height:16px}
-.svc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.45rem}
-.svc-st{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.5rem .55rem}
-.svc-st .n{font-size:.92rem;font-weight:700}
-.svc-st .k{font-size:.58rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text3);margin-top:.1rem}
-.svc-tax{display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.55rem .7rem}
-.svc-tax .t-lbl{font-size:.74rem;color:var(--text2)}
+.svc-verified .icon{width:15px;height:15px;stroke-width:2.4}
+.svc-sub{font-size:.64rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* compact stat strip: two rows of 3 inline tiles */
+.svc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.35rem}
+.svc-st{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.35rem .45rem}
+.svc-st .n{font-size:.82rem;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.svc-st .k{font-size:.54rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text3);margin-top:.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* bank + tax on one compact row */
+.svc-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.svc-bank{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.45rem .65rem;display:flex;align-items:center;justify-content:space-between;flex:1;min-width:0}
+.svc-bank .lbl{font-size:.56rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
+.svc-bank .val{font-size:1.2rem;font-weight:800;color:var(--gold);line-height:1.1;font-variant-numeric:tabular-nums}
+.svc-bank .val small{font-size:.62rem;color:var(--text3);font-weight:600;margin-left:.15rem}
+.svc-tax{display:inline-flex;align-items:center;gap:.35rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.32rem .5rem;font-size:.68rem;color:var(--text2);white-space:nowrap}
 .svc-tax .t-val{font-weight:800;color:var(--text)}
-.svc.feat{border-color:color-mix(in srgb,var(--gold) 35%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 20%,transparent) inset}
-.svc-av{box-shadow:none}
-.svc-perks{display:flex;flex-wrap:wrap;gap:.35rem}
-.svc-perks-wrap:empty{display:none}
-.svc-perk{font-size:.6rem;font-weight:700;border-radius:99px;padding:.15rem .45rem;border:1px solid transparent}
+/* horizontal icon action bar — replaces the 7 stacked full-width buttons */
+.svc-actions{display:flex;flex-wrap:wrap;gap:.3rem;border-top:1px solid var(--border);padding-top:.55rem;margin-top:.1rem}
+.svc-act{display:inline-flex;align-items:center;gap:.32rem;height:30px;padding:0 .55rem;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:.66rem;font-weight:700;cursor:pointer;transition:transform .1s,border-color .15s,color .15s,background .15s;white-space:nowrap}
+.svc-act .icon{width:14px;height:14px;flex:none}
+.svc-act:hover{transform:translateY(-1px);border-color:var(--accent);color:var(--accent);background:var(--surface3,var(--surface2))}
+.svc-act:active{transform:translateY(0) scale(.97)}
+.svc-act.gold:hover{border-color:var(--gold);color:var(--gold)}
+.svc-act.blue:hover{border-color:#3b9dff;color:#3b9dff}
+.svc-act.danger:hover{border-color:var(--red,#ef4444);color:var(--red,#ef4444)}
+.svc-act.primary{background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent)}
+.svc-act.primary:hover{background:color-mix(in srgb,var(--accent) 24%,transparent)}
+.svc.feat{border-color:color-mix(in srgb,var(--gold) 35%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 20%,transparent) inset,0 8px 24px -16px rgba(0,0,0,.6)}
+.svc-perks{display:flex;flex-wrap:wrap;gap:.3rem}
+.svc-perk{font-size:.58rem;font-weight:700;border-radius:99px;padding:.12rem .42rem;border:1px solid transparent}
 .svc-perk.gold{color:var(--gold);background:color-mix(in srgb,var(--gold) 12%,transparent);border-color:color-mix(in srgb,var(--gold) 30%,transparent)}
 .svc-perk.green{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
-.svc-shop-btn{width:100%;justify-content:center}
 .shop-dlg{width:min(440px,94vw)}
 .shop-items{display:flex;flex-direction:column;gap:.55rem;margin:.3rem 0 .2rem}
 .shop-it{display:flex;align-items:flex-start;gap:.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:.6rem .7rem}
@@ -69,7 +77,6 @@
 .case-rm{display:grid;place-items:center;color:var(--text3);background:transparent;border-radius:6px;height:30px}
 .case-rm:hover{color:var(--red,#ef4444);background:var(--surface)}
 @media(max-width:520px){.case-row{grid-template-columns:40px 1fr 64px 56px 24px}}
-.svc-shop{display:flex;align-items:center;gap:.5rem;justify-content:center;font-size:.74rem;color:var(--text3);border:1px dashed var(--border2,var(--border));border-radius:10px;padding:.6rem;background:transparent}
 .svc-vote{display:flex;align-items:center;gap:.5rem;font-size:.76rem;color:var(--text2);background:color-mix(in srgb,var(--gold) 10%,transparent);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:10px;padding:.6rem .75rem;margin-bottom:1rem}
 .svc-vote a{color:var(--gold);font-weight:700;text-decoration:underline}
 .svc-vote .icon{width:16px;height:16px;color:var(--gold);flex:none}
@@ -113,27 +120,33 @@ function perkBadges(s){
 }
 function left(until){ var ms=Number(until)-Date.now(); if(ms<=0)return'ended'; var h=Math.floor(ms/3.6e6); if(h>=24)return Math.floor(h/24)+'d left'; if(h>=1)return h+'h left'; return Math.max(1,Math.floor(ms/6e4))+'m left'; }
 
+function actBtn(cls, title, label, svgPath, onclick){
+  return '<button class="svc-act '+cls+'" title="'+esc(title)+'" onclick="'+onclick+'">'+svg(svgPath)+'<span>'+esc(label)+'</span></button>';
+}
+function svg(p){ return '<svg class="icon" viewBox="0 0 24 24">'+p+'</svg>'; }
+
 function card(s){
   var st=s.stats||{}, sh=s.shop||{};
   var accent = sh.accent ? ' style="--accent:'+esc(sh.accent)+'"' : '';
-  var bankEdit = s.manage ? '<button class="svc-bank-edit" title="Edit bank" onclick="editBank(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>' : '<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--gold);opacity:.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>';
   return '<div class="svc'+(sh.featured?' feat':'')+'" id="svc-'+esc(s.id)+'"'+accent+'>'
     + '<div class="svc-head"><div class="svc-av">'+esc(initials(s.name))+'</div>'
       + '<div class="svc-h-meta"><div class="svc-name">'+esc(s.name)+(s.verified?VBADGE:'')+'</div><div class="svc-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+(s.owner?'You own this':'Admin view')+'</div></div></div>'
-    + '<div class="svc-perks-wrap" id="perks-'+esc(s.id)+'">'+perkBadges(s)+'</div>'
-    + '<div class="svc-bank"><div><div class="lbl">Server bank</div><div class="val" id="bank-'+esc(s.id)+'">'+fmt(s.bank)+'<small>FC</small></div></div>'
-      + bankEdit + '</div>'
+    + (perkBadges(s) ? '<div class="svc-perks">'+perkBadges(s)+'</div>' : '')
+    + '<div class="svc-bank"><div><div class="lbl">Bank</div><div class="val" id="bank-'+esc(s.id)+'">'+fmt(s.bank)+'<small>FC</small></div></div>'
+      + '<span class="svc-tax"><span>Tax</span><span class="t-val" id="tax-'+esc(s.id)+'">'+((sh.taxHoliday)?'0%':(s.tax/100)+'%')+'</span></span></div>'
     + '<div class="svc-stats">'
       + tileId('games',s.id,st.games,'Games') + tileId('wagered',s.id,st.wagered,'Wagered') + tileId('taxed',s.id,st.taxed,'Tax earned')
       + tileId('payout',s.id,st.payout,'Paid out') + tileId('players',s.id,st.players,'Players') + tileId('big',s.id,st.big,'Biggest win')
     + '</div>'
-    + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+((sh.taxHoliday)?'0% · holiday':(s.tax/100)+'%')+'</span></span>'
-      + (s.manage?'<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button>':'')+'</div>'
-    + ((s.owner||s.manage)?'<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>':'')
-    + ((s.owner||s.manage)?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="openBankTools(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg> Bank tools</button>':'')
-    + (s.manage?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="editInvite(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+(s.invite?'Edit join link':'Add join link')+'</button>':'')
-    + (s.manage?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="manageCases(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5M17 3a3 3 0 0 0 0 6h2V3zM7 21a3 3 0 0 0 0-6H5v6z"/></svg> Manage cases</button>':'')
-    + (CAN_VERIFY?'<button class="btn '+(s.verified?'btn-secondary':'btn-primary')+' svc-shop-btn" style="margin-top:.4rem" onclick="verifyServer(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg> '+(s.verified?'Verified — remove':'Verify server')+'</button>':'')
+    + '<div class="svc-actions">'
+      + actBtn('primary','Open the server shop','Shop','<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/>','openShop(\''+esc(s.id)+'\')')
+      + actBtn('gold','Bank tools — withdraw, transfer, distribute','Bank','<path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>','openBankTools(\''+esc(s.id)+'\')')
+      + (s.manage ? actBtn('','Edit the tax on winnings','Tax','<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>','editTax(\''+esc(s.id)+'\')') : '')
+      + (s.manage ? actBtn('','Edit the server bank amount','Edit bank','<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>','editBank(\''+esc(s.id)+'\')') : '')
+      + (s.manage ? actBtn('','Add or edit the join link','Join link','<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',(s.invite?'editInvite(\''+esc(s.id)+'\')':'editInvite(\''+esc(s.id)+'\')')) : '')
+      + (s.manage ? actBtn('','Manage custom cases','Cases','<path d="M20 7h-9M14 17H5M17 3a3 3 0 0 0 0 6h2V3zM7 21a3 3 0 0 0 0-6H5v6z"/>','manageCases(\''+esc(s.id)+'\')') : '')
+      + (CAN_VERIFY ? actBtn(s.verified?'danger':'blue', s.verified?'Remove verification':'Verify server', s.verified?'Unverify':'Verify','<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>','verifyServer(\''+esc(s.id)+'\')') : '')
+    + '</div>'
   + '</div>';
 }
 function tileId(key,gid,n,k){ return '<div class="svc-st"><div class="n" id="st-'+key+'-'+esc(gid)+'">'+fmt(n)+'</div><div class="k">'+esc(k)+'</div></div>'; }

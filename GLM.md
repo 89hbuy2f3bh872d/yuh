@@ -267,8 +267,14 @@ Cash out with zero progress must **refund the stake**, never strand the bet. Imp
 
 ## 5. Investing (`web/server.ts` engine + `games/invest.html`)
 
-- Single-writer price engine in `web/server.ts`: mean-reverting random walk + demand `bias`,
-  bounded, 2% fee sink (net-deflationary). `INVEST_TICK_MS = 25_000`.
+- Single-writer price engine in `web/server.ts`. **Realistic market model** (not a fixed
+  mean-reverting anchor): a shared **market factor** (`mktDrift`) moves all assets together,
+  per-asset **momentum** (`mom`, autocorrelated returns → trends), **volatility clustering**
+  (`volState`, GARCH-lite — |shock| raises near-future vol, decays to base), and a
+  **drifting fundamental** (`baseline` random-walks toward price, not a fixed rubber-band).
+  Demand `bias` from trades is a transient shove. Bounded ±14%/tick, 2% fee sink.
+  `INVEST_TICK_MS = 25_000`. Validated: positive autocorrelation (trending), positive
+  cross-asset correlation, no systematic floor/ceiling slides over 2k-tick multi-seed runs.
 - Assets + holdings in Mongo (`assets`, `holdings` collections). Holdings shape:
   `{ _id: uid, h: { [assetId]: { u: units, c: costBasis } } }`.
 - `investTick()` broadcasts `{ type:'prices', assets:[{id,price,prev}] }` over WS to ALL
@@ -333,6 +339,13 @@ Tax is on **PROFIT only** (winnings above stake). Default 1500 bps (15%), cap 50
 - `taxOnProfit(profit, bps)` = `min(profit, floor(profit*bps/10000))`.
 
 ### Owner bank tools (2026) — `/servers` "Bank tools" dialog (`openBankTools`)
+**Servers tab UI (reworked 2026):** compact cards (300px min). The bank + tax share one row
+(tax inline as a chip). Six stat tiles in two rows of 3. All management actions (Shop, Bank,
+Tax, Edit bank, Join link, Cases, Verify) are a **single horizontal icon action bar**
+(`.svc-actions` → `.svc-act` chips) instead of 7 stacked full-width buttons — ~60% less
+vertical footprint per card. `actBtn(cls,title,label,svgPath,onclick)` builds each chip;
+color variants: `primary` (shop), `gold` (bank), `blue`/`danger` (verify/unverify).
+
 Server OWNER (or a `servers` admin) can, from the Servers dashboard:
 - **Bank → bank**: `POST /api/server/bank/transfer {fromGid,toGid,amount}` — `bankSpend(from)` +
   `creditWin(uid, amount, toGid, amount)` (the credit_win-as-bank-add trick: owner nets 0,
@@ -411,6 +424,16 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
    cluster more often) + lowered payScale to keep RTP ~88%. Dead spins dropped ~69%→53%
    (candy/olympus), ~76%→63% (bandit). Key insight: dead-rate is a reel-weight problem,
    not a payout problem.
+8. **Slot multiplier reveal**: winning spins always bank multipliers server-side, but the
+   client's win-loop `break`ed on the final no-win step **before rendering it** — so the
+   surviving multiplier symbols were never drawn when `flyMults` ran. Fix: render
+   `steps[last].grid` after the loop. (Design locked: multipliers only count on winning
+   spins; banking on all spins spiked RTP to ~140-174%.)
+9. **Invest market model rework**: replaced the fixed mean-reverting anchor with a realistic
+   model — market factor (assets correlate), momentum (trends), vol-clustering (calm/spike
+   regimes), drifting fundamental. Validated via 2k-tick multi-seed sims. Bounded ±14%/tick.
+10. **Servers tab rework**: stacked 7 full-width buttons → single horizontal icon action bar;
+    bank+tax merged into one row; 300px min card width. ~60% less vertical footprint.
 
 ---
 

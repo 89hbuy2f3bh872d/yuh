@@ -40,8 +40,8 @@ Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (
 | `src/CommandHandler.mjs` | Command dispatch + per-guild upsert + realtime guild-rename ping. |
 | `commands/*.mjs` | Chat commands (`&web`, `&work`, games, etc.). |
 | `src/HouseGames.mjs` | Server-authoritative house games (Plinko/Coinflip/Double/Mines/HiLo/Chicken Road). Exports `PLINKO` tables + `CHICKEN` cfg. Stateful games keep per-uid state here; `~3%` edge (`EDGE=0.97`). |
-| `src/CardGames.mjs` | Server-authoritative card games (Blackjack stateful, Baccarat stateless). Crypto-shuffled. `/cards` tab, `/api/cards/*`. RTP ~99.5%/98.9%. |
-| `src/SlotEngine.mjs` | Cluster-pays slots (RTP ≈ 87%). |
+| `src/CardGames.mjs` | Server-authoritative card games (Blackjack stateful, **Video Poker** stateful deal→hold→draw, Baccarat stateless). Crypto-shuffled. `/cards` tab, `/api/cards/*`. RTP ~99.5%/98.4%/98.9%. |
+| `src/SlotEngine.mjs` | Cluster-pays slots (RTP ≈ 87%). Bonuses: Regular (per-spin mult), Super/Hidden (**progressive global** mult — climbs per winning spin, paid per spin; low variance). Reels concentrated for ~37–40% dead spins. Buy costs auto-priced at load. |
 | `src/CaseBattle.mjs` | Case-battle engine. |
 | `src/AdminPanel.mjs` | Admin panel HTML + permission model (`PERMS`, `can`, `isAdmin`, `canSeePanel`, `OWNER_ID`). |
 | `games/*.html` | Page templates (lobby, slots, house, leaderboard, servers, settings, misc, notifications, admin). Each has scoped `<style>` + inline `<script>`. |
@@ -80,6 +80,7 @@ Adding a table/reducer is an **additive migration** (no wipe). `module_bindings/
 - Static files via `Bun.file(path)`. Global hooks via `.onRequest()`. WebSocket via built-in `.ws("/ws")`; read the upgrade cookie via `.derive(({request}) => ({cookieHeader}))` → `ws.data.cookieHeader`.
 - Config the code actually reads: `cfg.mongodb.uri` / `cfg.mongodb.database`, `cfg.web.port` (prod = 80), `cfg.web.internalSecret`, `cfg.web.botPort` (8091), `cfg.spacetime.{uri,module,token}`, `cfg.owners` (array — `["1512241609448620032"]` is THE bot owner), `cfg.fluxerClientId/Secret`, `cfg.webBaseUrl`, `cfg.fluxerListServerId/ApiKey`. (`config_example.json` is partly stale — trust the code.)
 - **Watch for duplicate `const` in the same handler scope** — Bun fails to parse and PM2 crash-loops. This has bitten twice (`const now` declared twice). After editing `server.ts`, scan for it.
+- **Pages must NOT be cached.** `renderPage` sends `Cache-Control: private, no-cache, no-store, must-revalidate`. Page HTML carries per-user data AND inline `<script>` — without this, the browser/Cloudflare served a stale page and client-side fixes silently never reached users. Assets (`/assets/*.css|js`) get `?v=ASSET_VER` cache-bust separately; the page itself does not, hence the header.
 
 ---
 
@@ -115,6 +116,10 @@ Helpers in `server.ts`: `broadcastTicket`, `broadcastServerPlay`, `broadcastServ
 - **Tax-change rules:** lowering is always allowed (owner or `servers` admin); **raising requires a FluxerList vote** unless **exempt**. Exempt = the `tax` or `servers` permission (`isTaxExempt`). `GET/POST /api/server/tax`.
 - **Tax holiday** (shop perk): effective tax = 0 while active (`holidayActive`/`effectiveTaxBps`). Shown as 0% everywhere, live. Removable early for a flat 50% refund.
 - **Server bank** (STDB `server_bank` table): accrues tax. Owner perks (shop) spend it. Admin (`servers` perm) bank-edit via `POST /api/server/bank` (uses `credit_win`/`bank_spend`, audit-logged).
+- **Owner bank tools** (`/servers` "Bank tools" dialog, owner OR `servers` admin; all built from existing reducers, no Rust change; throttled `rlBankOps`, amount-capped 1e9, audit-logged):
+  - `POST /api/server/bank/transfer {fromGid,toGid,amount}` — **bank→bank** (`bankSpend(from)` + `creditWin(uid,amount,toGid,amount)` adds to dest bank; no fee).
+  - `POST /api/server/bank/withdraw {gid,amount}` — **bank→own wallet**, **5% fee** (sink), **50k/day cap per owner** (Mongo `bwd={d,t}` on user doc via `bankWithdrawnToday`/`recordBankWithdraw`).
+  - `POST /api/server/bank/distribute {gid,amount}` — pay **every registered member** `amount` each (`db.getGuildUserIds(gid)`); requires `bank ≥ amount×N`; `bankSpend(total)` then `credit` each in the background.
 - **Shop** (`SHOP_ITEMS`, stored on guild `shop` sub-doc): `featured` (50k, 7d leaderboard pin), `tax_holiday` (25k, 48h), `accent` (15k, custom hex). Active duration perks can't be re-bought; accent recolor free once owned. Buy/remove throttled 4s/user+gid.
 - **Per-server stats** (Mongo `serverstats`): `recordServerWager`/`recordServerPayout`. Shown on the dashboard, live via `server-play` WS.
 - **Leaderboard** (`/leaderboard`, `GET /api/leaderboard?sort=`): ranks servers; featured pinned. Shows tax % + a **Join** link (only when the owner set a **fluxer.gg** invite — `normalizeFluxerInvite`, `POST /api/server/invite`) + a blue **verified** badge. Filters: `q`, `verified`, `minMembers`, `maxMembers`.
@@ -137,6 +142,7 @@ Helpers in `server.ts`: `broadcastTicket`, `broadcastServerPlay`, `broadcastServ
 - **Escape user-controlled strings** before HTML (`esc()` server-side, page-local `esc()` client-side). Validate hex colors (`safeHex`/`HEX_RE`), user IDs (`/^\d{17,20}$/`), guild IDs, amounts. Reject, don't sanitize, where it touches a query/SQL.
 - **No global music** — per-slot themes only; mutable.
 - Slots RTP ≈ 87%. DB wipe is owner-only with multiple confirmations.
+- **Slots pay-on-collect is loss-proof.** Win held in `pendingSlots` Map, credited on `/api/slots/collect` (auto, at animation end — no button). Backstops so a win is NEVER lost: next spin auto-collects the previous; a 120s in-memory sweep; AND the pending win is persisted to Mongo (`psl` on user doc, set on spin / `$unset` on collect) so `recoverPendingSlots()` (after `stdb.ready()`) pays leftovers after a web restart.
 - `/internal/*` is **loopback-only + shared-secret** — bot use only; rejects requests carrying `cf-connecting-ip`/`x-forwarded-for`.
 
 ---
@@ -170,6 +176,8 @@ Residual/accepted: `/logout` is GET (low-risk CSRF), transfers can create an acc
 
 Multi-tenant economy fully shipped (4 phases: guild-scoped login + selector; per-server bank + vote-gated tax + gate; owner Servers dashboard + stats; leaderboard + shop). Plus tax-holiday realtime/refund, realtime guild names, login-loop fix, and a security pass.
 
-**Deferred / known:** case-battle plays aren't taxed yet (slots+house only); server sessions are a fixed 2h (no inactivity expiry); the admin panel is still an iframe (CSS-isolation rework pending); leaderboard `bank` sort is approximate (top-100-by-wagered pool).
+Since then: Investing (NFT/FLX) + `&invest`; role shop (`&shop`); Card Games (Blackjack/Video Poker/Baccarat); Chicken Road house game; slots overhaul (dead-spin retune ~37–40%, multiplier-reveal fixes, **progressive global** Super/Hidden multiplier for far less buy variance); slots restart-safe pay-on-collect; page `no-cache` header; **owner bank tools** (bank→bank / withdraw 5%+50k-day / distribute-to-members).
 
-Ongoing project notes live in the auto-memory at `memory/multitenant-economy-phases.md`.
+**Deferred / known:** case-battle plays aren't taxed yet (slots+house only); server sessions are a fixed 2h (no inactivity expiry); the admin panel is still an iframe (CSS-isolation rework pending); leaderboard `bank` sort is approximate (top-100-by-wagered pool); slots pending win can be lost only in a ~3s window right after a web restart if the same user immediately re-spins (negligible).
+
+Ongoing project notes live in the auto-memory at `memory/multitenant-economy-phases.md`. Deeper "how it works" notes live in `GLM.md` (read after this file).
