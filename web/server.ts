@@ -636,7 +636,10 @@ const app = new Elysia()
     const game = Slots.getGame(String(b?.game ?? "")); if (!game) return { error: "Unknown game" };
     const bet = Math.floor(Number(b?.bet) || 0);
     if (!(bet >= 1) || bet > 1_000_000) return { error: "Invalid bet" };
-    const buy = b?.buy === "super" ? "super" : (b?.buy === "regular" ? "regular" : false);
+    // Validate the buy id against the game's known buys (candy/olympus: super/regular;
+    // bandit: feature/rainbow/luck/gold). buyCost returns Infinity for unknown ids.
+    const rawBuy = typeof b?.buy === "string" && b.buy ? b.buy : false;
+    const buy = rawBuy && Slots.buyCost(game.id, rawBuy) !== Infinity ? rawBuy : false;
     const cost = buy ? bet * Slots.buyCost(game.id, buy) : bet;
     if (cost > 50_000_000) return { error: "Bet too large for a buy" };
     let result;

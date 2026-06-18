@@ -89,14 +89,38 @@ No minting or double-spend is possible there. `lib.rs` consts:
 ## 3. Slots (`src/SlotEngine.mjs` + `games/slots.html` + `games/assets/css/slots.css`)
 
 Cluster-pays tumbling slots. Orthogonal clusters of 5+ identical symbols (no diagonals).
-Scatters trigger bonuses; multiplier symbols feed bonuses.
+Scatters trigger bonuses. **Two distinct bonus engines coexist** — multiplier (candy/olympus)
+and Golden Square (bandit). The client is **engine-keyed** (`GAME.engine`), never game-id-keyed.
 
-### Games & RTP (re-tuned 2x for fewer dead spins — see note below)
-| id | name | grid | payScale | reel (common→rare weights) | base RTP (3M) | dead% |
-|---|---|---|---|---|---|---|
-| `candy` | Candy Cascade | 6×5 | 0.995 | 90/68/50/26/14/8/4 | ~87% | ~37.6% |
-| `olympus` | Thunder Gods | 6×5 | 1.01 | 90/68/50/26/14/8/4 | ~86% | ~37.5% |
-| `bandit` | Wild Bandit | 5×5 | 1.13 | 105/76/52/26/13/7/4 | ~87% | ~40.4% |
+### Games & RTP
+| id | name | grid | engine | base RTP | bonus model |
+|---|---|---|---|---|---|
+| `candy` | Candy Cascade | 6×5 | multiplier | ~87% | Regular per-spin / Super global mult |
+| `olympus` | Thunder Gods | 6×5 | multiplier | ~86% | Regular per-spin / Super global mult |
+| `bandit` | Wild Bandit | **6×5** | **bandit** | **~82%** | **Golden Squares + Rainbow + 3 tiers** |
+
+Candy/olympus: `payScale`-tuned, reels concentrated for ~37% dead spins.
+Bandit: 6×5, max win **10000×**, base RTP ~82% (bonus potential pushes blended toward 96%).
+
+### Wild Bandit — Golden Square model (`engine: "bandit"`)
+- **Camera scatter** `SC` (📷) triggers free spins: 3→`luck` (8), 4→`gold` (12), 5→`rainbow` (12).
+- **Rainbow symbol** `RB` (🌈) lands on the grid; when present on the final settled grid it
+  **activates** stored Golden Squares → each reveals a coin (Bronze/Silver/Gold band).
+- **Golden Squares**: winning cells become gold (persist visually). A Rainbow reveals coins
+  for gold squares added **since the last reveal** (`revealedSet` bounds the payout — a square
+  pays once per time it's won, not every Rainbow). Persistence per tier:
+  - `luck`: gold squares clear after a Rainbow reveals them (consumed).
+  - `gold`: squares stay gold + revealed for the whole feature (won't re-pay unless re-won).
+  - `rainbow`: guaranteed Rainbow every spin; squares persist throughout.
+- **Coin bands** (per-reveal EV ~0.08× to keep RTP sane): Bronze 0.02–0.12× (w1000),
+  Silver 0.5–2× (w40), Gold 5–50× (w1.5). A Rainbow FeatureSpin boosts coins ×3.
+- **Retriggers**: 2 cams +2, 3 cams +4 spins.
+- **4 paid entries** (`cfg.buys`, all auto-priced to ~96%): FeatureSpins (5× scatter odds),
+  Rainbow Spins (forced RB + 3× coins), Luck direct, Gold direct. FeatureSpins/Rainbow are
+  **single base spins** (priced by single-spin EV, not full-round).
+- `runBanditRound` emits the standard envelope `{spins, totalWin, freeTriggered, freeAwarded,
+  mode, superMult:1, ...}` plus per-spin `gold[]`, `reveal[{pos,tier,val}]`, `rainbow`, `coinWin`.
+  `spin()`/`buyCost()`/`listGames()` dispatch on `cfg.engine === "bandit"`.
 
 (payScale ~doubled vs the dead-spin pass because the progressive-global change — below — cut
 bonus payouts ~4×, so payScale was raised to restore overall ~87% RTP. Mult tables also
@@ -152,6 +176,14 @@ cluster more readily, then **lower payScale** to keep RTP flat (~88%).
 
 ### Client animation model
 - Grid = `W×H` `.cell` divs (`#cell-{i}`, row-major). `.sym` child holds the emoji HTML.
+- `symHtml(s)` is engine-aware: handles `SC` (scatter glow), `RB` (rainbow glow, bandit),
+  `M:N` (multiplier badge), and falls back to `GAME.sym[s]` or ❔.
+- **Bandit Golden Square render**: `paintGold(indices)` toggles `.cell.gold` (shimmering gold
+  tile behind the symbol). `revealCoins(reveals)` spawns `.coin-fly.{tier}` chips that fly
+  from each gold cell to `#winMeter`. Both fire in `animateSpin` after the tumble settles,
+  gated on `GAME.engine==='bandit'`. Gold cleared on new round (`doSpin`).
+- **Buy bar**: candy/olympus use the 2-button `.buy-col`; bandit uses a 4-button `.buy-row`
+  built by `renderBuyBar()` from `GAME.buys`. `doSpin`/`setControls` handle both.
 - `animateFall(cells, fall[], delays[], dur)` — the core: places each cell's symbol,
   sets `translateY(-fall*unit)` start, commits, then transitions to `translateY(0)`.
   **Resets `opacity='1'`** (important after a spin-out).
@@ -434,6 +466,14 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
    regimes), drifting fundamental. Validated via 2k-tick multi-seed sims. Bounded ±14%/tick.
 10. **Servers tab rework**: stacked 7 full-width buttons → single horizontal icon action bar;
     bank+tax merged into one row; 300px min card width. ~60% less vertical footprint.
+11. **Wild Bandit rework (Golden Squares)**: replaced the multiplier model with a distinct
+    engine — 6×5, camera scatters (3/4/5 → luck/gold/rainbow tiers), Rainbow symbol reveals
+    coin values from accumulated Golden Squares. 4 paid feature buys (FeatureSpins, Rainbow
+    Spins, Luck, Gold). Candy/olympus untouched. Key tuning lesson: a Rainbow revealing ALL
+    gold squares blew RTP to 1212%; fixed by `revealedSet` (a square pays once per win, not
+    per Rainbow) + low per-reveal coin EV (~0.08×). Base RTP ~82%, buys ~96%.
+    Client: `paintGold`/`revealCoins`/4-button buy bar; server `/api/slots/spin` buy-id
+    validation now checks `buyCost` instead of hardcoding super/regular.
 
 ---
 
