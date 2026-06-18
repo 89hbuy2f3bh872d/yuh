@@ -105,6 +105,7 @@ function card(s){
     + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+((sh.taxHoliday)?'0% · holiday':(s.tax/100)+'%')+'</span></span>'
       + (s.manage?'<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button>':'')+'</div>'
     + ((s.owner||s.manage)?'<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>':'')
+    + (s.manage?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="editInvite(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+(s.invite?'Edit join link':'Add join link')+'</button>':'')
   + '</div>';
 }
 function tileId(key,gid,n,k){ return '<div class="svc-st"><div class="n" id="st-'+key+'-'+esc(gid)+'">'+fmt(n)+'</div><div class="k">'+esc(k)+'</div></div>'; }
@@ -188,6 +189,30 @@ function buyItem(id,itemId,back,btn){
       if(j&&j.ok){ refreshShop(id, back, j); }
       else { alert((j&&j.error)||'Purchase failed'); btn.disabled=false; btn.textContent=old; }
     }).catch(function(){ alert('Purchase failed'); btn.disabled=false; btn.textContent=old; });
+}
+
+// ── Set the server's fluxer.gg join link (shown on the leaderboard) ──────────
+function editInvite(id){
+  var s=SRV[id]; if(!s)return;
+  var back=document.createElement('div'); back.className='sg-dlg-back';
+  back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()">'
+    +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Join link</div>'
+    +'<label class="sg-dlg-lab">Invite URL (fluxer.gg only)</label>'
+    +'<div class="sg-dlg-row"><input id="invIn" type="text" placeholder="https://fluxer.gg/..." value="'+esc(s.invite||'')+'"></div>'
+    +'<div class="sg-dlg-hint">Shown as a <b>Join</b> button on the leaderboard. Only <b>https://fluxer.gg/</b> links are accepted. Leave empty to remove.</div>'
+    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="invClear">Remove</button><button class="btn btn-primary" id="invSave">Save</button></div>'
+  +'</div>';
+  function close(){ try{document.body.removeChild(back);}catch(e){} }
+  back.addEventListener('click',close);
+  document.body.appendChild(back);
+  function send(val,btn){ btn.disabled=true; var o=btn.textContent; btn.textContent='…';
+    fetch('/api/server/invite',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({gid:id,invite:val})})
+      .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok){ if(s)s.invite=j.invite; patchCard(s); close(); }
+        else { alert((j&&j.error)||'Failed'); btn.disabled=false; btn.textContent=o; } })
+      .catch(function(){ alert('Failed'); btn.disabled=false; btn.textContent=o; }); }
+  back.querySelector('#invSave').onclick=function(){ var v=back.querySelector('#invIn').value.trim();
+    if(v && !/^(https?:\/\/)?(www\.)?fluxer\.gg\//i.test(v)){ alert('Must be a fluxer.gg link'); return; } send(v,this); };
+  back.querySelector('#invClear').onclick=function(){ send('',this); };
 }
 
 // ── Admin: set a server bank to an exact amount ──────────────────────────────

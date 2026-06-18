@@ -136,13 +136,16 @@ export class Stdb {
 
   // ── per-user notifications (subscribed on demand) ──────────────────────────
   async subscribeNotifs(owner: string): Promise<void> {
+    // `owner` is concatenated into the subscription SQL — only allow the Discord id
+    // shape (digits) so nothing else can be injected even if a caller is mis-wired.
+    if (!/^\d{1,20}$/.test(owner)) throw new Error("bad owner");
     await this.ready();
     const ex = this.notifSub.get(owner);
     if (ex) { ex.refs++; return; }
     await new Promise<void>((resolve) => {
       const handle = this.conn.subscriptionBuilder()
         .onApplied(() => { this.#refreshNotifCache(owner); resolve(); })
-        .subscribe([`SELECT * FROM notification WHERE owner = '${owner.replace(/'/g, "")}'`]);
+        .subscribe([`SELECT * FROM notification WHERE owner = '${owner}'`]);
       this.conn.db.notification.onInsert((_c: any, r: any) => { if (r.owner === owner) { this.#refreshNotifCache(owner); this.#emitNotif(owner, r); } });
       this.conn.db.notification.onUpdate((_c: any, _o: any, n: any) => { if (n.owner === owner) this.#refreshNotifCache(owner); });
       this.conn.db.notification.onDelete((_c: any, r: any) => { if (r.owner === owner) this.#refreshNotifCache(owner); });

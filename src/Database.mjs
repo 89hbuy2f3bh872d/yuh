@@ -34,6 +34,11 @@ function isValidUserId(uid) {
   return typeof uid === "string" && USER_ID_RE.test(uid.trim());
 }
 
+// Session tokens are hex (crypto.randomBytes(...).toString("hex")). Reject anything else
+// so a cookie value can't inject Mongo dot-path / operator segments.
+const SESSION_TOKEN_RE = /^[a-f0-9]{24,128}$/i;
+function isSessionToken(t) { return typeof t === "string" && SESSION_TOKEN_RE.test(t); }
+
 function clamp(n, lo, hi) {
   const v = Number(n) || 0;
   return Math.max(lo, Math.min(hi, v));
@@ -435,6 +440,13 @@ export class Database {
   /** Push a guild name/icon change to the web service for realtime broadcast. */
   async notifyGuild(gid, data) { try { await this._bridge?.guildUpdate?.(String(gid), data); } catch { /* best-effort */ } }
 
+  /** Set (or clear, when empty) a server's join invite. Caller must validate the URL. */
+  async setGuildInvite(id, invite) {
+    if (!this._guilds) return;
+    if (invite) await this._guilds.updateOne({ _id: String(id) }, { $set: { invite: String(invite).slice(0, 256) } }, { upsert: true });
+    else await this._guilds.updateOne({ _id: String(id) }, { $unset: { invite: "" } });
+  }
+
   /** Per-server tax on winnings, in basis points (default 1500 = 15%). */
   async getGuildTax(id) {
     if (!this._guilds) return DEFAULT_TAX_BPS;
@@ -554,7 +566,9 @@ export class Database {
    * Returns null if invalid, or an object { uid, token, exp, ip } if valid.
    */
   async validateSession(userId, token) {
-    if (!token || typeof token !== "string") return null;
+    // Token is interpolated into a Mongo field path (`st.<token>`) — only accept the
+    // hex shape we mint, so a crafted cookie can't probe arbitrary nested keys.
+    if (!isSessionToken(token)) return null;
     const id = this._uid(userId);
     const u  = await this._users.findOne(
       { _id: id, [`st.${token}`]: { $exists: true } },
@@ -589,19 +603,19 @@ export class Database {
   async rotateSession(userId, oldToken, newToken, ttlMs, ipAddress = null) {
     const id     = this._uid(userId);
     const expiry = Date.now() + clamp(ttlMs ?? 7_200_000, 60_000, 604_800_000);
-    const fields = {
-      [`st.${oldToken}`]: "",
-      [`st.${newToken}`]: expiry,
-    };
-    if (ipAddress) fields["sessionMeta.lastIp"] = ipAddress;
-    await this._users.updateOne({ _id: id }, {
-      $unset: { [`st.${oldToken}`]: "" },
-      $set: fields,
-    });
+    // NOTE: never put the same path in both $set and $unset — Mongo rejects the whole
+    // update (path conflict), which previously silently dropped the new session and
+    // bounced the user back to /login. Only set the NEW token; unset the OLD one.
+    const set = { [`st.${newToken}`]: expiry };
+    if (ipAddress) set["sessionMeta.lastIp"] = ipAddress;
+    const update = oldToken && oldToken !== newToken
+      ? { $set: set, $unset: { [`st.${oldToken}`]: "" } }
+      : { $set: set };
+    await this._users.updateOne({ _id: id }, update, { upsert: true });
   }
 
   async revokeSession(userId, token) {
-    if (!token || typeof token !== "string") return;
+    if (!isSessionToken(token)) return;
     const id = this._uid(userId);
     await this._users.updateOne({ _id: id }, { $unset: { [`st.${token}`]: "" } });
   }

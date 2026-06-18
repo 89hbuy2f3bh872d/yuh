@@ -30,9 +30,8 @@
 .lb-tax{font-size:.56rem;font-weight:700;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:.05rem .4rem;white-space:nowrap}
 .lb-tax.hol{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 .lb-actions{flex:none;margin-left:.2rem}
-.lb-join{font-size:.7rem;font-weight:700;color:var(--bg);background:var(--accent);border-radius:8px;padding:.4rem .7rem;white-space:nowrap;transition:filter .15s}
+.lb-join{display:inline-block;font-size:.7rem;font-weight:700;color:var(--bg);background:var(--accent);border-radius:8px;padding:.4rem .7rem;white-space:nowrap;text-decoration:none;transition:filter .15s}
 .lb-join:hover{filter:brightness(1.08)}
-.lb-join.muted{color:var(--text3);background:var(--surface2);cursor:not-allowed;font-weight:600}
 @media(max-width:680px){.lb-mini{display:none}}
 @media(max-width:520px){.lb-join{padding:.4rem .55rem;font-size:.64rem}}
 </style>
@@ -73,9 +72,10 @@ function rowHtml(s,i){
   var accent = s.accent ? 'style="--accent:'+esc(s.accent)+'"' : '';
   var mainVal = s[SORT]!=null ? s[SORT] : s.wagered;
   var taxBadge = s.taxHoliday ? '<span class="lb-tax hol">0% 🎉</span>' : '<span class="lb-tax">'+((s.tax||0)/100)+'% tax</span>';
-  var join = s.member
-    ? '<button class="lb-join" onclick="joinSrv(\''+esc(s.id)+'\',this)">Play here</button>'
-    : '<button class="lb-join muted" disabled title="You\'re not in this server">Not joined</button>';
+  // Join only shows when the owner set a fluxer.gg invite (validated server-side).
+  var join = (s.invite && /^https:\/\/(www\.)?fluxer\.gg\//i.test(s.invite))
+    ? '<a class="lb-join" href="'+esc(s.invite)+'" target="_blank" rel="noopener noreferrer">Join</a>'
+    : '';
   return '<div class="lb-row'+(s.featured?' feat':'')+'" '+accent+'>'
     + '<div class="lb-rank">'+(i+1)+'</div>'
     + '<div class="lb-av">'+esc(initials(s.name))+'</div>'
@@ -89,9 +89,6 @@ function rowHtml(s,i){
     + '<div class="lb-actions">'+join+'</div>'
   + '</div>';
 }
-function joinSrv(id,btn){ if(!window.sgPickSrv){ alert('Server picker not ready'); return; }
-  window.sgPickSrv(id); var o=btn.textContent; btn.textContent='Selected ✓'; btn.disabled=true;
-  setTimeout(function(){ btn.textContent=o; btn.disabled=false; },1600); }
 
 function load(){
   var listEl=document.getElementById('lbList');

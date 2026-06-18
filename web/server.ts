@@ -83,6 +83,17 @@ function redirectWithCookies(url: string, cookies: string[]): Response {
   for (const c of cookies) h.append("Set-Cookie", c);
   return new Response(null, { status: 302, headers: h });
 }
+// Session/display cookies. `Secure` is set only when the request actually arrived over
+// HTTPS (Cloudflare's x-forwarded-proto), so direct-HTTP access can't silently fail login.
+const isHttps = (request: Request): boolean => (request.headers.get("x-forwarded-proto") || "").split(",")[0].trim() === "https";
+function ckOpts(secure: boolean, httpOnly: boolean) { return { httpOnly, path: "/", maxAge: 7200, sameSite: "lax" as const, secure }; }
+function setAuthCookies(cookie: any, secure: boolean, v: { sid: string; uid: string; tag?: string; avatar?: string; srv?: string }) {
+  cookie.sid.set({ value: v.sid, ...ckOpts(secure, true) });
+  cookie.uid.set({ value: v.uid, ...ckOpts(secure, true) });
+  if (v.tag != null) cookie.dtag.set({ value: v.tag, ...ckOpts(secure, false) });
+  if (v.avatar != null) cookie.dav.set({ value: v.avatar, ...ckOpts(secure, false) });
+  if (v.srv != null) cookie.srv.set({ value: v.srv, ...ckOpts(secure, false) });
+}
 // Ask the Node bot (which holds the Fluxer client) to DM a user — used for ticket transcripts.
 const BOT_DM_URL = "http://127.0.0.1:" + (cfg.web?.botPort ?? 8091);
 async function sendDM(uid: string, text: string, title?: string) {
@@ -177,6 +188,7 @@ function rl(map: Map<string, number>, key: string, ms: number): boolean {
   if (now - last < ms) return true; map.set(key, now); return false;
 }
 const rlMoney = new Map<string, number>();
+const rlShop = new Map<string, number>(); // throttle shop buy/remove per user+server (anti-cycling)
 
 // ── per-server tax (winnings cut → server bank) ──────────────────────────────
 // Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
@@ -203,9 +215,16 @@ const holidayActive = (shop: any, now = Date.now()): boolean => (Number(shop?.ta
 const effectiveTaxBps = (taxBps: number, shop: any, now = Date.now()): number => holidayActive(shop, now) ? 0 : taxBps;
 // Resolve + require the gambling server for this request. Returns null when no
 // server is selected (the "must pick a server to gamble" gate).
-async function requireServer(request: Request): Promise<{ gid: string; taxBps: number } | null> {
+async function requireServer(request: Request, uid: string): Promise<{ gid: string; taxBps: number } | null> {
   const gid = parseCookies(request).srv || "";
   if (!gid) return null;
+  // The `srv` cookie is client-controlled — verify the guild is real AND that the
+  // user actually belongs to it, so tax/stats can't be routed to an arbitrary bank.
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) return null;
+  const user = await db.getUser(uid).catch(() => null);
+  const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+  if (gids.length && !gids.includes(gid)) return null; // not a member of the selected server
   return { gid, taxBps: await guildTax(gid) };
 }
 
@@ -247,6 +266,16 @@ const SHOP_ITEMS = [
 ] as const;
 const shopCatalog = () => SHOP_ITEMS.map(i => ({ id: i.id, label: i.label, icon: i.icon, kind: i.kind, price: i.price, desc: i.desc, durationMs: (i as any).durationMs ?? 0 }));
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const safeHex = (v: any, fallback: string): string => { const s = String(v ?? ""); return HEX_RE.test(s) ? s : fallback; };
+// Server join invites must be fluxer.gg links. Normalize paste variants → canonical
+// https URL; return "" to clear, null if it's not a valid fluxer.gg link.
+function normalizeFluxerInvite(raw: any): string | null {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+  s = s.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+  if (!/^fluxer\.gg\/[A-Za-z0-9._~%\-\/?=&#]{1,200}$/i.test(s)) return null;
+  return "https://" + s;
+}
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
 // One socket per browser tab. On open we auth via the session cookie, subscribe the
@@ -397,7 +426,7 @@ const app = new Elysia()
   .post("/api/slots/spin", async ({ request, body, set }) => {
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
     if (rl(rlMoney, uid, 250)) { set.status = 429; return { error: "Slow down a moment" }; }
-    const srv = await requireServer(request);
+    const srv = await requireServer(request, uid);
     if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; }
     const b = body as any;
     const game = Slots.getGame(String(b?.game ?? "")); if (!game) return { error: "Unknown game" };
@@ -425,8 +454,10 @@ const app = new Elysia()
     const sub = (params as any)["*"] as string;
     // Plinko is multi-ball (up to 10 rapid drops, client-capped) — exempt it from the
     // per-op throttle; everything else stays rate-limited.
-    if (sub !== "plinko" && rl(rlMoney, uid, 120)) { set.status = 429; return { error: "Slow down a moment" }; }
-    const srv = await requireServer(request);
+    // Per-user throttle: plinko is multi-ball so it gets a lenient 50ms (vs 120ms) but
+    // is NOT fully exempt anymore — prevents unbounded ledger hammering.
+    if (rl(rlMoney, uid, sub === "plinko" ? 50 : 120)) { set.status = 429; return { error: "Slow down a moment" }; }
+    const srv = await requireServer(request, uid);
     if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; }
     const d = body as any;
     const bet = Math.floor(Number(d?.bet) || 0);
@@ -465,8 +496,8 @@ const app = new Elysia()
     }
     if (sub === "mines/start") {
       if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; } // charge BEFORE clearing the old game
       house.clearMines(uid);
-      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
       wager(bet);
       return Object.assign(house.startMines(uid, bet, d?.mines), { ok: true, balance: bal() });
     }
@@ -483,8 +514,8 @@ const app = new Elysia()
     }
     if (sub === "hilo/start") {
       if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; } // charge BEFORE clearing the old game
       house.clearHilo(uid);
-      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
       wager(bet);
       return Object.assign(house.startHilo(uid, bet), { ok: true, balance: bal() });
     }
@@ -501,10 +532,17 @@ const app = new Elysia()
     return { games: HOUSE_GAMES, plinko: PLINKO }; // board needs the bucket tables
   })
 
-  // ── internal bridge for the Node bot (shared-secret, localhost only) ────────
+  // ── internal bridge for the Node bot (shared-secret + loopback only) ────────
   .group("/internal", (g) => g
-    .onBeforeHandle(({ request, set }) => {
+    .onBeforeHandle(({ request, set, server }) => {
+      // Only the local bot may use these (balance mint, broadcasts). Require the shared
+      // secret AND that the connection originates from loopback — so even if the secret
+      // leaks, the mint-capable endpoints aren't reachable from the internet.
       if (!INTERNAL_SECRET || request.headers.get("x-internal") !== INTERNAL_SECRET) { set.status = 403; return { error: "forbidden" }; }
+      const ip = (server as any)?.requestIP?.(request)?.address || "";
+      if (ip && ip !== "127.0.0.1" && ip !== "::1" && ip !== "::ffff:127.0.0.1") { set.status = 403; return { error: "forbidden" }; }
+      // Reject if the request also carries Cloudflare/proxy hop headers (came from outside).
+      if (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")) { set.status = 403; return { error: "forbidden" }; }
     })
     .get("/balance/:uid", ({ params }) => ({ bal: stdb.getBalance(params.uid) }))
     .post("/credit", async ({ body }) => { const b = body as any; try { await stdb.credit(b.uid, Math.floor(b.amount)); return { ok: true, bal: stdb.getBalance(b.uid) }; } catch (e: any) { return { ok: false, error: e?.message }; } })
@@ -567,14 +605,11 @@ app.get("/oauth/callback", async ({ query, set, request, cookie }) => {
   const ip = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
   const old = parseCookies(request).sid;
   const sid = crypto.randomBytes(32).toString("hex");
-  if (old) await db.rotateSession(uid, old, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
-  else await db.createSession(uid, sid, 2 * 60 * 60 * 1000, ip).catch(() => {});
-  // Elysia cookie API — reliably emits Set-Cookie (the raw-Response approach didn't stick).
-  const opt = { httpOnly: true, path: "/", maxAge: 7200, sameSite: "lax" as const };
-  cookie.sid.set({ value: sid, ...opt });
-  cookie.uid.set({ value: uid, ...opt });
-  cookie.dtag.set({ value: tag, path: "/", maxAge: 7200, sameSite: "lax" });
-  cookie.dav.set({ value: avatar, path: "/", maxAge: 7200, sameSite: "lax" });
+  // ALWAYS create the new session (createSession upserts) and revoke the old one
+  // separately — never let a stale `sid` cookie block a fresh login (caused a loop).
+  await db.createSession(uid, sid, 2 * 60 * 60 * 1000, ip).catch((e: any) => console.error("[oauth] createSession failed:", e?.message));
+  if (old && old !== sid) db.revokeSession(uid, old).catch(() => {});
+  setAuthCookies(cookie, isHttps(request), { sid, uid, tag, avatar });
   console.log("[oauth] login ok:", uid);
   return redir(set, "/lobby");
 });
@@ -588,21 +623,18 @@ app.get("/logout", async ({ request, set, cookie }) => {
 });
 
 // Server-scoped login link from &web — logs in + selects that server's pool.
-app.get("/s/:token", async ({ params, set, cookie }) => {
+app.get("/s/:token", async ({ params, set, cookie, request }) => {
   const r = await db.consumeLoginToken((params as any).token).catch(() => null);
   if (!r?.uid) return redir(set, "/login");
   const uid = r.uid;
   await stdb.ensureAccount(uid).catch(() => {});
+  const old = parseCookies(request).sid;
   const sid = crypto.randomBytes(32).toString("hex");
-  await db.createSession(uid, sid, 2 * 60 * 60 * 1000, null).catch(() => {});
+  await db.createSession(uid, sid, 2 * 60 * 60 * 1000, null).catch((e: any) => console.error("[s] createSession failed:", e?.message));
+  if (old && old !== sid) db.revokeSession(uid, old).catch(() => {});
   const user = await db.getUser(uid).catch(() => null);
   const tag = user?.tag || uid, avatar = user?.av || fluxerAvatarUrl(uid, null);
-  const opt = { httpOnly: true, path: "/", maxAge: 7200, sameSite: "lax" as const };
-  cookie.sid.set({ value: sid, ...opt });
-  cookie.uid.set({ value: uid, ...opt });
-  cookie.dtag.set({ value: tag, path: "/", maxAge: 7200, sameSite: "lax" });
-  cookie.dav.set({ value: avatar, path: "/", maxAge: 7200, sameSite: "lax" });
-  if (r.gid) cookie.srv.set({ value: r.gid, path: "/", maxAge: 7200, sameSite: "lax" });
+  setAuthCookies(cookie, isHttps(request), { sid, uid, tag, avatar, srv: r.gid || undefined });
   console.log("[s] server login ok:", uid, "→ server", r.gid);
   return redir(set, "/lobby");
 });
@@ -637,8 +669,8 @@ app.get("/servers", async ({ request, set }) => {
 const authed = async (request: Request, set: any) => { const uid = await resolveSession(request); if (!uid) { set.status = 401; } return uid; };
 app.get("/api/case-battle/tiers", async ({ request, set }) => { if (!(await authed(request, set))) return { error: "Not logged in" }; return cb.getTiers(); });
 app.get("/api/case-battle/list", async ({ request }) => { await resolveSession(request); return cb.list(); });
-app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
-app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
+app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request, uid))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
+app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request, uid))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
 app.post("/api/case-battle/:id/bot", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.addBot(uid, (params as any).id); });
 app.post("/api/case-battle/:id/recreate", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.recreate(uid, (params as any).id); });
 app.post("/api/case-battle/:id/watch", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.watch(uid, (params as any).id); });
@@ -694,12 +726,12 @@ app.get("/api/admin/cases", ({ request, set }) => adminApi(request, set, async (
 app.post("/api/admin/cases", ({ request, body, set }) => adminApi(request, set, async (uid) => {
   if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; }
   const d = body as any; if (!d.id || !d.label || !d.entry || !Array.isArray(d.items) || !d.items.length) return { error: "id, label, entry, items[] required" };
-  return cb.addTier({ id: String(d.id), label: String(d.label), entry: Number(d.entry), color: String(d.color || "#2ecc71"), bg: String(d.bg || "#0a1f0a"), builtIn: false, items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
+  return cb.addTier({ id: String(d.id), label: String(d.label), entry: Number(d.entry), color: safeHex(d.color, "#2ecc71"), bg: safeHex(d.bg, "#0a1f0a"), builtIn: false, items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
 }));
 app.put("/api/admin/cases/:id", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
   if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; }
   const d = body as any; if (!d.label || !d.entry || !Array.isArray(d.items) || !d.items.length) return { error: "label, entry, items[] required" };
-  return cb.editTier(decodeURIComponent((params as any).id), { label: String(d.label), entry: Number(d.entry), color: String(d.color || "#2ecc71"), bg: String(d.bg || "#0a1f0a"), items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
+  return cb.editTier(decodeURIComponent((params as any).id), { label: String(d.label), entry: Number(d.entry), color: safeHex(d.color, "#2ecc71"), bg: safeHex(d.bg, "#0a1f0a"), items: d.items.map((i: any) => ({ s: String(i.s), n: String(i.n), v: Number(i.v), w: Number(i.w) })) });
 }));
 app.delete("/api/admin/cases/:id", ({ request, params, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return cb.deleteTier(decodeURIComponent((params as any).id)); }));
 app.get("/api/admin/battles", ({ request, set }) => adminApi(request, set, async (uid) => {
@@ -895,6 +927,7 @@ app.get("/api/my-servers", async ({ request, set }) => {
       id: g._id, name: g.name || "Server", icon: g.icon || null,
       members: g.memberCount ?? null,
       owner: g.ownerId === uid, manage: manageAll || g.ownerId === uid,
+      invite: typeof g.invite === "string" ? g.invite : null,
       tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
       bank: stdb.getServerBank(g._id),
       stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
@@ -931,6 +964,7 @@ app.post("/api/server/bank", async ({ request, body, set }) => {
     const m = e?.message || String(e); console.error("[bank/set]", gid, "→", m);
     set.status = 400; return { error: `Failed to set bank: ${m}` };
   }
+  console.log(`[audit] bank-edit by ${uid} on ${gid}: ${current} → ${target} (Δ${diff})`); // trail for manual adjustments
   return { ok: true, bank: target };
 });
 
@@ -942,6 +976,7 @@ app.post("/api/server/shop/buy", async ({ request, body, set }) => {
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
   if (g.ownerId !== uid && !(await canManageServers(uid))) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
+  if (rl(rlShop, uid + ":" + gid, 4000)) { set.status = 429; return { error: "Slow down — wait a moment between shop actions" }; }
   const item = SHOP_ITEMS.find(i => i.id === String(b?.itemId));
   if (!item) { set.status = 400; return { error: "Unknown item" }; }
   // Build the perk patch before spending so a bad request never charges the bank.
@@ -982,6 +1017,7 @@ app.post("/api/server/shop/remove", async ({ request, body, set }) => {
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
   if (g.ownerId !== uid && !(await canManageServers(uid))) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
+  if (rl(rlShop, uid + ":" + gid, 4000)) { set.status = 429; return { error: "Slow down — wait a moment between shop actions" }; }
   const item = SHOP_ITEMS.find(i => i.id === String(b?.itemId));
   if (!item || item.kind !== "duration") { set.status = 400; return { error: "That perk can't be removed" }; }
   const econ: any = await (db as any).getGuildEconomy(gid).catch(() => ({ shop: {} }));
@@ -998,6 +1034,20 @@ app.post("/api/server/shop/remove", async ({ request, body, set }) => {
     shop: { featuredUntil: item.id === "featured" ? 0 : (shop.featuredUntil || 0), taxHolidayUntil: item.id === "tax_holiday" ? 0 : (shop.taxHolidayUntil || 0),
             accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
             featured: item.id !== "featured" && (shop.featuredUntil || 0) > now, taxHoliday: item.id !== "tax_holiday" && (shop.taxHolidayUntil || 0) > now } };
+});
+
+// Owner/manager: set the server's fluxer.gg join invite (shown on the leaderboard).
+app.post("/api/server/invite", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (g.ownerId !== uid && !(await canManageServers(uid))) { set.status = 403; return { error: "Only the server owner can set the invite" }; }
+  const invite = normalizeFluxerInvite(b?.invite);
+  if (invite === null) { set.status = 400; return { error: "Invite must be a https://fluxer.gg/ link" }; }
+  await (db as any).setGuildInvite(gid, invite).catch(() => {});
+  return { ok: true, invite: invite || null };
 });
 
 // ── global server leaderboard (any logged-in user) ───────────────────────────
@@ -1020,6 +1070,7 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
       bank: stdb.getServerBank(r._id), wagered: r.wagered || 0, taxed: r.taxed || 0, games: r.gp || 0, payout: r.payout || 0,
       players: Array.isArray(r.players) ? r.players.length : 0,
       tax: holiday ? 0 : taxBps, taxHoliday: holiday, member: myGids.has(r._id),
+      invite: typeof g.invite === "string" ? g.invite : null,
       featured: (shop.featuredUntil || 0) > now, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null };
   });
   const metric = byBank ? "bank" : (sort === "taxed" ? "taxed" : sort === "games" ? "games" : "wagered");
