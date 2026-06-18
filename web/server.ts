@@ -581,6 +581,18 @@ const app = new Elysia()
     .post("/notify", async ({ body }) => { const b = body as any; try { await stdb.addNotification(b.uid, b.kind || "info", Math.floor(b.amount || 0), b.fromTag || "", b.msg || ""); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/set", async ({ body }) => { const b = body as any; try { await stdb.setExact(b.uid, Math.floor(b.balance)); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/guild", ({ body }) => { const b = body as any; broadcastGuild(String(b?.gid || ""), b?.name, b?.icon, b?.members); return { ok: true }; })
+    // Role-shop purchase: take the full price from the buyer, route 75% to the server
+    // bank (25% is a sink — removed from circulation). Role assignment is the bot's job.
+    .post("/role-purchase", async ({ body }) => {
+      const b = body as any;
+      const uid = String(b?.uid || ""), gid = String(b?.gid || ""), price = Math.floor(Number(b?.price));
+      if (!/^\d{17,20}$/.test(uid) || !/^\d{5,25}$/.test(gid) || !(price > 0) || price > 1_000_000_000) return { ok: false, error: "bad request" };
+      try { await stdb.deduct(uid, price); } catch { return { ok: false, error: "insufficient" }; }
+      const toBank = Math.floor(price * 0.75);
+      if (toBank > 0) await stdb.creditWin(uid, toBank, gid, toBank).catch(() => {}); // buyer nets 0 here; bank += 75%
+      console.log(`[audit] role-buy ${uid}@${gid}: -${price} FC, bank +${toBank}`);
+      return { ok: true, bal: stdb.getBalance(uid), banked: toBank };
+    })
   )
 
   // ── static assets ──────────────────────────────────────────────────────────

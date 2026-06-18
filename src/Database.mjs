@@ -440,6 +440,23 @@ export class Database {
   /** Push a guild name/icon change to the web service for realtime broadcast. */
   async notifyGuild(gid, data) { try { await this._bridge?.guildUpdate?.(String(gid), data); } catch { /* best-effort */ } }
 
+  // ─── Server role shop (buy Discord roles with FC; 75% → server bank) ────────
+  async getRoleShop(id) {
+    if (!this._guilds) return [];
+    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { roleShop: 1 } }).catch(() => null);
+    return Array.isArray(g?.roleShop) ? g.roleShop : [];
+  }
+  async setRoleShop(id, arr) {
+    if (!this._guilds) return;
+    const clean = (Array.isArray(arr) ? arr : []).slice(0, 25).map(r => ({ roleId: String(r.roleId), name: String(r.name || "Role").slice(0, 80), price: Math.floor(Number(r.price) || 0) }));
+    await this._guilds.updateOne({ _id: String(id) }, { $set: { roleShop: clean } }, { upsert: true });
+  }
+  /** Charge a role purchase: deduct full price from the buyer, 75% → server bank (25% sink). */
+  async rolePurchase(uid, gid, price) {
+    if (this._bridge?.rolePurchase) return this._bridge.rolePurchase(uid, gid, price);
+    return { ok: false, error: "no bridge" };
+  }
+
   /** Set (or clear, when empty) a server's join invite. Caller must validate the URL. */
   async setGuildInvite(id, invite) {
     if (!this._guilds) return;

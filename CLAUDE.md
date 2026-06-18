@@ -118,7 +118,8 @@ Helpers in `server.ts`: `broadcastTicket`, `broadcastServerPlay`, `broadcastServ
 - **Per-server stats** (Mongo `serverstats`): `recordServerWager`/`recordServerPayout`. Shown on the dashboard, live via `server-play` WS.
 - **Leaderboard** (`/leaderboard`, `GET /api/leaderboard?sort=`): ranks servers; featured pinned. Shows tax % + a **Join** link (only when the owner set a **fluxer.gg** invite — `normalizeFluxerInvite`, `POST /api/server/invite`) + a blue **verified** badge. Filters: `q`, `verified`, `minMembers`, `maxMembers`.
 - **Verification:** admins (`servers` perm / owner) toggle a blue verified badge via `POST /api/server/verify`; stored as guild `verified`, broadcast on `server-econ`, shown to everyone on the leaderboard + dashboard.
-- **Servers dashboard** (`/servers`): owner OR `servers`-perm admin. Per-server cards: live bank + stats, tax edit, shop, bank edit (admin), join-link edit.
+- **Servers dashboard** (`/servers`): owner OR `servers`-perm admin. Per-server cards: live bank + stats, tax edit, shop, bank edit (admin), join-link edit, verify toggle, **server-case manager** (custom case tiers, RTP-capped ≤95% via `CaseBattle.validateServerCase`; scoped per-guild).
+- **Role shop** (`&shop` Discord command, `commands/shop.mjs`): owners sell Discord roles for FC; buyer pays full, **75% → server bank, 25% sink**. Money via `/internal/role-purchase` (deduct + `creditWin` to bank). Stored on guild doc `roleShop[]`. Separate from the web perk-shop.
 
 ### Permissions (`AdminPanel.PERMS`)
 `balances`, `cases`, `battles`, `users`, `tickets`, `tax` (set tax with no floor/vote), `servers` (manage every server's bank/tax/shop). `OWNER_ID` (config.owners[0]) has all. `isAdmin` = owner or any perm. `canSeePanel` = owner or a perm that maps to a panel tab (so `tax`/`servers` don't show an empty Admin panel). All admin/server endpoints re-check permissions **server-side** — never trust the client's nav flags.

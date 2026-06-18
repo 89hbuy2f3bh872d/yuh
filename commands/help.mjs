@@ -18,6 +18,7 @@ export default {
                 `**\`${prefix}daily\`** — Claim your daily FC bonus\n` +
                 `**\`${prefix}work\`** — Work a shift for FC\n` +
                 `**\`${prefix}pay <@user> <amount>\`** — Send FC to someone\n` +
+                `**\`${prefix}shop\`** — Buy server roles with FC\n` +
                 `**\`${prefix}leaderboard\`** — Top FC holders`,
             },
             {
