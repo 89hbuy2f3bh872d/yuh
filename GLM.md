@@ -168,7 +168,22 @@ any page edit, a normal reload now gets fresh inline JS (no hard-refresh needed)
 design: all bonuses keep the split (Regular per-spin, Super/Hidden global) — global-in-all
 spiked RTP to ~174%, reverted.**
 
-### Super/Hidden global multiplier — verified + hardened (design locked)
+### Multipliers shown on NON-winning bonus spins looked "inconsistent" (root cause + fix)
+A multiplier only counts on a spin that itself has a winning cluster (placement irrelevant —
+mults survive the tumble to the final grid; verified 0 misses in ~30k winning spins, natural
++ buy, super + hidden). But multipliers also *spawned and rendered on non-winning spins*
+(`mult.chance` per cell, ~3/grid), where they correctly don't count → the player sees a
+multiplier on the board but the global meter doesn't move ("sometimes it adds, sometimes
+not"). Real-bonus trace confirmed it: global climbs only on `baseWin>0` spins, flat on the
+common no-win spins that still showed mults. Collect-all (count them anyway) was rejected by
+the owner AND spikes RTP to ~174%. Fix: **`runSpin` strips multipliers from the displayed
+grids of any spin with `baseWin===0`** (`stripMults` — replaces each mult with a reel symbol
+that differs from its orthogonal neighbours so it can't fake a cluster; client never
+re-evaluates). Now every multiplier the player SEES is on a winning spin and always collects
+into the global → consistent. Display-only: which mults count is unchanged, so **RTP is
+unchanged** (~87%). Design locked: Regular = per-spin multiply, Super/Hidden = global.
+
+### Super/Hidden global multiplier — verified + hardened (client)
 Rule (confirmed with the owner): on a **winning** spin (`baseWin>0`), **every** multiplier
 on the board adds to the global, regardless of placement; multipliers on **non-winning**
 spins do **not** count (briefly tried collect-all → reverted, it's not the wanted design).

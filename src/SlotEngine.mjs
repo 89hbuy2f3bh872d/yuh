@@ -104,6 +104,20 @@ function collapse(cfg, grid, rem, allowMult, boost) {
 }
 function countScatter(cfg, grid) { let c = 0; for (let i = 0; i < grid.length; i++) if (grid[i] === cfg.scatter.id) c++; return c; }
 function gridMultCells(grid) { const a = []; for (let i = 0; i < grid.length; i++) if (isMul(grid[i])) a.push({ pos: i, val: mulVal(grid[i]) }); return a; }
+// Replace every multiplier cell with a normal reel symbol that differs from its orthogonal
+// neighbours (so it can't look like a cluster — the client renders server-provided wins and
+// never re-evaluates). Used to hide multipliers on spins that produced no win.
+function stripMults(cfg, grid) {
+  const W = cfg.W, H = cfg.H;
+  for (let i = 0; i < grid.length; i++) {
+    if (!isMul(grid[i])) continue;
+    const r = (i / W) | 0, col = i % W, neigh = new Set();
+    if (r > 0) neigh.add(grid[i - W]); if (r < H - 1) neigh.add(grid[i + W]);
+    if (col > 0) neigh.add(grid[i - 1]); if (col < W - 1) neigh.add(grid[i + 1]);
+    let sym, t = 0; do { sym = wpick(cfg.reel); } while (neigh.has(sym) && ++t < 20);
+    grid[i] = sym;
+  }
+}
 
 function runSpin(cfg, bet, allowMult, boost) {
   let cur = genGrid(cfg, allowMult, boost);
@@ -119,7 +133,13 @@ function runSpin(cfg, bet, allowMult, boost) {
     steps.push({ grid: cur.slice(), wins, stepWin });
     const next = cur.slice(); collapse(cfg, next, rem, allowMult, boost); cur = next;
   }
-  const mults = gridMultCells(steps[steps.length - 1].grid);
+  // A multiplier only counts on a WINNING spin (placement irrelevant — they survive the
+  // tumble to the final grid). If this spin produced no win, its multipliers are worthless,
+  // so hide them: the player then only ever SEES multipliers on spins that collect them →
+  // the global climbs every single time a multiplier is visible. Display-only; doesn't
+  // change which multipliers count, so RTP is unchanged.
+  if (allowMult && baseWin === 0) for (const st of steps) stripMults(cfg, st.grid);
+  const mults = baseWin > 0 ? gridMultCells(steps[steps.length - 1].grid) : [];
   let scatterWin = 0;
   const sc = scatters >= 6 ? 6 : scatters;
   if (cfg.scatter.payX && cfg.scatter.payX[sc]) scatterWin = Math.round(cfg.scatter.payX[sc] * bet);
