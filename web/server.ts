@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { Database } from "../src/Database.mjs";
 import * as Slots from "../src/SlotEngine.mjs";
 import { HouseState, plinko, coinflip, doubleOrNothing, HOUSE_GAMES, PLINKO } from "../src/HouseGames.mjs";
+import { CardGames, CARD_GAMES } from "../src/CardGames.mjs";
 import { CaseBattle, MAX_SERVER_CASE_RTP } from "../src/CaseBattle.mjs";
 import { AdminPanel } from "../src/AdminPanel.mjs";
 import { Stdb } from "./src/stdb.ts";
@@ -41,6 +42,7 @@ const ST = (cfg.spacetime || {}) as any;
 const stdb = new Stdb(ST.uri || "ws://127.0.0.1:3000", ST.module || "sirgreen-6ls47", ST.token);
 stdb.ready().then(() => console.log("[web] SpacetimeDB connected")).catch((e) => console.error("[web] SpacetimeDB connect failed (retrying in background):", e?.message));
 const house = new HouseState();
+const cards = new CardGames();
 
 // Case-battle engine — balances via STDB, tiers/stats via Mongo.
 const cb = new CaseBattle({
@@ -129,7 +131,7 @@ const REDIRECT_URI = `${BASE_URL}/oauth/callback`;
 const OWNERS: string[] = Array.isArray(cfg.owners) ? cfg.owners.map(String) : [];
 const oauthStates = new Map<string, number>(); // state → expiry
 const SIDEBAR_TPL = (() => { try { return readFileSync(join(GAMES_DIR, "partials", "sidebar.html"), "utf8"); } catch { return ""; } })();
-const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "invest", "leaderboard", "settings", "misc", "notifications"];
+const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "cards", "invest", "leaderboard", "settings", "misc", "notifications"];
 
 function esc(s: any): string { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)); }
 function fluxerAvatarUrl(userId: string, hash: string | null, size = 64): string {
@@ -671,6 +673,64 @@ const app = new Elysia()
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
     return { games: HOUSE_GAMES, plinko: PLINKO }; // board needs the bucket tables
   })
+  .get("/api/cards/games", async ({ request, set }) => {
+    const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+    return { games: CARD_GAMES };
+  })
+  // ── card games (Blackjack stateful · Baccarat stateless) ───────────────────
+  .post("/api/cards/*", async ({ request, params, body, set }) => {
+    const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+    if (rl(rlMoney, uid, 250)) { set.status = 429; return { error: "Slow down a moment" }; }
+    const srv = await requireServer(request, uid);
+    if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; }
+    const sub = (params as any)["*"] as string;
+    const d = body as any;
+    const bet = Math.floor(Number(d?.bet) || 0);
+    const goodBet = bet >= 1 && bet <= 1_000_000;
+    const bal = () => stdb.getBalance(uid);
+    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
+    const payWin = (payout: number, stake: number) => {
+      const tax = payout > 0 ? taxOnProfit(payout - stake, srv.taxBps) : 0;
+      (db as any).recordServerPayout?.(srv.gid, payout, tax).catch(() => {});
+      if (payout > 0) broadcastServerPlay(srv.gid, { dPayout: payout, dTax: tax, big: payout });
+      return payout > 0 ? stdb.creditWin(uid, payout, srv.gid, tax).catch(() => {}) : Promise.resolve();
+    };
+
+    // Blackjack
+    if (sub === "blackjack/start") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
+      const v: any = cards.bjStart(uid, bet);
+      if (v.over) { await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, bet).catch(() => {}); }
+      return Object.assign(v, { balance: bal() });
+    }
+    if (sub === "blackjack/hit" || sub === "blackjack/stand") {
+      const v: any = sub.endsWith("hit") ? cards.bjHit(uid) : cards.bjStand(uid);
+      if (v.error) return v;
+      if (v.over) { await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, v.staked).catch(() => {}); }
+      return Object.assign(v, { balance: bal() });
+    }
+    if (sub === "blackjack/double") {
+      const g: any = cards.bjView(uid); if (g.error) return g;
+      if (!g.canDouble) return { error: "Can't double now" };
+      try { await stdb.deduct(uid, g.bet); } catch { return { error: "Insufficient balance" }; } // extra equal stake
+      wager(g.bet);
+      const v: any = cards.bjDouble(uid);
+      if (v.over) { await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, v.staked).catch(() => {}); }
+      return Object.assign(v, { balance: bal() });
+    }
+    // Baccarat (stateless)
+    if (sub === "baccarat") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
+      const v: any = cards.baccarat(bet, String(d?.side || "player"));
+      await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, bet).catch(() => {});
+      return Object.assign(v, { balance: bal() });
+    }
+    set.status = 404; return { error: "Unknown game" };
+  })
 
   // ── internal bridge for the Node bot (shared-secret + loopback only) ────────
   .group("/internal", (g) => g
@@ -803,6 +863,7 @@ app.get("/s/:token", async ({ params, set, cookie, request }) => {
 const PAGES: [string, string, string][] = [
   ["/", "lobby.html", "lobby"], ["/lobby", "lobby.html", "lobby"],
   ["/slots", "slots.html", "slots"], ["/house", "house.html", "house"],
+  ["/cards", "cards.html", "cards"],
   ["/invest", "invest.html", "invest"],
   ["/leaderboard", "leaderboard.html", "leaderboard"],
   ["/settings", "settings.html", "settings"], ["/misc", "misc.html", "misc"],

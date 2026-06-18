@@ -40,6 +40,7 @@ Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (
 | `src/CommandHandler.mjs` | Command dispatch + per-guild upsert + realtime guild-rename ping. |
 | `commands/*.mjs` | Chat commands (`&web`, `&work`, games, etc.). |
 | `src/HouseGames.mjs` | Server-authoritative house games (Plinko/Coinflip/Double/Mines/HiLo). Exports `PLINKO` tables. |
+| `src/CardGames.mjs` | Server-authoritative card games (Blackjack stateful, Baccarat stateless). Crypto-shuffled. `/cards` tab, `/api/cards/*`. RTP ~99.5%/98.9%. |
 | `src/SlotEngine.mjs` | Cluster-pays slots (RTP ≈ 87%). |
 | `src/CaseBattle.mjs` | Case-battle engine. |
 | `src/AdminPanel.mjs` | Admin panel HTML + permission model (`PERMS`, `can`, `isAdmin`, `canSeePanel`, `OWNER_ID`). |

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Card Games — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.cg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+.cg-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.1rem;cursor:pointer;transition:border-color .15s,transform .12s}
+.cg-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.cg-card .em{font-size:2rem}
+.cg-card h3{margin:.4rem 0 .2rem;font-size:1rem}
+.cg-card p{font-size:.74rem;color:var(--text3);line-height:1.4;margin:0}
+.cg-rtp{font-size:.62rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:.1rem .45rem;display:inline-block;margin-top:.5rem}
+/* table */
+.felt{background:radial-gradient(120% 100% at 50% 0,#143a2a,#0c2418 70%);border:1px solid var(--border);border-radius:16px;padding:1.1rem;min-height:380px;display:flex;flex-direction:column;gap:.8rem;position:relative}
+.felt-row{display:flex;flex-direction:column;gap:.4rem;align-items:center}
+.felt-lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:.5rem}
+.felt-lbl b{color:#fff;font-size:.78rem;background:rgba(0,0,0,.35);border-radius:99px;padding:.05rem .5rem}
+.hand{display:flex;gap:.4rem;min-height:96px;align-items:center;flex-wrap:wrap;justify-content:center}
+.pc{width:64px;height:90px;border-radius:9px;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:space-between;padding:.35rem .45rem;font-weight:800;box-shadow:0 6px 16px -6px rgba(0,0,0,.6);animation:deal .28s ease}
+.pc.red{color:#d11}
+.pc .pc-s{font-size:1.5rem;text-align:right;line-height:1}
+.pc.back{background:repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 6px,#2546a8 6px,#2546a8 12px);border:2px solid #fff2}
+@keyframes deal{from{opacity:0;transform:translateY(-26px) rotate(-6deg)}to{opacity:1;transform:none}}
+.felt-mid{flex:1;display:grid;place-items:center}
+.cg-result{font-size:1.5rem;font-weight:900;text-align:center;padding:.4rem 1.2rem;border-radius:12px;animation:pop .3s ease}
+.cg-result.win{color:#2ecc71;background:rgba(46,204,113,.12)}
+.cg-result.lose{color:#e74c3c;background:rgba(231,76,60,.1)}
+.cg-result.push{color:#f1c40f;background:rgba(241,196,15,.1)}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.cg-controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:1rem}
+.bet-box2{display:flex;align-items:center;gap:.4rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.3rem .5rem}
+.bet-box2 input{width:90px;background:transparent;border:0;color:var(--text);font-size:.95rem;font-weight:700;outline:none}
+.bet-box2 button{width:26px;height:26px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-weight:700}
+.cg-act{display:flex;gap:.5rem;flex-wrap:wrap}
+.cg-btn{padding:.6rem 1.2rem;border-radius:11px;font-weight:800;font-size:.82rem}
+.cg-btn.deal{background:var(--accent);color:var(--bg)}
+.cg-btn.hit{background:#3b9dff;color:#04121f}
+.cg-btn.stand{background:#e67e22;color:#1a0d00}
+.cg-btn.dbl{background:#9b59b6;color:#fff}
+.cg-btn:disabled{opacity:.4;cursor:not-allowed}
+.bac-sides{display:flex;gap:.4rem}
+.bac-side{flex:1;padding:.5rem;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-weight:700;font-size:.78rem;color:var(--text2);text-align:center}
+.bac-side.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.bac-side small{display:block;font-size:.6rem;color:var(--text3);font-weight:600}
+.cg-toast{position:absolute;left:50%;bottom:.6rem;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;font-size:.74rem;padding:.35rem .8rem;border-radius:99px;opacity:0;transition:opacity .2s}
+.cg-toast.show{opacity:1}
+@media(max-width:560px){.pc{width:52px;height:74px}.pc .pc-s{font-size:1.2rem}}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <!-- Lobby -->
+  <div id="view-list">
+    <div class="page-head"><div>
+      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><rect width="14" height="18" x="5" y="3" rx="2"/><path d="M9.5 8 12 6l2.5 2M9.5 16 12 18l2.5-2"/></svg> Card Games</h1>
+      <div class="page-sub">Server-dealt, provably resolved. Realistic RTP.</div>
+    </div><span class="srv-tax-note" hidden></span></div>
+    <div class="cg-grid" id="cgGrid"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- Table -->
+  <div id="view-game" class="hidden">
+    <div class="page-head">
+      <div><h1 class="page-title" id="cgTitle"></h1><div class="page-sub" id="cgSub"></div></div>
+      <span class="srv-tax-note" hidden></span>
+      <div class="page-actions">
+        <div class="hg-bal">Balance <b id="balMeter">0</b> FC</div>
+        <button class="btn btn-ghost" onclick="backList()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Back</button>
+      </div>
+    </div>
+
+    <div class="felt">
+      <div class="felt-row"><div class="felt-lbl" id="topLbl">Dealer <b id="topTot">—</b></div><div class="hand" id="topHand"></div></div>
+      <div class="felt-mid"><div class="cg-result hidden" id="cgResult"></div></div>
+      <div class="felt-row"><div class="hand" id="botHand"></div><div class="felt-lbl" id="botLbl">You <b id="botTot">—</b></div></div>
+      <div class="cg-toast" id="cgToast"></div>
+    </div>
+
+    <div class="cg-controls">
+      <div class="bet-box2"><button onclick="stepBet(-1)">−</button><input id="bet" type="number" min="1" value="100"><button onclick="stepBet(1)">+</button><span style="color:var(--text3);font-size:.7rem">FC</span></div>
+      <div id="bacBets" class="bac-sides hidden">
+        <div class="bac-side on" data-side="player" onclick="pickSide('player')">Player<small>pays 1:1</small></div>
+        <div class="bac-side" data-side="banker" onclick="pickSide('banker')">Banker<small>pays 0.95:1</small></div>
+        <div class="bac-side" data-side="tie" onclick="pickSide('tie')">Tie<small>pays 8:1</small></div>
+      </div>
+      <div class="cg-act" id="cgAct"></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function fmt(n){return Number(n||0).toLocaleString();}
+var GAMES=[], GAME=null, bal=0, busy=false, bacSide='player';
+var SUIT={S:'♠',H:'♥',D:'♦',C:'♣'};
+
+function refreshBal(){ return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&d.bal!=null){ bal=Number(d.bal); setBal(); } }).catch(function(){}); }
+function setBal(){ var b=$('balMeter'); if(b)b.textContent=fmt(bal); var s=$('sbBal'); if(s)s.textContent=fmt(bal); }
+function bet(){ return Math.max(1, Math.floor(Number($('bet').value)||0)); }
+function stepBet(d){ var steps=[10,50,100,250,500,1000,2500,5000,10000]; var v=bet(); if(d>0){ for(var i=0;i<steps.length;i++)if(steps[i]>v){$('bet').value=steps[i];return;} $('bet').value=v*2; } else { for(var j=steps.length-1;j>=0;j--)if(steps[j]<v){$('bet').value=steps[j];return;} $('bet').value=Math.max(1,Math.floor(v/2)); } }
+function toast(m){ var t=$('cgToast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1600); }
+
+function cardHtml(c){ if(!c||c.hidden) return '<div class="pc back"></div>'; var red=(c.s==='H'||c.s==='D'); return '<div class="pc'+(red?' red':'')+'"><span class="pc-r">'+c.r+'</span><span class="pc-s">'+(SUIT[c.s]||c.s)+'</span></div>'; }
+function renderHand(el,cards){ $(el).innerHTML=(cards||[]).map(cardHtml).join(''); }
+function result(kind,text){ var r=$('cgResult'); r.className='cg-result '+kind; r.textContent=text; r.classList.remove('hidden'); }
+function clearResult(){ $('cgResult').classList.add('hidden'); }
+
+function loadGames(){
+  fetch('/api/cards/games').then(function(r){return r.json()}).then(function(d){
+    GAMES=d.games||[]; var g=$('cgGrid');
+    g.innerHTML=GAMES.map(function(x){ return '<div class="cg-card" onclick="openGame(\''+x.id+'\')"><div class="em">'+x.emoji+'</div><h3>'+x.name+'</h3><p>'+x.blurb+'</p><span class="cg-rtp">RTP '+x.rtp+'%</span></div>'; }).join('');
+  }).catch(function(){ $('cgGrid').innerHTML='<div class="empty">Failed to load.</div>'; });
+}
+function openGame(id){ GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME)return;
+  $('view-list').classList.add('hidden'); $('view-game').classList.remove('hidden');
+  $('cgTitle').textContent=GAME.name; $('cgSub').textContent=GAME.blurb;
+  $('topHand').innerHTML=''; $('botHand').innerHTML=''; $('topTot').textContent='—'; $('botTot').textContent='—'; clearResult();
+  $('bacBets').classList.toggle('hidden', id!=='baccarat');
+  $('topLbl').firstChild.textContent = id==='baccarat'?'Banker ':'Dealer ';
+  $('botLbl').firstChild.textContent = id==='baccarat'?'Player ':'You ';
+  busy=false; renderControls();
+  refreshBal(); window.sgPaintTax && window.sgPaintTax();
+}
+function backList(){ if(busy)return; $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
+
+function renderControls(state){
+  var act=$('cgAct');
+  if(GAME.id==='blackjack'){
+    if(state && !state.over){
+      act.innerHTML='<button class="cg-btn hit" onclick="bjAct(\'hit\')"'+(state.canHit?'':' disabled')+'>Hit</button>'
+        +'<button class="cg-btn stand" onclick="bjAct(\'stand\')"'+(state.canStand?'':' disabled')+'>Stand</button>'
+        +'<button class="cg-btn dbl" onclick="bjAct(\'double\')"'+(state.canDouble?'':' disabled')+'>Double</button>';
+    } else {
+      act.innerHTML='<button class="cg-btn deal" onclick="bjDeal()">Deal</button>';
+    }
+  } else {
+    act.innerHTML='<button class="cg-btn deal" onclick="bacDeal()">Deal</button>';
+  }
+}
+function pickSide(s){ if(busy)return; bacSide=s; document.querySelectorAll('.bac-side').forEach(function(b){b.classList.toggle('on',b.dataset.side===s);}); }
+
+// ── Blackjack ──
+function bjDeal(){
+  if(busy)return; var b=bet(); if(b>bal){ toast('Not enough balance'); return; }
+  busy=true; clearResult(); bal-=b; setBal();
+  post('blackjack/start',{bet:b}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; renderControls(); return; } showBj(d); });
+}
+function bjAct(a){ if(busy)return; busy=true;
+  if(a==='double'){ var b=bet(); if(b>bal){ toast('Not enough to double'); busy=false; return; } bal-=b; setBal(); }
+  post('blackjack/'+a,{}).then(function(d){ if(d.error){ toast(d.error); busy=false; return; } showBj(d); });
+}
+function showBj(d){
+  renderHand('topHand', d.dealer); renderHand('botHand', d.player);
+  $('topTot').textContent = d.dealerTotal!=null ? d.dealerTotal : (d.dealerUp+' + ?');
+  $('botTot').textContent = d.playerTotal + (d.soft && !d.over ? ' (soft)' : '');
+  if(d.balance!=null){ bal=Number(d.balance); setBal(); }
+  if(d.over){
+    var net=d.payout - d.staked;
+    if(d.outcome==='blackjack'){ result('win','BLACKJACK! +'+fmt(net)); }
+    else if(d.outcome==='win'){ result('win','You win +'+fmt(net)); }
+    else if(d.outcome==='push'){ result('push','Push'); }
+    else { result('lose', d.outcome==='bust'?'Bust':'Dealer wins'); }
+    busy=false; renderControls(null);
+  } else { busy=false; renderControls(d); }
+}
+
+// ── Baccarat ──
+function bacDeal(){
+  if(busy)return; var b=bet(); if(b>bal){ toast('Not enough balance'); return; }
+  busy=true; clearResult(); bal-=b; setBal();
+  post('baccarat',{bet:b,side:bacSide}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; return; } showBac(d); });
+}
+function showBac(d){
+  renderHand('topHand', d.banker); renderHand('botHand', d.player);
+  $('topTot').textContent=d.bv; $('botTot').textContent=d.pv;
+  if(d.balance!=null){ bal=Number(d.balance); setBal(); }
+  var net=d.payout - d.staked;
+  if(d.payout>d.staked) result('win', (d.outcome==='tie'?'TIE 8:1! ':(d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1))+' wins ')+'+'+fmt(net));
+  else if(d.payout===d.staked) result('push', d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1)+' — push');
+  else result('lose', (d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1))+' wins');
+  busy=false;
+}
+
+function post(sub,body){ return fetch('/api/cards/'+sub,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json()}).catch(function(){ busy=false; return {error:'Network error'}; }); }
+
+loadGames();
+window.sgPaintTax && window.sgPaintTax();
+</script>
+</body>
+</html>
