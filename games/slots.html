@@ -274,8 +274,8 @@ function freeIntro(count, mode){
     $('fsiTitle').className='fsi-title'+(hidden?' hidden':sup?' super':'');
     $('fsiCount').textContent=count;
     $('fsiSub').innerHTML = hidden
-      ? 'Overpowered! Boosted '+GAME.mult.emoji+' and a huge <b>global multiplier</b> applied at the end.'
-      : sup ? 'Every '+GAME.mult.emoji+' on a winning spin adds to a <b>global multiplier</b> applied to the whole bonus at the end.'
+      ? 'Overpowered! Boosted '+GAME.mult.emoji+' build a <b>global multiplier</b> that boosts every win for the rest of the bonus.'
+      : sup ? 'Every '+GAME.mult.emoji+' on a winning spin raises a <b>global multiplier</b> that boosts every win for the rest of the bonus.'
       : 'Every '+GAME.mult.emoji+' on a winning spin multiplies that win. Good luck!';
     $('fsiOk').style.display='';
     $('fsIntro').classList.remove('hidden');
@@ -376,9 +376,9 @@ async function animateSpin(sp, runningBefore, free){
   if(lastRendered < sp.steps.length-1){ renderGrid(sp.steps[sp.steps.length-1].grid); await sleep(turbo?120:260); }
   // multiplier reveal
   if(sp.super){
-    // Super/Hidden global multiplier: a WINNING spin with any multiplier(s) on the board
-    // adds them to the global — placement doesn't matter. Update the meter FIRST (so it can
-    // never silently skip), then play the fly animation defensively.
+    // Super/Hidden PROGRESSIVE global: a winning spin's multipliers raise the global meter,
+    // then this spin's win is paid at the current global. Climb the meter (FIRST so it can't
+    // silently skip), then pop the win meter to the multiplied per-spin total.
     if(sp.multAdded>0){
       var gm=$('gmult'); if(gm)gm.classList.remove('hidden');
       var gv=$('gmultVal'); if(gv)gv.textContent='×'+(sp.globalMult||1);
@@ -386,6 +386,11 @@ async function animateSpin(sp, runningBefore, free){
       if(window.SG)SG.sfx('mult');
       var ml=(sp.mults&&sp.mults.length)?sp.mults:gridMults(sp.steps[sp.steps.length-1].grid);
       try{ await flyMults(ml, sp.globalMult); }catch(e){ console.error('flyMults',e); }
+    }
+    // every winning spin is multiplied by the running global → show the boosted total now
+    if(sp.globalMult>1 && sp.total>0){
+      setWin(runningBefore + sp.total);
+      var swm=$('winMeter'); if(swm){ swm.classList.remove('mult-pop'); void swm.offsetWidth; swm.classList.add('mult-pop'); }
     }
   } else if(sp.multApplied>0){
     // Regular bonus (and any non-global spin): every multiplier on the board applies to

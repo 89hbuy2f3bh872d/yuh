@@ -21,41 +21,41 @@ const HIDDEN_BOOST = 1.7; // hidden bonus multiplier-symbol frequency boost
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.13,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 0.995,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
-    reel: [["blue", 60], ["green", 52], ["purple", 44], ["red", 26], ["apple", 16], ["grape", 9], ["melon", 5]],
+    reel: [["blue", 90], ["green", 68], ["purple", 50], ["red", 26], ["apple", 14], ["grape", 8], ["melon", 4]],
     pays: {
       blue: payRows(0.2, 0.5, 1.0, 2.5), green: payRows(0.25, 0.6, 1.2, 3),
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
       apple: payRows(0.6, 1.5, 3, 10), grape: payRows(0.9, 2.2, 5, 15), melon: payRows(1.5, 4, 9, 25),
     },
     scatter: { id: "SC", emoji: "🍭", chance: 0.0163, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🍬", chance: 0.11, table: [[2, 42], [3, 30], [5, 15], [10, 7], [25, 3], [50, 1.2], [100, 0.5], [250, 0.15]] },
+    mult: { emoji: "🍬", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3], [25, 0.9]] },
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.10,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.01,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
-    reel: [["ring", 60], ["glass", 52], ["chalice", 44], ["crown", 25], ["blue", 16], ["green", 9], ["red", 5]],
+    reel: [["ring", 90], ["glass", 68], ["chalice", 50], ["crown", 26], ["blue", 14], ["green", 8], ["red", 4]],
     pays: {
       ring: payRows(0.2, 0.5, 1, 2.5), glass: payRows(0.25, 0.6, 1.2, 3),
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
       blue: payRows(0.6, 1.5, 3, 10), green: payRows(0.9, 2.4, 5.5, 16), red: payRows(1.6, 4.5, 10, 30),
     },
     scatter: { id: "SC", emoji: "⚡", chance: 0.0163, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🪙", chance: 0.115, table: [[2, 42], [3, 30], [5, 15], [10, 7], [20, 3.5], [50, 1.3], [100, 0.55], [250, 0.18]] },
+    mult: { emoji: "🪙", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3], [25, 0.9]] },
   },
   bandit: {
     id: "bandit", name: "Wild Bandit", tag: "Cluster pays · heist multipliers", color: "#f59e0b",
-    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.96,
+    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.13,
     sym: { ten: "🔟", j: "🅹", q: "🆀", k: "🅺", a: "🅰️", gold: "🪙", bandit: "💰" },
-    reel: [["ten", 58], ["j", 50], ["q", 42], ["k", 26], ["a", 16], ["gold", 9], ["bandit", 5]],
+    reel: [["ten", 105], ["j", 76], ["q", 52], ["k", 26], ["a", 13], ["gold", 7], ["bandit", 4]],
     pays: {
       ten: payRows(0.25, 0.6, 1.2, 3), j: payRows(0.3, 0.7, 1.4, 3.5), q: payRows(0.35, 0.9, 1.8, 4.5),
       k: payRows(0.45, 1.1, 2.4, 6), a: payRows(0.6, 1.5, 3.2, 9), gold: payRows(1, 2.6, 6, 18), bandit: payRows(1.8, 5, 11, 32),
     },
     scatter: { id: "SC", emoji: "⭐", chance: 0.018, payX: { 3: 2, 4: 6, 5: 25, 6: 120 } },
-    mult: { emoji: "💵", chance: 0.15, table: [[2, 42], [3, 30], [5, 15], [10, 7], [25, 3], [50, 1.2], [100, 0.5], [250, 0.15]] },
+    mult: { emoji: "💵", chance: 0.19, table: [[2, 52], [3, 34], [5, 11], [10, 3], [25, 0.9]] },
   },
 };
 
@@ -180,9 +180,13 @@ function runRound(cfg, bet, buy) {
     const multSum = s.mults.reduce((a, m) => a + m.val, 0);
     let displayTotal = 0, added = 0, applied = 0;
     if (useGlobal) {
+      // PROGRESSIVE global: a winning spin's multipliers raise the running global, then THIS
+      // spin's win is paid at the current global. Climbing meter stays, but the payout is a
+      // sum of (win × runningGlobal) instead of one giant end-multiply — far less swingy, so
+      // the bonus breaks even / profits much more often (sum-of-products, not product-of-sums).
       if (s.baseWin > 0 && multSum > 0) { globalMult += multSum; added = multSum; }
-      displayTotal = s.baseWin + s.scatterWin;     // pre-global; multiplied at the end
-      superSum += displayTotal;
+      displayTotal = s.baseWin * globalMult + s.scatterWin;
+      totalWin += displayTotal;
     } else {
       applied = (s.baseWin > 0 && multSum > 0) ? multSum : 0;
       displayTotal = (applied ? s.baseWin * applied : s.baseWin) + s.scatterWin;
@@ -191,13 +195,14 @@ function runRound(cfg, bet, buy) {
     const rt = retrigFor(s.scatters);
     if (rt) { freeLeft += rt; freeAwarded += rt; }
     spins.push({ free: true, super: useGlobal, steps: s.steps, baseWin: s.baseWin, mults: (useGlobal ? added : applied) > 0 ? s.mults : [], multAdded: added, multApplied: applied, globalMult: useGlobal ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(displayTotal), retrigger: rt, freeLeft });
-    if (!useGlobal && totalWin > cfg.maxWinX * bet) break;
+    if (totalWin > cfg.maxWinX * bet) break;
   }
 
-  let superMult = 1, superPre = 0;
-  if (useGlobal) { superMult = globalMult; superPre = Math.round(superSum); totalWin += superSum * globalMult; }
+  // Progressive global is applied per-spin above, so there is no end-multiply. superMult=1
+  // tells the client to skip the end-of-bonus multiply animation.
+  const superMult = 1, superPre = 0;
   if (totalWin > cfg.maxWinX * bet) totalWin = cfg.maxWinX * bet;
-  return { spins, totalWin: Math.round(totalWin), freeTriggered, freeAwarded, mode, superMult, superPre };
+  return { spins, totalWin: Math.round(totalWin), freeTriggered, freeAwarded, mode, superMult, superPre, globalFinal: globalMult };
 }
 
 export function listGames() {

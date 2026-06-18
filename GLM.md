@@ -87,12 +87,35 @@ No minting or double-spend is possible there. `lib.rs` consts:
 Cluster-pays tumbling slots. Orthogonal clusters of 5+ identical symbols (no diagonals).
 Scatters trigger bonuses; multiplier symbols feed bonuses.
 
-### Games & RTP (tuned for fewer dead spins — see note below)
-| id | name | grid | payScale | reel (common→rare weights) | base RTP (500k) | dead% |
+### Games & RTP (re-tuned 2x for fewer dead spins — see note below)
+| id | name | grid | payScale | reel (common→rare weights) | base RTP (3M) | dead% |
 |---|---|---|---|---|---|---|
-| `candy` | Candy Cascade | 6×5 | 1.13 | 60/52/44/26/16/9/5 | ~88.8% | ~54% |
-| `olympus` | Thunder Gods | 6×5 | 1.10 | 60/52/44/25/16/9/5 | ~87.6% | ~53% |
-| `bandit` | Wild Bandit | 5×5 | 1.96 | 58/50/42/26/16/9/5 | ~86.1% | ~63% |
+| `candy` | Candy Cascade | 6×5 | 0.995 | 90/68/50/26/14/8/4 | ~87% | ~37.6% |
+| `olympus` | Thunder Gods | 6×5 | 1.01 | 90/68/50/26/14/8/4 | ~86% | ~37.5% |
+| `bandit` | Wild Bandit | 5×5 | 1.13 | 105/76/52/26/13/7/4 | ~87% | ~40.4% |
+
+(payScale ~doubled vs the dead-spin pass because the progressive-global change — below — cut
+bonus payouts ~4×, so payScale was raised to restore overall ~87% RTP. Mult tables also
+compressed: `chance .17/.17/.19`, table `[[2,52],[3,34],[5,11],[10,3],[25,.9]]`.)
+
+### Super/Hidden bonus was too swingy to ever profit → PROGRESSIVE global (key fix)
+Symptom: buying Super "never profits" (owner hit 3 busts). Measured: only **27% profit, 45%
+return <0.5× cost, median 0.56×**. Cause: payout was `superSum × globalMult` (product → huge
+right-skew), and the dead-spin retune made base wins tiny (`superSum` mean ~1.4× bet) while
+`globalMult` ballooned (mean ~85, CV .44) — so the bonus was "tiny base × giant end-multiply,"
+maximally swingy. Raising RTP barely helps (skew means even a fair 100%-RTP bonus profits
+~32%); compressing the mult table does **nothing** to the shape (return/cost is scale-
+invariant — the buy cost just re-prices). Regular bonus (per-spin multiply = sum-of-products)
+was already far healthier (33% profit, median 0.72×). **Fix: Super/Hidden now apply the global
+PROGRESSIVELY** — each winning free spin raises the running global, then that spin's win is paid
+at the current global (`displayTotal = baseWin*globalMult + scatter`, accumulated; **no
+end-multiply**, `superMult` returns 1 so the client skips `endMultiply`). Sum-of-products, not
+product-of-sums → far less skew. Result: Super now **~32% profit, ~36% bust, median ~0.69×**
+(matches Regular) while the climbing global meter is preserved. Client: per winning Super spin,
+climb `#gmult` then pop `#winMeter` to `runningBefore+sp.total` (the win is already multiplied);
+intro/paytable text changed from "applied at the end" → "boosts every win for the rest of the
+bonus." NOTE: progressive cut bonus value ~4× → base RTP cratered to ~49%; restored by
+~doubling payScale (above). Buy costs auto-re-priced (super ~296×→~70×).
 
 - Buy-bonus costs are **auto-priced** at load (`priceBuys()` IIFE) for ~87% RTP via a
   30k-sample Monte Carlo per game/kind. **Buy RTP measured ~86-89%** — correctly priced.
@@ -109,10 +132,19 @@ makes wins bigger but does NOT reduce dead count (clusters form at the same freq
 To cut dead spins you must **concentrate the reel weights toward common symbols** so they
 cluster more readily, then **lower payScale** to keep RTP flat (~88%).
 
-- Pre-tuning: ~69% dead (candy/olympus), ~76% dead (bandit, 5×5 grids cluster less).
-- Post-tuning: ~53% dead (candy/olympus), ~63% dead (bandit). Tiny wins (0 < win < 1× bet)
-  went from ~19% → ~38%, so the board feels alive far more often.
-- A 5×5 grid (bandit) clusters less than 6×5, so it stays ~10pts higher dead-rate — inherent.
+- First pass: ~69%→~53% dead (candy/olympus), ~76%→~63% (bandit).
+- **Second pass (2026, "prefer small hits over dead spins"):** concentrated the top symbols
+  harder (candy/olympus reel `90/68/50/26/14/8/4`, bandit `105/76/52/26/13/7/4`) and dropped
+  payScale to hold RTP. Now **~37.6% dead candy/olympus, ~40% bandit**; small hits (0–1× bet)
+  ~58% (candy/olympus) / ~50% (bandit). Board alive ~60% of spins, mostly small wins.
+- Method that works every time: **concentration sets dead% (and spikes RTP via bigger
+  clusters); payScale then scales RTP back to ~87% linearly without touching dead%.** Don't
+  over-concentrate (my first attempt `120/90/58/...` → 26% dead but RTP 298% and huge 10–15
+  clusters; payScale-down then makes hits trivially tiny). The `90/68/50/26/14/8/4` level is
+  the sweet spot for 6×5.
+- A 5×5 grid (bandit) clusters less than 6×5, so it stays ~3pts higher dead-rate — inherent.
+- RTP is heavy-tailed: single 800k runs swung olympus/bandit to 92–93%; the true mean over
+  **3M** is 87.8 / 88.5 / 89.3% (candy/olympus/bandit). Measure ≥3M before trusting a base RTP.
 
 ### Client animation model
 - Grid = `W×H` `.cell` divs (`#cell-{i}`, row-major). `.sym` child holds the emoji HTML.
