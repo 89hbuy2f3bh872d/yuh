@@ -102,7 +102,7 @@ function card(s){
       + tileId('games',s.id,st.games,'Games') + tileId('wagered',s.id,st.wagered,'Wagered') + tileId('taxed',s.id,st.taxed,'Tax earned')
       + tileId('payout',s.id,st.payout,'Paid out') + tileId('players',s.id,st.players,'Players') + tileId('big',s.id,st.big,'Biggest win')
     + '</div>'
-    + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+(s.tax/100)+'%</span></span>'
+    + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+((sh.taxHoliday)?'0% · holiday':(s.tax/100)+'%')+'</span></span>'
       + (s.manage?'<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button>':'')+'</div>'
     + ((s.owner||s.manage)?'<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>':'')
   + '</div>';
@@ -144,9 +144,26 @@ function openShop(id){
   back.addEventListener('click',close);
   document.body.appendChild(back);
   back.querySelector('#shopClose').onclick=close;
-  Array.prototype.forEach.call(back.querySelectorAll('.shop-buy'),function(btn){
-    btn.onclick=function(){ buyItem(id, btn.dataset.item, back, btn); };
-  });
+  bindShop(id, back);
+}
+function bindShop(id, back){
+  Array.prototype.forEach.call(back.querySelectorAll('.shop-buy'),function(btn){ btn.onclick=function(){ buyItem(id, btn.dataset.item, back, btn); }; });
+  Array.prototype.forEach.call(back.querySelectorAll('.shop-remove'),function(btn){ btn.onclick=function(){ removeItem(id, btn.dataset.item, back, btn); }; });
+}
+function refreshShop(id, back, j){
+  var s=SRV[id]; if(s){ if(j.bank!=null)s.bank=j.bank; if(j.shop)s.shop=j.shop; }
+  if(j.bank!=null){ var bk=back.querySelector('#shopBank'); if(bk)bk.textContent=fmt(j.bank)+' FC';
+    var bankEl=document.getElementById('bank-'+id); if(bankEl)bankEl.innerHTML=fmt(j.bank)+'<small>FC</small>'; }
+  var wrap=back.querySelector('#shopItems'); if(wrap&&s){ wrap.innerHTML=ITEMS.map(function(it){return shopItemHtml(s,it);}).join(''); bindShop(id, back); }
+  if(s) patchCard(s);
+}
+function removeItem(id,itemId,back,btn){
+  btn.disabled=true; var old=btn.textContent; btn.textContent='…';
+  fetch('/api/server/shop/remove',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({gid:id,itemId:itemId})})
+    .then(function(r){return r.json()}).then(function(j){
+      if(j&&j.ok){ refreshShop(id, back, j); }
+      else { alert((j&&j.error)||'Failed'); btn.disabled=false; btn.textContent=old; }
+    }).catch(function(){ alert('Failed'); btn.disabled=false; btn.textContent=old; });
 }
 function shopItemHtml(s,it){
   var sh=s.shop||{}, owned='', active=false, ownAccent=false;
@@ -155,7 +172,7 @@ function shopItemHtml(s,it){
   else if(it.id==='accent'){ ownAccent=!!sh.accent; if(ownAccent)owned='<span class="shop-owned" style="color:'+esc(sh.accent)+'">Owned</span>'; }
   var input = it.id==='accent' ? '<input type="color" class="shop-color" id="shopColor" value="'+(sh.accent||'#2ecc71')+'">' : '';
   var btn;
-  if(active) btn='<button class="btn btn-secondary btn-sm" disabled>Active</button>';
+  if(active){ var refund=Math.floor(it.price/2); btn='<button class="btn btn-secondary btn-sm shop-remove" data-item="'+esc(it.id)+'" title="Cancel and refund 50%">Remove · +'+fmt(refund)+'</button>'; }
   else if(ownAccent) btn='<button class="btn btn-primary btn-sm shop-buy" data-item="'+esc(it.id)+'">Recolor · Free</button>';
   else btn='<button class="btn btn-primary btn-sm shop-buy" data-item="'+esc(it.id)+'">Buy · '+fmt(it.price)+'</button>';
   return '<div class="shop-it"><div class="shop-ic">'+shopIcon(it.icon)+'</div>'
@@ -168,15 +185,8 @@ function buyItem(id,itemId,back,btn){
   btn.disabled=true; var old=btn.textContent; btn.textContent='…';
   fetch('/api/server/shop/buy',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
     .then(function(r){return r.json()}).then(function(j){
-      if(j&&j.ok){
-        var s=SRV[id]; if(s){ s.bank=j.bank; s.shop=j.shop; }
-        var bk=back.querySelector('#shopBank'); if(bk)bk.textContent=fmt(j.bank)+' FC';
-        var bankEl=document.getElementById('bank-'+id); if(bankEl)bankEl.innerHTML=fmt(j.bank)+'<small>FC</small>';
-        // refresh the modal's item states + the card behind it
-        var wrap=back.querySelector('#shopItems'); if(wrap&&s){ wrap.innerHTML=ITEMS.map(function(it){return shopItemHtml(s,it);}).join('');
-          Array.prototype.forEach.call(back.querySelectorAll('.shop-buy'),function(b){ b.onclick=function(){ buyItem(id,b.dataset.item,back,b); }; }); }
-        if(s) patchCard(s);
-      } else { alert((j&&j.error)||'Purchase failed'); btn.disabled=false; btn.textContent=old; }
+      if(j&&j.ok){ refreshShop(id, back, j); }
+      else { alert((j&&j.error)||'Purchase failed'); btn.disabled=false; btn.textContent=old; }
     }).catch(function(){ alert('Purchase failed'); btn.disabled=false; btn.textContent=old; });
 }
 
@@ -220,6 +230,10 @@ if(!window.__srvDash){ window.__srvDash=1;
       if(d.dPayout){ st.payout=(st.payout||0)+d.dPayout; setTile('payout',d.gid,st.payout); }
       if(d.dTax){ st.taxed=(st.taxed||0)+d.dTax; setTile('taxed',d.gid,st.taxed); }
       if(d.big!=null && d.big>(st.big||0)){ st.big=d.big; setTile('big',d.gid,st.big); }
+    } else if(d.type==='server-econ'){
+      var sv=SRV[d.gid]; if(!sv)return; sv.tax=d.taxBps; sv.shop=d.shop||sv.shop; patchCard(sv); // tax/holiday/perks live
+    } else if(d.type==='guild'){
+      var gv=SRV[d.gid]; if(!gv)return; if(d.name)gv.name=d.name; if(d.members!=null)gv.members=d.members; patchCard(gv); // rename live
     }
   });
   window.addEventListener('sg:tax', function(e){ var d=e.detail; if(!d)return;

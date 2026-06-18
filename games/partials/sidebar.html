@@ -293,14 +293,22 @@
   var servers=[], selected=null;
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function cur(){ for(var i=0;i<servers.length;i++) if(servers[i].id===selected) return servers[i]; return null; }
-  // Expose the active server (id + tax%) so money pages can show the cut + react to it.
-  function publish(){ var s=cur(); window.sgServer = s ? { id:s.id, name:s.name, owner:!!s.owner, taxBps:(s.tax|0), taxPct:(s.tax|0)/100 } : null;
+  // Expose the active server (id + EFFECTIVE tax%) so money pages can show the cut.
+  // During a bought Tax Holiday the effective rate is 0%.
+  function holidayOn(s){ return !!(s && s.holidayUntil && s.holidayUntil > Date.now()); }
+  var holidayTimer=null;
+  function scheduleHolidayFlip(s){ if(holidayTimer){ clearTimeout(holidayTimer); holidayTimer=null; }
+    if(holidayOn(s)){ holidayTimer=setTimeout(function(){ render(); publish(); }, Math.min(2147483000, s.holidayUntil-Date.now()+800)); } }
+  function publish(){ var s=cur();
+    if(s){ var hol=holidayOn(s); window.sgServer={ id:s.id, name:s.name, owner:!!s.owner, taxBps:(s.tax|0), taxPct:(hol?0:(s.tax|0))/100, holiday:hol }; scheduleHolidayFlip(s); }
+    else window.sgServer=null;
     try{ window.dispatchEvent(new CustomEvent('sg:server',{detail:window.sgServer})); }catch(e){} paintTax(); }
   window.sgCurrentServer=function(){ return selected; };
   // Update any #srvTaxNote on the current page with the active server's cut. Pjax-safe:
   // the sidebar persists, so pages only need the element + a call to window.sgPaintTax().
   function paintTax(){ var els=document.querySelectorAll('.srv-tax-note'); if(!els.length) return; var s=window.sgServer;
-    var html = s ? '<svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg> <span><b>'+(s.taxPct)+'%</b> tax on profit · <b>'+esc(s.name)+'</b></span>' : '';
+    var ic='<svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg> ';
+    var html = s ? ic + (s.holiday ? '<span><b>0%</b> tax · holiday on <b>'+esc(s.name)+'</b></span>' : '<span><b>'+(s.taxPct)+'%</b> tax on profit · <b>'+esc(s.name)+'</b></span>') : '';
     for(var i=0;i<els.length;i++){ if(!s){ els[i].hidden=true; } else { els[i].hidden=false; els[i].innerHTML=html; } } }
   window.sgPaintTax=paintTax;
   function render(){
@@ -310,7 +318,7 @@
     if(w) w.classList.toggle('srv-unset', !s);
     var m=document.getElementById('srvMenu'); if(!m)return;
     m.innerHTML = servers.length
-      ? servers.map(function(x){ return '<div class="srv-item'+(x.id===selected?' on':'')+'"><button class="srv-pick" type="button" onclick="sgPickSrv(\''+x.id+'\')"><span class="srv-av sm">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</span><span class="srv-it-name">'+esc(x.name)+'</span><span class="srv-tax">'+(((x.tax|0)/100))+'%</span>'+(x.owner?'<span class="srv-own">Owner</span>':'')+'</button>'+(x.owner?'<button class="srv-gear" type="button" title="Set winnings tax" onclick="sgEditTax(\''+x.id+'\',event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>':'')+'</div>'; }).join('')
+      ? servers.map(function(x){ var ht=holidayOn(x); return '<div class="srv-item'+(x.id===selected?' on':'')+'"><button class="srv-pick" type="button" onclick="sgPickSrv(\''+x.id+'\')"><span class="srv-av sm">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</span><span class="srv-it-name">'+esc(x.name)+'</span><span class="srv-tax'+(ht?' hol':'')+'">'+(ht?'0% 🎉':((x.tax|0)/100)+'%')+'</span>'+(x.owner?'<span class="srv-own">Owner</span>':'')+'</button>'+(x.owner?'<button class="srv-gear" type="button" title="Set winnings tax" onclick="sgEditTax(\''+x.id+'\',event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>':'')+'</div>'; }).join('')
       : '<div class="srv-empty">No servers yet — type <b>&web</b> in a server that has the bot.</div>';
   }
   window.sgToggleSrv=function(e){ if(e)e.stopPropagation(); var m=document.getElementById('srvMenu'); if(m)m.classList.toggle('hidden'); };
@@ -359,6 +367,13 @@
     };
   }
   document.addEventListener('click',function(){ var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); });
+  // Live tax/holiday + guild rename (any server) — keep the picker + tax note current.
+  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d)return;
+    if(d.type!=='server-econ' && d.type!=='guild') return;
+    for(var i=0;i<servers.length;i++){ if(servers[i].id!==d.gid) continue;
+      if(d.type==='server-econ'){ servers[i].tax=d.taxBps; servers[i].holidayUntil=(d.shop&&d.shop.taxHolidayUntil)||0; }
+      else { if(d.name)servers[i].name=d.name; if(d.icon!==undefined)servers[i].icon=d.icon; }
+      render(); if(servers[i].id===selected)publish(); break; } });
   fetch('/api/servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){ if(!d)return; servers=d.servers||[]; selected=d.selected; render();
     // No active selection yet but the user has servers → auto-pin the first so the
     // "pick a server to gamble" gate doesn't lock them out on a fresh OAuth login.

@@ -33,4 +33,5 @@ export class StdbBridge {
   async transfer(from, to, amount, fromTag){ return this._post("/internal/transfer", { from, to, amount, fromTag }); }
   async notify(uid, kind, amount, fromTag, msg) { return this._post("/internal/notify", { uid, kind, amount, fromTag, msg }); }
   async setExact(uid, balance)            { return this._post("/internal/set", { uid, balance }); }
+  async guildUpdate(gid, data)            { return this._post("/internal/guild", { gid, ...data }); } // realtime name/icon push
 }

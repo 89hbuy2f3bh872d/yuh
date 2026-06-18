@@ -11,6 +11,7 @@ export class CommandHandler {
     this.prefix = config.prefix ?? "&";
     this.commands = new Map();
     this._petXpCd = new Map(); // uid -> last chat-XP timestamp
+    this._guildMeta = new Map(); // gid -> "name|icon" (to push realtime renames only on change)
   }
 
   // Award pet XP for ordinary chatting (rate-limited; only if the user owns a pet).
@@ -71,12 +72,19 @@ export class CommandHandler {
     if (this.db) {
       this.db.recordCommand(cmd.name).catch(() => {});
       if (guildId) {
+        const icon = message.guild?.icon ?? null;
         this.db.upsertGuild(guildId, {
           name:        guildName,
           memberCount: message.guild?.memberCount ?? null,
-          icon:        message.guild?.icon ?? null,
+          icon,
           ownerId:     message.guild?.ownerId ?? message.guild?.owner_id ?? null,
         }).catch(() => {});
+        // Realtime: only ping the web when the visible identity (name/icon) actually changed.
+        const meta = `${guildName ?? ""}|${icon ?? ""}`;
+        if (this._guildMeta.get(guildId) !== meta) {
+          this._guildMeta.set(guildId, meta);
+          this.db.notifyGuild?.(guildId, { name: guildName ?? null, icon, members: message.guild?.memberCount ?? null }).catch(() => {});
+        }
       }
     }
     // ─────────────────────────────────────────────────────────────────────────

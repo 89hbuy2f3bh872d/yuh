@@ -432,6 +432,8 @@ export class Database {
     return this._guilds.find({ _id: { $in: ids.map(String) } }).toArray();
   }
   async getGuild(id) { if (!this._guilds) return null; return this._guilds.findOne({ _id: String(id) }); }
+  /** Push a guild name/icon change to the web service for realtime broadcast. */
+  async notifyGuild(gid, data) { try { await this._bridge?.guildUpdate?.(String(gid), data); } catch { /* best-effort */ } }
 
   /** Per-server tax on winnings, in basis points (default 1500 = 15%). */
   async getGuildTax(id) {

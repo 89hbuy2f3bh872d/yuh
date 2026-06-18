@@ -198,6 +198,9 @@ function taxOnProfit(profit: number, bps: number): number {
   if (!(profit > 0) || !(bps > 0)) return 0;
   return Math.min(profit, Math.floor(profit * bps / 10000));
 }
+// A bought Tax Holiday forces the EFFECTIVE tax to 0 while active.
+const holidayActive = (shop: any, now = Date.now()): boolean => (Number(shop?.taxHolidayUntil) || 0) > now;
+const effectiveTaxBps = (taxBps: number, shop: any, now = Date.now()): number => holidayActive(shop, now) ? 0 : taxBps;
 // Resolve + require the gambling server for this request. Returns null when no
 // server is selected (the "must pick a server to gamble" gate).
 async function requireServer(request: Request): Promise<{ gid: string; taxBps: number } | null> {
@@ -269,6 +272,29 @@ function broadcastServerPlay(gid: string, patch: Record<string, number | boolean
     const d = ws.data as any;
     if (d.watchGids && d.watchGids.has(gid)) { try { ws.send(msg); } catch {} }
   }
+}
+// Push a server's tax + shop state (incl. effective tax during a holiday) to EVERY
+// socket, so the selected-server tax note and every dashboard update in real time.
+// Low-frequency (only on tax/shop edits) so a global fan-out is fine.
+async function broadcastServerEcon(gid: string) {
+  if (!gid) return;
+  const econ: any = await (db as any).getGuildEconomy(gid).catch(() => null);
+  if (!econ) return;
+  const now = Date.now(), shop = econ.shop || {};
+  const msg = JSON.stringify({
+    type: "server-econ", gid,
+    taxBps: econ.taxBps, effTax: effectiveTaxBps(econ.taxBps, shop, now),
+    shop: { featuredUntil: shop.featuredUntil || 0, taxHolidayUntil: shop.taxHolidayUntil || 0,
+            accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
+            featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
+  });
+  for (const ws of wsClients) { try { ws.send(msg); } catch {} }
+}
+// Push a guild rename/icon change (from the bot) to every socket — names update live.
+function broadcastGuild(gid: string, name: any, icon: any, members: any) {
+  if (!gid) return;
+  const msg = JSON.stringify({ type: "guild", gid, name: name ?? null, icon: icon ?? null, members: members ?? null });
+  for (const ws of wsClients) { try { ws.send(msg); } catch {} }
 }
 
 // Global per-IP rate limit — blocks extreme spam (real client IP via Cloudflare header).
@@ -487,6 +513,7 @@ const app = new Elysia()
     .post("/transfer", async ({ body }) => { const b = body as any; try { await stdb.transfer(b.from, b.to, Math.floor(b.amount), b.fromTag || ""); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/notify", async ({ body }) => { const b = body as any; try { await stdb.addNotification(b.uid, b.kind || "info", Math.floor(b.amount || 0), b.fromTag || "", b.msg || ""); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/set", async ({ body }) => { const b = body as any; try { await stdb.setExact(b.uid, Math.floor(b.balance)); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
+    .post("/guild", ({ body }) => { const b = body as any; broadcastGuild(String(b?.gid || ""), b?.name, b?.icon, b?.members); return { ok: true }; })
   )
 
   // ── static assets ──────────────────────────────────────────────────────────
@@ -777,6 +804,7 @@ app.get("/api/servers", async ({ request, set }) => {
     id: g._id, name: g.name || "Server", icon: g.icon || null,
     owner: g.ownerId === uid,
     tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
+    holidayUntil: g.shop?.taxHolidayUntil || 0, // selector shows 0% while a holiday is active
     bank: stdb.getServerBank(g._id),
   }));
   return { servers, selected: sel || (servers[0]?.id ?? null), pinned: !!sel };
@@ -837,6 +865,7 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
   const saved = await (db as any).setGuildTax(gid, bps).catch(() => null);
   if (saved == null) { set.status = 500; return { error: "Failed to save" }; }
   taxCache.set(gid, { bps: saved, until: Date.now() + 60_000 }); // refresh hot cache immediately
+  broadcastServerEcon(gid); // push the new rate to everyone live
   return { ok: true, taxBps: saved };
 });
 
@@ -938,10 +967,37 @@ app.post("/api/server/shop/buy", async ({ request, body, set }) => {
   }
   await (db as any).mergeGuildShop(gid, patch).catch(() => {});
   if (item.id === "tax_holiday") taxCache.delete(gid); // holiday must take effect immediately
+  broadcastServerEcon(gid); // live tax/perk update for everyone
   return { ok: true, bank: stdb.getServerBank(gid),
     shop: { featuredUntil: patch.featuredUntil ?? shop.featuredUntil ?? 0, taxHolidayUntil: patch.taxHolidayUntil ?? shop.taxHolidayUntil ?? 0,
             accent: HEX_RE.test(patch.accent ?? shop.accent ?? "") ? (patch.accent ?? shop.accent) : null,
             featured: (patch.featuredUntil ?? shop.featuredUntil ?? 0) > now, taxHoliday: (patch.taxHolidayUntil ?? shop.taxHolidayUntil ?? 0) > now } };
+});
+
+// Cancel an active duration perk early and refund 50% of its price to the server bank.
+app.post("/api/server/shop/remove", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (g.ownerId !== uid && !(await canManageServers(uid))) { set.status = 403; return { error: "Only the server owner can use the shop" }; }
+  const item = SHOP_ITEMS.find(i => i.id === String(b?.itemId));
+  if (!item || item.kind !== "duration") { set.status = 400; return { error: "That perk can't be removed" }; }
+  const econ: any = await (db as any).getGuildEconomy(gid).catch(() => ({ shop: {} }));
+  const shop: any = econ?.shop || {};
+  const now = Date.now();
+  if (!((Number(shop[item.field]) || 0) > now)) { set.status = 400; return { error: `${item.label} isn't active` }; }
+  const refund = Math.floor(item.price * 0.5);
+  await (db as any).mergeGuildShop(gid, { [item.field]: 0 }).catch(() => {}); // cancel it
+  if (item.id === "tax_holiday") taxCache.delete(gid);
+  try { if (refund > 0) await stdb.creditWin(uid, refund, gid, refund); } // 50% back into the bank
+  catch (e: any) { console.error("[shop/remove refund]", e?.message); }
+  broadcastServerEcon(gid);
+  return { ok: true, refund, bank: stdb.getServerBank(gid),
+    shop: { featuredUntil: item.id === "featured" ? 0 : (shop.featuredUntil || 0), taxHolidayUntil: item.id === "tax_holiday" ? 0 : (shop.taxHolidayUntil || 0),
+            accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
+            featured: item.id !== "featured" && (shop.featuredUntil || 0) > now, taxHoliday: item.id !== "tax_holiday" && (shop.taxHolidayUntil || 0) > now } };
 });
 
 // ── global server leaderboard (any logged-in user) ───────────────────────────
@@ -953,12 +1009,17 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
   const rows: any[] = await (db as any).getTopServerStats(byBank ? "wagered" : sort, byBank ? 100 : 50).catch(() => []);
   const guilds = await db.getGuildsByIds(rows.map(r => r._id)).catch(() => []);
   const gmap = new Map(guilds.map((g: any) => [g._id, g]));
+  const me = await db.getUser(uid).catch(() => null);
+  const myGids = new Set(Array.isArray(me?.gids) ? me.gids : []);
   const now = Date.now();
   let entries = rows.map(r => {
     const g: any = gmap.get(r._id) || {}; const shop: any = g.shop || {};
+    const taxBps = Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS;
+    const holiday = (shop.taxHolidayUntil || 0) > now;
     return { id: r._id, name: g.name || "Server", members: g.memberCount ?? null,
       bank: stdb.getServerBank(r._id), wagered: r.wagered || 0, taxed: r.taxed || 0, games: r.gp || 0, payout: r.payout || 0,
       players: Array.isArray(r.players) ? r.players.length : 0,
+      tax: holiday ? 0 : taxBps, taxHoliday: holiday, member: myGids.has(r._id),
       featured: (shop.featuredUntil || 0) > now, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null };
   });
   const metric = byBank ? "bank" : (sort === "taxed" ? "taxed" : sort === "games" ? "games" : "wagered");
