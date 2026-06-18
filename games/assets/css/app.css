@@ -167,6 +167,8 @@ input,select,textarea{font:inherit;color:inherit}
 .sb-signout{display:flex;align-items:center;gap:.55rem;padding:.5rem .65rem;border-radius:var(--r-sm);font-size:.78rem;font-weight:600;color:var(--text3);width:100%;transition:background .15s,color .15s;margin-top:.15rem}
 .sb-signout .icon{width:15px;height:15px}
 .sb-signout:hover{background:var(--surface);color:var(--red)}
+.sb-addbot{color:var(--accent);text-decoration:none}
+.sb-addbot:hover{background:var(--accent-soft);color:var(--accent)}
 
 /* ── Main content ─────────────────────────────────────────────────────── */
 .main{min-width:0;padding:1.75rem 2rem 3rem;max-width:1180px;margin-inline:auto;width:100%}
