@@ -381,18 +381,23 @@
     };
   }
   document.addEventListener('click',function(){ var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); });
-  // Live tax/holiday + guild rename (any server) — keep the picker + tax note current.
+  // (Re)load the server list. Safe to call repeatedly — only auto-pins when the user
+  // has no selection yet, so a refresh after joining a server won't change selection.
+  function loadServers(){ fetch('/api/servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){ if(!d)return; servers=d.servers||[]; selected=d.selected; render();
+    if(!d.pinned && servers.length){ window.sgPickSrv(selected); } else { publish(); }
+  }).catch(function(){}); }
+  // Live: tax/holiday, guild rename, and `servers` = "your server list changed" (you
+  // joined a new server — pushed by the bot on activity) → re-fetch the picker.
   window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d)return;
+    if(d.type==='servers'){ loadServers(); return; }
     if(d.type!=='server-econ' && d.type!=='guild') return;
     for(var i=0;i<servers.length;i++){ if(servers[i].id!==d.gid) continue;
       if(d.type==='server-econ'){ servers[i].tax=d.taxBps; servers[i].holidayUntil=(d.shop&&d.shop.taxHolidayUntil)||0; }
       else { if(d.name)servers[i].name=d.name; if(d.icon!==undefined)servers[i].icon=d.icon; }
       render(); if(servers[i].id===selected)publish(); break; } });
-  fetch('/api/servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){ if(!d)return; servers=d.servers||[]; selected=d.selected; render();
-    // No active selection yet but the user has servers → auto-pin the first so the
-    // "pick a server to gamble" gate doesn't lock them out on a fresh OAuth login.
-    if(!d.pinned && servers.length){ window.sgPickSrv(selected); } else { publish(); }
-  }).catch(function(){});
+  // Fallback: refresh the list when the tab regains focus (covers a missed WS event).
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) loadServers(); });
+  loadServers();
 })();
 /* Global gate guard: any /api money call rejected with {needServer} flashes the
    server picker so the user knows to choose one — no per-page wiring needed. */

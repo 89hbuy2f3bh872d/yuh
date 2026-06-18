@@ -452,6 +452,12 @@ function broadcastGuild(gid: string, name: any, icon: any, members: any) {
   const msg = JSON.stringify({ type: "guild", gid, name: name ?? null, icon: icon ?? null, members: members ?? null });
   for (const ws of wsClients) { try { ws.send(msg); } catch {} }
 }
+// Tell a user's open tabs to re-fetch their server list (they joined a new server).
+function broadcastUserGuilds(uid: string) {
+  if (!uid) return;
+  const msg = JSON.stringify({ type: "servers" });
+  for (const ws of wsClients) { const d = ws.data as any; if (d.uid === uid) { try { ws.send(msg); } catch {} } }
+}
 
 // Global per-IP rate limit — blocks extreme spam (real client IP via Cloudflare header).
 const ipHits = new Map<string, number[]>();
@@ -752,6 +758,7 @@ const app = new Elysia()
     .post("/notify", async ({ body }) => { const b = body as any; try { await stdb.addNotification(b.uid, b.kind || "info", Math.floor(b.amount || 0), b.fromTag || "", b.msg || ""); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/set", async ({ body }) => { const b = body as any; try { await stdb.setExact(b.uid, Math.floor(b.balance)); return { ok: true }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/guild", ({ body }) => { const b = body as any; broadcastGuild(String(b?.gid || ""), b?.name, b?.icon, b?.members); return { ok: true }; })
+    .post("/user-guilds", ({ body }) => { broadcastUserGuilds(String((body as any)?.uid || "")); return { ok: true }; })
     // Role-shop purchase: take the full price from the buyer, route 75% to the server
     // bank (25% is a sink — removed from circulation). Role assignment is the bot's job.
     .post("/role-purchase", async ({ body }) => {

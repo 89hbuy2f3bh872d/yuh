@@ -12,6 +12,7 @@ export class CommandHandler {
     this.commands = new Map();
     this._petXpCd = new Map(); // uid -> last chat-XP timestamp
     this._guildMeta = new Map(); // gid -> "name|icon" (to push realtime renames only on change)
+    this._userGuildSeen = new Set(); // "uid:gid" already associated this process (dedup)
   }
 
   // Award pet XP for ordinary chatting (rate-limited; only if the user owns a pet).
@@ -49,6 +50,27 @@ export class CommandHandler {
   async handleMessage(message) {
     if (!message?.content || message?.author?.bot) return;
     this._awardPetXp(message).catch(() => {});
+    // Associate the user with this guild (so the web server-selector picks up servers
+    // they joined after login) on ANY message — not just &web. Deduped + live-pushed.
+    const _gid = message.guild?.id ?? message.guildId ?? null;
+    if (_gid && this.db?.addUserGuild) {
+      const key = message.author.id + ":" + _gid;
+      if (!this._userGuildSeen.has(key)) {
+        this._userGuildSeen.add(key);
+        if (this._userGuildSeen.size > 8000) this._userGuildSeen.clear();
+        // Make sure the guild is in the directory so the selector can resolve it, even
+        // if no command has ever run here (idempotent upsert).
+        this.db.upsertGuild?.(_gid, {
+          name: message.guild?.name ?? null,
+          memberCount: message.guild?.memberCount ?? null,
+          icon: message.guild?.icon ?? null,
+          ownerId: message.guild?.ownerId ?? message.guild?.owner_id ?? null,
+        }).catch(() => {});
+        this.db.addUserGuild(message.author.id, _gid)
+          .then((added) => { if (added) this.db.notifyUserGuilds?.(message.author.id); })
+          .catch(() => {});
+      }
+    }
     if (!message.content.startsWith(this.prefix)) return;
 
     const args = message.content.slice(this.prefix.length).trim().split(/\s+/);

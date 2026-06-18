@@ -454,6 +454,17 @@ export class Database {
   /** Push a guild name/icon change to the web service for realtime broadcast. */
   async notifyGuild(gid, data) { try { await this._bridge?.guildUpdate?.(String(gid), data); } catch { /* best-effort */ } }
 
+  /** Associate a user with a guild (so the web server-selector lists it). Returns
+   *  true if it was newly added. Lets the selector pick up servers a user joined
+   *  after they last logged in, without needing a fresh OAuth. */
+  async addUserGuild(uid, guildId) {
+    if (!this._users || !isValidUserId(uid) || !guildId) return false;
+    const r = await this._users.updateOne({ _id: uid.trim() }, { $addToSet: { gids: String(guildId) } }).catch(() => null);
+    return !!(r && r.modifiedCount);
+  }
+  /** Tell the web service to push a "servers changed" event to this user's tabs. */
+  async notifyUserGuilds(uid) { try { await this._bridge?.userGuildsChanged?.(String(uid)); } catch { /* best-effort */ } }
+
   // ─── Server role shop (buy Discord roles with FC; 75% → server bank) ────────
   async getRoleShop(id) {
     if (!this._guilds) return [];
