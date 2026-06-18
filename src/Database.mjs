@@ -27,6 +27,17 @@ function clampTaxBps(bps) {
   return Math.max(0, Math.min(MAX_TAX_BPS, v));
 }
 
+// Investing — seed assets. FLX = the currency index (stable); the rest are NFTs that
+// start cheap and rise with demand. `baseline` = mean-reversion target, `vol` = volatility.
+const INVEST_SEED = [
+  { _id: "flx",       kind: "flx", name: "FluxCoin Index", emoji: "🪙", color: "#f1c40f", price: 100, baseline: 100, vol: 0.010 },
+  { _id: "pixelpeng", kind: "nft", name: "Pixel Penguin",  emoji: "🐧", color: "#3b9dff", price: 5,   baseline: 9,   vol: 0.060 },
+  { _id: "goldape",   kind: "nft", name: "Gold Ape",       emoji: "🦍", color: "#f5a623", price: 8,   baseline: 16,  vol: 0.070 },
+  { _id: "cryptcat",  kind: "nft", name: "Crypt Cat",      emoji: "🐱", color: "#9b59b6", price: 3,   baseline: 7,   vol: 0.080 },
+  { _id: "doomskull", kind: "nft", name: "Doom Skull",     emoji: "💀", color: "#e74c3c", price: 6,   baseline: 12,  vol: 0.090 },
+  { _id: "aquagem",   kind: "nft", name: "Aqua Gem",       emoji: "💠", color: "#1abc9c", price: 4,   baseline: 10,  vol: 0.075 },
+];
+
 // User ID validation — Discord IDs are 17-20 digits
 const USER_ID_RE = /^\d{17,20}$/;
 
@@ -76,12 +87,15 @@ export class Database {
     this._guilds  = this._db.collection("guilds");
     this._tokens  = this._db.collection("logintokens");
     this._srvStats = this._db.collection("serverstats");
+    this._assets   = this._db.collection("assets");    // investing: tradeable assets + price history
+    this._holdings = this._db.collection("holdings");  // investing: per-user positions
     // Ensure indexes
     try {
       await this._users.createIndex({ "st.e": -1 }); // session expiry TTL
       await this._stats.createIndex({ _id: 1 });
       await this._tokens.createIndex({ expAt: 1 }, { expireAfterSeconds: 0 }); // auto-expire login links
     } catch (_) { /* index may already exist */ }
+    await this.seedAssets().catch(() => {});
     console.log(`[DB] Connected → ${this._dbName}.u`);
   }
 
@@ -454,6 +468,35 @@ export class Database {
   /** Charge a role purchase: deduct full price from the buyer, 75% → server bank (25% sink). */
   async rolePurchase(uid, gid, price) {
     if (this._bridge?.rolePurchase) return this._bridge.rolePurchase(uid, gid, price);
+    return { ok: false, error: "no bridge" };
+  }
+
+  // ─── Investing (assets + per-user holdings) ─────────────────────────────────
+  async seedAssets() {
+    if (!this._assets) return;
+    for (const a of INVEST_SEED) {
+      const ex = await this._assets.findOne({ _id: a._id }, { projection: { _id: 1 } }).catch(() => null);
+      if (!ex) await this._assets.insertOne({ ...a, bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], updatedAt: Date.now() }).catch(() => {});
+    }
+  }
+  async getAssets() { if (!this._assets) return []; return this._assets.find({}).sort({ kind: 1, _id: 1 }).toArray().catch(() => []); }
+  async getAsset(id) { if (!this._assets) return null; return this._assets.findOne({ _id: String(id) }).catch(() => null); }
+  /** Persist live asset state from the price engine (bulk upsert). */
+  async saveAssets(list) {
+    if (!this._assets || !Array.isArray(list) || !list.length) return;
+    const ops = list.map(a => ({ updateOne: { filter: { _id: a._id }, update: { $set: a }, upsert: true } }));
+    await this._assets.bulkWrite(ops, { ordered: false }).catch(() => {});
+  }
+  async getHoldings(uid) { if (!this._holdings) return {}; const d = await this._holdings.findOne({ _id: String(uid) }).catch(() => null); return (d && d.h) || {}; }
+  async setHoldings(uid, h) { if (!this._holdings) return; await this._holdings.updateOne({ _id: String(uid) }, { $set: { h } }, { upsert: true }).catch(() => {}); }
+  /** Assets + the user's portfolio (bot path → web engine). */
+  async investMe(uid) {
+    if (this._bridge?.investMe) return this._bridge.investMe(uid);
+    return { assets: [], portfolio: { positions: [], value: 0, cost: 0, pnl: 0 }, bal: 0 };
+  }
+  /** Buy/sell through the web price engine + STDB (bot path). */
+  async investTrade(side, uid, assetId, amount) {
+    if (this._bridge?.investTrade) return this._bridge.investTrade(side, uid, assetId, amount);
     return { ok: false, error: "no bridge" };
   }
 

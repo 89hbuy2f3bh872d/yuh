@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invest — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<style>
+.iv-grid{display:grid;grid-template-columns:300px 1fr;gap:1.1rem;align-items:start}
+.iv-list{display:flex;flex-direction:column;gap:.45rem}
+.iv-row{display:flex;align-items:center;gap:.6rem;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent,var(--border));border-radius:11px;padding:.55rem .7rem;cursor:pointer;transition:border-color .15s,background .15s}
+.iv-row:hover{background:var(--surface2)}
+.iv-row.on{border-color:var(--accent);background:var(--accent-soft)}
+.iv-em{font-size:1.3rem;flex:none}
+.iv-meta{flex:1;min-width:0}
+.iv-name{font-weight:700;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iv-kind{font-size:.56rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
+.iv-px{text-align:right;flex:none}
+.iv-px .p{font-weight:800;font-size:.82rem}
+.iv-px .c{font-size:.62rem;font-weight:700}
+.up{color:#2ecc71}.down{color:#e74c3c}
+.iv-main{display:flex;flex-direction:column;gap:1rem}
+.iv-chartcard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem}
+.iv-chead{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.6rem}
+.iv-ctitle{display:flex;align-items:center;gap:.6rem}
+.iv-ctitle .em{font-size:1.8rem}
+.iv-ctitle .nm{font-weight:800;font-size:1.05rem}
+.iv-ctitle .kd{font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.iv-cprice{text-align:right}
+.iv-cprice .big{font-size:1.7rem;font-weight:800;line-height:1.1}
+.iv-cprice .chg{font-size:.78rem;font-weight:700}
+.iv-canvas-wrap{position:relative;height:300px}
+#chart{width:100%;height:100%;display:block}
+.iv-chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text3);font-size:.8rem}
+.iv-bottom{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.iv-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem}
+.iv-card h3{font-size:.82rem;margin:0 0 .7rem;display:flex;align-items:center;gap:.4rem}
+.iv-trade .seg{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.2rem;margin-bottom:.7rem}
+.iv-trade .seg button{flex:1;padding:.4rem;border-radius:7px;font-size:.76rem;font-weight:700;color:var(--text2);background:transparent}
+.iv-trade .seg button.on{background:var(--accent);color:var(--bg)}
+.iv-trade .seg button.on.sell{background:#e74c3c;color:#fff}
+.iv-in{display:flex;gap:.4rem;margin-bottom:.5rem}
+.iv-in input{flex:1;padding:.55rem .65rem;border:1px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:.95rem}
+.iv-chips{display:flex;gap:.35rem;margin-bottom:.7rem}
+.iv-chips button{flex:1;padding:.35rem;border-radius:7px;background:var(--surface2);border:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--text2)}
+.iv-chips button:hover{border-color:var(--accent);color:var(--accent)}
+.iv-go{width:100%;justify-content:center;padding:.65rem}
+.iv-go.sell{background:#e74c3c;color:#fff}
+.iv-est{font-size:.68rem;color:var(--text3);text-align:center;margin-top:.5rem;min-height:1rem}
+.iv-pf{display:flex;flex-direction:column;gap:.4rem}
+.iv-pos{display:flex;align-items:center;gap:.5rem;font-size:.76rem;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.45rem .6rem}
+.iv-pos .nm{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iv-pos .v{text-align:right}
+.iv-pf-tot{display:flex;justify-content:space-between;font-size:.8rem;font-weight:700;border-top:1px solid var(--border);margin-top:.4rem;padding-top:.5rem}
+.iv-empty{color:var(--text3);font-size:.76rem;text-align:center;padding:.6rem}
+@media(max-width:880px){.iv-grid{grid-template-columns:1fr}.iv-bottom{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> Invest</h1>
+      <div class="page-sub">Trade NFTs &amp; the FluxCoin index with FC. Prices move on demand + the market.</div>
+    </div>
+    <span class="srv-tax-note" id="ivBal" hidden></span>
+  </div>
+
+  <div class="iv-grid">
+    <div class="iv-list" id="ivList"><div class="iv-empty">Loading market…</div></div>
+
+    <div class="iv-main">
+      <div class="iv-chartcard">
+        <div class="iv-chead">
+          <div class="iv-ctitle"><span class="em" id="cEm">🪙</span><div><div class="nm" id="cNm">—</div><div class="kd" id="cKd"></div></div></div>
+          <div class="iv-cprice"><div class="big" id="cPx">—</div><div class="chg" id="cChg"></div></div>
+        </div>
+        <div class="iv-canvas-wrap"><canvas id="chart"></canvas><div class="iv-chart-empty" id="cEmpty" hidden>No price history yet.</div></div>
+      </div>
+
+      <div class="iv-bottom">
+        <div class="iv-card iv-trade">
+          <h3 id="tradeTitle">Trade</h3>
+          <div class="seg"><button id="segBuy" class="on" onclick="setSide('buy')">Buy</button><button id="segSell" onclick="setSide('sell')">Sell</button></div>
+          <div class="iv-in"><input id="amt" type="number" min="0" step="any" placeholder="Amount"><span id="amtUnit" style="align-self:center;color:var(--text3);font-size:.7rem">FC</span></div>
+          <div class="iv-chips" id="chips"></div>
+          <button class="btn btn-primary iv-go" id="goBtn" onclick="doTrade()">Buy</button>
+          <div class="iv-est" id="est"></div>
+        </div>
+
+        <div class="iv-card">
+          <h3>💼 Portfolio</h3>
+          <div class="iv-pf" id="pf"><div class="iv-empty">No holdings yet.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function fmt(n){return Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2});}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+var ASSETS=[], CUR=null, SIDE='buy', FEE=0.02, BAL=0;
+
+function colorOf(id){ var a=ASSETS.find(function(x){return x.id===id}); return (a&&/^#/.test(a.color))?a.color:'#2ecc71'; }
+
+function renderList(){
+  var el=$('ivList'); if(!ASSETS.length){ el.innerHTML='<div class="iv-empty">Market unavailable.</div>'; return; }
+  el.innerHTML=ASSETS.map(function(a){
+    var ch=(a.change||0)*100, cls=ch>=0?'up':'down';
+    return '<div class="iv-row'+(CUR&&CUR.id===a.id?' on':'')+'" style="--accent:'+esc(a.color)+'" onclick="selectAsset(\''+esc(a.id)+'\')">'
+      +'<span class="iv-em">'+esc(a.emoji)+'</span>'
+      +'<div class="iv-meta"><div class="iv-name">'+esc(a.name)+'</div><div class="iv-kind">'+(a.kind==='flx'?'Currency':'NFT')+'</div></div>'
+      +'<div class="iv-px"><div class="p">'+fmt(a.price)+'</div><div class="c '+cls+'">'+(ch>=0?'+':'')+ch.toFixed(1)+'%</div></div></div>';
+  }).join('');
+}
+function renderHead(){
+  if(!CUR)return; var ch=(CUR.change||0)*100, cls=ch>=0?'up':'down';
+  $('cEm').textContent=CUR.emoji; $('cNm').textContent=CUR.name; $('cKd').textContent=CUR.kind==='flx'?'FluxCoin Index':'NFT · '+CUR.id;
+  $('cPx').textContent=fmt(CUR.price)+' FC';
+  $('cChg').textContent=(ch>=0?'▲ +':'▼ ')+ch.toFixed(2)+'%'; $('cChg').className='chg '+cls;
+  $('tradeTitle').textContent='Trade '+CUR.emoji+' '+CUR.name;
+}
+function drawChart(){
+  var cv=$('chart'); if(!cv||!CUR)return; var hist=CUR.hist||[];
+  var empty=$('cEmpty'); if(hist.length<2){ if(empty)empty.hidden=false; var c0=cv.getContext('2d'); c0.clearRect(0,0,cv.width,cv.height); return; } if(empty)empty.hidden=true;
+  var w=cv.clientWidth||cv.parentNode.clientWidth, h=cv.clientHeight||300, dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=w*dpr; cv.height=h*dpr; var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  var ps=hist.map(function(p){return p[1]}); var min=Math.min.apply(null,ps), max=Math.max.apply(null,ps); if(max===min){max+=max*0.01+1;min-=min*0.01+1;}
+  var pad=10, gh=h-2*pad, gw=w-2*pad, col=ps[ps.length-1]>=ps[0]?'#2ecc71':'#e74c3c';
+  function X(i){return pad+(i/(hist.length-1))*gw;} function Y(v){return pad+(1-(v-min)/(max-min))*gh;}
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,.05)'; ctx.lineWidth=1;
+  for(var g=0;g<=3;g++){ var yy=pad+gh*g/3; ctx.beginPath(); ctx.moveTo(pad,yy); ctx.lineTo(w-pad,yy); ctx.stroke(); }
+  // area
+  ctx.beginPath(); ctx.moveTo(X(0),Y(ps[0])); for(var i=1;i<hist.length;i++)ctx.lineTo(X(i),Y(ps[i]));
+  ctx.lineTo(X(hist.length-1),h-pad); ctx.lineTo(X(0),h-pad); ctx.closePath();
+  var grad=ctx.createLinearGradient(0,pad,0,h); grad.addColorStop(0,col+'40'); grad.addColorStop(1,col+'00'); ctx.fillStyle=grad; ctx.fill();
+  // line
+  ctx.beginPath(); ctx.moveTo(X(0),Y(ps[0])); for(var j=1;j<hist.length;j++)ctx.lineTo(X(j),Y(ps[j]));
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+}
+function renderPf(pf){
+  var el=$('pf'); if(!pf||!pf.positions||!pf.positions.length){ el.innerHTML='<div class="iv-empty">No holdings yet.</div>'; return; }
+  el.innerHTML=pf.positions.map(function(p){
+    var a=ASSETS.find(function(x){return x.id===p.id})||{emoji:'',name:p.id}; var pnl=Number(p.pnl), cls=pnl>=0?'up':'down';
+    return '<div class="iv-pos"><span>'+esc(a.emoji)+'</span><span class="nm">'+esc(a.name)+'</span><span class="v"><b>'+fmt(p.value)+' FC</b><br><span class="'+cls+'" style="font-size:.66rem">'+(pnl>=0?'+':'')+fmt(pnl)+'</span></span></div>';
+  }).join('')+'<div class="iv-pf-tot"><span>Total · P&L</span><span>'+fmt(pf.value)+' FC · <span class="'+(pf.pnl>=0?'up':'down')+'">'+(pf.pnl>=0?'+':'')+fmt(pf.pnl)+'</span></span></div>';
+}
+function setBal(b){ BAL=b; var e=$('ivBal'); if(e){ e.hidden=false; e.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9h4.5a2 2 0 0 1 0 4H9"/></svg> <span><b>'+fmt(b)+'</b> FC</span>'; } var sb=$('sbBal'); if(sb)sb.textContent=fmt(b); }
+
+function selectAsset(id){
+  var a=ASSETS.find(function(x){return x.id===id}); if(!a)return;
+  CUR=Object.assign({}, a, {hist:(CUR&&CUR.id===id?CUR.hist:null)});
+  renderList(); renderHead(); updateTradeUi();
+  fetch('/api/invest/history?asset='+encodeURIComponent(id),{credentials:'same-origin'})
+    .then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&CUR&&CUR.id===id){ CUR.hist=d.hist||[]; drawChart(); } }).catch(function(){});
+}
+function setSide(s){ SIDE=s; $('segBuy').classList.toggle('on',s==='buy'); $('segSell').classList.toggle('on',s==='sell'); $('segSell').classList.toggle('sell',s==='sell'); updateTradeUi(); }
+function curHolding(){ return (window.__PF&&window.__PF.positions||[]).find(function(p){return CUR&&p.id===CUR.id;})||null; }
+function updateTradeUi(){
+  var go=$('goBtn'); go.textContent=(SIDE==='buy'?'Buy ':'Sell ')+(CUR?CUR.emoji:''); go.classList.toggle('sell',SIDE==='sell');
+  $('amtUnit').textContent=SIDE==='buy'?'FC':'units';
+  var chips=$('chips');
+  if(SIDE==='buy'){ chips.innerHTML=['100','1000','10000','max'].map(function(v){return '<button onclick="chip(\''+v+'\')">'+(v==='max'?'Max':fmt(v))+'</button>'}).join(''); }
+  else { chips.innerHTML=['25','50','100'].map(function(v){return '<button onclick="chip(\''+v+'%\')">'+v+'%</button>'}).join(''); }
+  estimate();
+}
+function chip(v){
+  if(SIDE==='buy'){ $('amt').value = v==='max'?Math.floor(BAL):v; }
+  else { var hold=curHolding(); var u=hold?hold.units:0; var pct=parseFloat(v)/100; $('amt').value=+(u*pct).toFixed(6); }
+  estimate();
+}
+function estimate(){
+  var amt=parseFloat($('amt').value)||0, e=$('est'); if(!CUR||!amt){ e.textContent=''; return; }
+  if(SIDE==='buy'){ var net=amt*(1-FEE), units=net/CUR.price; e.textContent='≈ '+units.toFixed(4)+' units (after '+(FEE*100)+'% fee)'; }
+  else { var gross=amt*CUR.price, payout=Math.floor(gross*(1-FEE)); e.textContent='≈ '+fmt(payout)+' FC (after '+(FEE*100)+'% fee)'; }
+}
+function doTrade(){
+  if(!CUR)return; var amt=parseFloat($('amt').value)||0; if(!(amt>0)){ $('est').textContent='Enter an amount.'; return; }
+  var go=$('goBtn'); go.disabled=true;
+  var body=SIDE==='buy'?{asset:CUR.id,amount:Math.floor(amt)}:{asset:CUR.id,units:amt};
+  fetch('/api/invest/'+SIDE,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
+    .then(function(r){return r.json()}).then(function(j){
+      go.disabled=false;
+      if(j&&j.error){ $('est').textContent='❌ '+j.error; return; }
+      if(j&&j.bal!=null)setBal(j.bal);
+      $('amt').value=''; $('est').textContent = SIDE==='buy' ? '✅ Bought '+Number(j.units).toFixed(4)+' units' : '✅ Sold for '+fmt(j.payout)+' FC ('+(j.pnl>=0?'+':'')+fmt(j.pnl)+')';
+      load();
+    }).catch(function(){ go.disabled=false; $('est').textContent='❌ Trade failed'; });
+}
+
+function load(){
+  fetch('/api/invest',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){
+    if(!d){ $('ivList').innerHTML='<div class="iv-empty">Failed to load.</div>'; return; }
+    ASSETS=d.assets||[]; FEE=d.fee||0.02; window.__PF=d.portfolio; if(d.bal!=null)setBal(d.bal);
+    if(!CUR && ASSETS.length) selectAsset(ASSETS[0].id);
+    else if(CUR){ var a=ASSETS.find(function(x){return x.id===CUR.id}); if(a){ CUR.price=a.price; CUR.change=a.change; } }
+    renderList(); renderHead(); renderPf(d.portfolio); updateTradeUi();
+  }).catch(function(){ $('ivList').innerHTML='<div class="iv-empty">Failed to load.</div>'; });
+}
+
+$('amt').addEventListener('input',estimate);
+// Live price stream (WS). Registered once; pjax re-runs this file but the listener is guarded.
+if(!window.__ivWs){ window.__ivWs=1;
+  window.addEventListener('sg:ws',function(e){ var d=e.detail; if(!d||d.type!=='prices')return;
+    var map={}; (d.assets||[]).forEach(function(p){map[p.id]=p.price;});
+    ASSETS.forEach(function(a){ if(map[a.id]!=null){ var open=a.open||a.price; a.price=map[a.id]; a.change=open?(a.price-open)/open:0; } });
+    if(CUR&&map[CUR.id]!=null){ CUR.price=map[CUR.id]; var op=CUR.open||CUR.price; CUR.change=op?(CUR.price-op)/op:0; (CUR.hist=CUR.hist||[]).push([Date.now(),CUR.price]); if(CUR.hist.length>720)CUR.hist=CUR.hist.slice(-720); drawChart(); renderHead(); }
+    renderList();
+  });
+  window.addEventListener('resize',function(){ if(CUR)drawChart(); });
+}
+load();
+</script>
+</body>
+</html>

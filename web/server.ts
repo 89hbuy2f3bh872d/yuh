@@ -61,7 +61,8 @@ const admin = new AdminPanel(db, cfg.prefix ?? "&");
 // (which require()s the entry) can load it. Connect Mongo, then load custom tiers.
 db.connect()
   .then(() => cb.loadCustomTiers())
-  .then(() => console.log("[web] Mongo connected + custom tiers loaded"))
+  .then(() => investInit())
+  .then(() => console.log("[web] Mongo connected + custom tiers + invest loaded"))
   .catch((e) => console.error("[web] Mongo init failed:", e?.message));
 
 // ── tiny helpers ────────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ const REDIRECT_URI = `${BASE_URL}/oauth/callback`;
 const OWNERS: string[] = Array.isArray(cfg.owners) ? cfg.owners.map(String) : [];
 const oauthStates = new Map<string, number>(); // state → expiry
 const SIDEBAR_TPL = (() => { try { return readFileSync(join(GAMES_DIR, "partials", "sidebar.html"), "utf8"); } catch { return ""; } })();
-const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "leaderboard", "settings", "misc", "notifications"];
+const PAGE_IDS = ["lobby", "case-battle", "slots", "house", "invest", "leaderboard", "settings", "misc", "notifications"];
 
 function esc(s: any): string { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)); }
 function fluxerAvatarUrl(userId: string, hash: string | null, size = 64): string {
@@ -211,6 +212,24 @@ function xferOverLimit(uid: string): boolean {
 }
 function xferRecord(uid: string) { const arr = xferLog.get(uid) || []; arr.push(Date.now()); xferLog.set(uid, arr); }
 setInterval(() => { const cut = Date.now() - 3_600_000; for (const [k, arr] of xferLog) { const f = arr.filter(t => t > cut); if (f.length) xferLog.set(k, f); else xferLog.delete(k); } }, 600_000);
+
+// Slots pay-on-collect: the bet is DEDUCTED at spin (STDB), the win is held here and
+// only CREDITED when the client finishes the animation and calls /api/slots/collect —
+// so the balance never jumps "in advance" (esp. on bonus buys). Server-authoritative:
+// the win is decided at spin, just paid later. A sweep credits stale wins so a closed
+// tab never loses one; the next spin also auto-collects the previous.
+const pendingSlots = new Map<string, { gid: string; win: number; tax: number; at: number }>();
+async function slotsCollect(uid: string): Promise<number> {
+  const p = pendingSlots.get(uid); if (!p) return 0;
+  pendingSlots.delete(uid);
+  if (p.win > 0) {
+    await stdb.creditWin(uid, p.win, p.gid, p.tax).catch(() => {});
+    (db as any).recordServerPayout?.(p.gid, p.win, p.tax).catch(() => {});
+    broadcastServerPlay(p.gid, { dPayout: p.win, dTax: p.tax, big: p.win });
+  }
+  return p.win;
+}
+setInterval(() => { const cut = Date.now() - 120_000; for (const [uid, p] of pendingSlots) if (p.at < cut) slotsCollect(uid).catch(() => {}); }, 60_000);
 
 // ── per-server tax (winnings cut → server bank) ──────────────────────────────
 // Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
@@ -297,6 +316,90 @@ function normalizeFluxerInvite(raw: any): string | null {
   s = s.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
   if (!/^fluxer\.gg\/[A-Za-z0-9._~%\-\/?=&#]{1,200}$/i.test(s)) return null;
   return "https://" + s;
+}
+
+// ── investing: market price engine (single-instance; the web service is the only
+//    writer, the bot trades via /internal/invest/*). Mark-to-market against a
+//    mean-reverting random walk + demand pressure; a 2% trade fee is a sink so the
+//    system stays net-deflationary and bounded (plus STDB's hard balance clamps). ──
+type Asset = { _id: string; kind: string; name: string; emoji: string; color: string; price: number; baseline: number; vol: number; bias: number; supply: number; prevPrice: number; hist: [number, number][]; updatedAt: number };
+const INVEST = { assets: new Map<string, Asset>(), ready: false };
+const INVEST_FEE = 0.02, INVEST_TICK_MS = 25_000, INVEST_HIST_MAX = 720;
+const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+async function investInit() {
+  const rows: any[] = await db.getAssets().catch(() => []);
+  for (const a of rows) INVEST.assets.set(a._id, { bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], ...a } as Asset);
+  INVEST.ready = true;
+  setInterval(() => { try { investTick(); } catch (e: any) { console.error("[invest] tick", e?.message); } }, INVEST_TICK_MS);
+  console.log(`[invest] ${INVEST.assets.size} assets live`);
+}
+function investTick() {
+  const now = Date.now();
+  for (const a of INVEST.assets.values()) {
+    a.prevPrice = a.price;
+    const meanRev = 0.035 * (a.baseline - a.price) / a.baseline; // pull back toward baseline
+    const rnd = (Math.random() * 2 - 1) * a.vol;
+    let drift = meanRev + rnd + (a.bias || 0);
+    drift = Math.max(-0.22, Math.min(0.22, drift));
+    a.price = Math.max(0.5, Math.min(1e9, Math.round(a.price * (1 + drift) * 100) / 100));
+    a.bias = (a.bias || 0) * 0.55; // decay demand pressure
+    (a.hist ||= []).push([now, a.price]);
+    if (a.hist.length > INVEST_HIST_MAX) a.hist = a.hist.slice(-INVEST_HIST_MAX);
+    a.updatedAt = now;
+  }
+  db.saveAssets([...INVEST.assets.values()]).catch(() => {});
+  const msg = JSON.stringify({ type: "prices", assets: [...INVEST.assets.values()].map(a => ({ id: a._id, price: a.price, prev: a.prevPrice })) });
+  for (const ws of wsClients) { try { ws.send(msg); } catch {} }
+}
+function investNudge(a: Asset, side: "buy" | "sell", spendFC: number) {
+  const mkt = a.price * Math.max(1, a.supply) + 5000;
+  const k = Math.min(0.12, (spendFC / mkt) * 0.6);
+  a.bias = Math.max(-0.2, Math.min(0.2, (a.bias || 0) + (side === "buy" ? k : -k)));
+}
+function assetView(a: Asset) {
+  const open = a.hist && a.hist.length ? a.hist[0][1] : a.price;
+  return { id: a._id, kind: a.kind, name: a.name, emoji: a.emoji, color: a.color, price: a.price, prev: a.prevPrice, open, change: open ? (a.price - open) / open : 0 };
+}
+async function investPortfolio(uid: string) {
+  const h: any = await db.getHoldings(uid).catch(() => ({}));
+  let value = 0, cost = 0;
+  const positions = Object.keys(h).map(id => {
+    const a = INVEST.assets.get(id); const pos = h[id]; const px = a ? a.price : 0;
+    const v = pos.u * px; value += v; cost += pos.c;
+    return { id, units: r6(pos.u), cost: Math.round(pos.c), price: px, value: Math.round(v), pnl: Math.round(v - pos.c) };
+  }).filter(p => p.units > 0);
+  return { positions, value: Math.round(value), cost: Math.round(cost), pnl: Math.round(value - cost) };
+}
+async function investBuy(uid: string, assetId: string, spendFC: number) {
+  const a = INVEST.assets.get(assetId); if (!a) return { error: "Unknown asset" };
+  spendFC = Math.floor(Number(spendFC));
+  if (!(spendFC >= 10)) return { error: "Minimum buy is 10 FC" };
+  if (spendFC > 1_000_000_000) return { error: "Max 1,000,000,000 FC per buy" };
+  try { await stdb.deduct(uid, spendFC); } catch { return { error: "Insufficient balance" }; }
+  const fee = Math.floor(spendFC * INVEST_FEE), net = spendFC - fee, units = r6(net / a.price);
+  const h: any = await db.getHoldings(uid).catch(() => ({}));
+  const cur = h[assetId] || { u: 0, c: 0 };
+  cur.u = r6(cur.u + units); cur.c = Math.round(cur.c + spendFC); h[assetId] = cur;
+  await db.setHoldings(uid, h);
+  a.supply = r6((a.supply || 0) + units); investNudge(a, "buy", spendFC);
+  return { ok: true, units, price: a.price, fee, spent: spendFC, bal: stdb.getBalance(uid) };
+}
+async function investSell(uid: string, assetId: string, unitsArg: number | "all") {
+  const a = INVEST.assets.get(assetId); if (!a) return { error: "Unknown asset" };
+  const h: any = await db.getHoldings(uid).catch(() => ({}));
+  const cur = h[assetId];
+  if (!cur || cur.u <= 0) return { error: "You don't hold any of that" };
+  let sellU = unitsArg === "all" ? cur.u : Math.min(cur.u, Number(unitsArg));
+  if (!(sellU > 0)) return { error: "Invalid amount" };
+  const gross = sellU * a.price, fee = Math.floor(gross * INVEST_FEE), payout = Math.max(0, Math.floor(gross - fee));
+  const costPortion = Math.round(cur.c * (sellU / cur.u));
+  cur.u = r6(cur.u - sellU); cur.c = Math.max(0, cur.c - costPortion);
+  if (cur.u <= 1e-6) delete h[assetId]; else h[assetId] = cur;
+  await db.setHoldings(uid, h);
+  if (payout > 0) await stdb.credit(uid, payout).catch(() => {});
+  a.supply = r6(Math.max(0, (a.supply || 0) - sellU)); investNudge(a, "sell", gross);
+  return { ok: true, units: r6(sellU), price: a.price, payout, pnl: payout - costPortion, bal: stdb.getBalance(uid) };
 }
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
@@ -466,15 +569,23 @@ const app = new Elysia()
     if (cost > 50_000_000) return { error: "Bet too large for a buy" };
     let result;
     try { result = Slots.spin(game.id, bet, buy); } catch { set.status = 500; return { error: "Spin failed" }; }
-    // one atomic settle: take cost, pay winnings minus the server's tax on profit
+    await slotsCollect(uid); // settle any uncollected previous win first
+    // DEDUCT the bet/buy cost now; the WIN is paid on /api/slots/collect (after the
+    // animation), so the balance doesn't update "in advance".
+    try { await stdb.deduct(uid, cost); }
+    catch (e: any) { return { error: e?.message === "insufficient" ? "Insufficient balance" : "Spin failed" }; }
     const tax = taxOnProfit(result.totalWin - cost, srv.taxBps);
-    try { await stdb.settleWin(uid, cost, result.totalWin, srv.gid, tax); }
-    catch (e: any) { return { error: e?.message === "insufficient" ? "Insufficient balance" : "Settle failed" }; }
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
-    (db as any).recordServerPayout?.(srv.gid, result.totalWin, tax).catch(() => {});
-    broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost, dPayout: result.totalWin, dTax: tax, big: result.totalWin });
-    return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid) };
+    broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost });
+    pendingSlots.set(uid, { gid: srv.gid, win: result.totalWin, tax, at: Date.now() });
+    return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid), pendingWin: result.totalWin };
+  })
+  // Pay out the win held from the last spin (called when the animation finishes).
+  .post("/api/slots/collect", async ({ request, set }) => {
+    const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+    const collected = await slotsCollect(uid);
+    return { ok: true, collected, balance: stdb.getBalance(uid) };
   })
 
   // ── house games (Plinko / Coinflip / Double = stateless; Mines / HiLo = stateful)
@@ -593,6 +704,14 @@ const app = new Elysia()
       console.log(`[audit] role-buy ${uid}@${gid}: -${price} FC, bank +${toBank}`);
       return { ok: true, bal: stdb.getBalance(uid), banked: toBank };
     })
+    // investing — same engine + data as the website, reached by the bot's &invest command
+    .post("/invest/me", async ({ body }) => { const uid = String((body as any)?.uid || ""); if (!/^\d{17,20}$/.test(uid)) return { error: "bad uid" }; return { assets: [...INVEST.assets.values()].map(assetView), portfolio: await investPortfolio(uid), bal: stdb.getBalance(uid) }; })
+    .post("/invest/trade", async ({ body }) => {
+      const b = body as any; const uid = String(b?.uid || ""), asset = String(b?.asset || ""); const side = b?.side === "sell" ? "sell" : "buy";
+      if (!/^\d{17,20}$/.test(uid)) return { error: "bad uid" };
+      if (side === "buy") return investBuy(uid, asset, Math.floor(Number(b?.amount)));
+      return investSell(uid, asset, b?.amount === "all" ? "all" : Number(b?.amount));
+    })
   )
 
   // ── static assets ──────────────────────────────────────────────────────────
@@ -684,6 +803,7 @@ app.get("/s/:token", async ({ params, set, cookie, request }) => {
 const PAGES: [string, string, string][] = [
   ["/", "lobby.html", "lobby"], ["/lobby", "lobby.html", "lobby"],
   ["/slots", "slots.html", "slots"], ["/house", "house.html", "house"],
+  ["/invest", "invest.html", "invest"],
   ["/leaderboard", "leaderboard.html", "leaderboard"],
   ["/settings", "settings.html", "settings"], ["/misc", "misc.html", "misc"],
   ["/notifications", "notifications.html", "notifications"],
@@ -1194,6 +1314,33 @@ app.get("/api/users/search", async ({ request, query, set }) => {
   let rows: any[] = [];
   try { rows = await db.searchUsers((query as any).q || "", 25, uid); } catch (e) { console.error("[users/search]", e); }
   return { users: rows.map((r: any) => ({ id: r._id, tag: r.tag || null, avatar: r.av || fluxerAvatarUrl(r._id, null) })) };
+});
+
+// ── investing (assets + portfolio; prices stream over WS as type:'prices') ───
+app.get("/api/invest", async ({ request, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  return { assets: [...INVEST.assets.values()].map(assetView), portfolio: await investPortfolio(uid), bal: stdb.getBalance(uid), fee: INVEST_FEE };
+});
+app.get("/api/invest/history", async ({ request, query, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const a = INVEST.assets.get(String((query as any)?.asset || ""));
+  if (!a) { set.status = 404; return { error: "Unknown asset" }; }
+  return { id: a._id, hist: a.hist || [] };
+});
+app.post("/api/invest/buy", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (rl(rlMoney, uid, 400)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const b = body as any; const r: any = await investBuy(uid, String(b?.asset || ""), Math.floor(Number(b?.amount)));
+  if (r?.error) set.status = 400;
+  return r;
+});
+app.post("/api/invest/sell", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (rl(rlMoney, uid, 400)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const b = body as any; const units = (b?.units === "all" || b?.all) ? "all" : Number(b?.units);
+  const r: any = await investSell(uid, String(b?.asset || ""), units);
+  if (r?.error) set.status = 400;
+  return r;
 });
 
 // ── Bun server tuning for a cheap VPS (high concurrency, low memory) ──────────
