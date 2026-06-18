@@ -160,6 +160,9 @@ function runRound(cfg, bet, buy) {
     const multSum = s.mults.reduce((a, m) => a + m.val, 0);
     let displayTotal = 0, added = 0, applied = 0;
     if (useGlobal) {
+      // Super/Hidden = global multiplier: on a WINNING spin, every multiplier anywhere on
+      // the board accrues into the global (placement doesn't matter), applied to the whole
+      // bonus win at the end. No win that spin → its multipliers don't count.
       if (s.baseWin > 0 && multSum > 0) { globalMult += multSum; added = multSum; }
       displayTotal = s.baseWin + s.scatterWin;     // shown pre-global; multiplied at the end
       superSum += displayTotal;

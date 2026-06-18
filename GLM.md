@@ -158,6 +158,19 @@ All multipliers on the board count regardless of placement — they always survi
 tumble to the final grid, where `gridMultCells` reads them. Math/RTP unchanged
 (~89.7/87.2/86.9% candy/olympus/bandit); this was purely a reveal/field-plumbing fix.
 
+### Super/Hidden global multiplier — verified + hardened (design locked)
+Rule (confirmed with the owner): on a **winning** spin (`baseWin>0`), **every** multiplier
+on the board adds to the global, regardless of placement; multipliers on **non-winning**
+spins do **not** count (briefly tried collect-all → reverted, it's not the wanted design).
+Simulated 3000 super rounds × 3 games (~30k winning spins): **every** winning spin that
+shows a multiplier yields `multAdded>0` → server math is 100% correct; the global and the
+paid `totalWin` (`superSum*globalMult`) already include it. The "didn't add on screen"
+report is therefore client/deploy-side: hardened `animateSpin` so the super reveal fires on
+`multAdded>0` alone, recomputes mult positions from the final grid if `sp.mults` is empty
+(`gridMults()`), and force-syncs `#gmultVal` to `sp.globalMult` so the meter can never
+silently skip. NOTE: the page HTML is browser/Cloudflare-cached — after deploy the client
+must hard-refresh (Ctrl/Cmd+Shift+R) to pick up new inline `<script>`.
+
 ### UI/UX notes (post-overhaul)
 - Recessed "glassy" reel window (`.reel-stage`): inner shadows, top sheen, bottom vignette
   so symbols sit behind glass. `overflow:hidden` clips spin-out cells at the bottom edge.
