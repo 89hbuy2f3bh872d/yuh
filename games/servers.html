@@ -81,6 +81,49 @@
 .svc-vote a{color:var(--gold);font-weight:700;text-decoration:underline}
 .svc-vote .icon{width:16px;height:16px;color:var(--gold);flex:none}
 @media(max-width:640px){.srv-cards{grid-template-columns:1fr}}
+
+/* ── Bank tools modal (reworked) ────────────────────────────────────── */
+.bt-dlg{width:min(420px,94vw);max-height:90vh;overflow-y:auto;background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--surface) 94%,#000));border:1px solid var(--border);border-radius:18px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 70px -20px rgba(0,0,0,.8);padding:0;overflow:hidden}
+.bt-head{position:relative;padding:1.2rem 1.2rem 1rem;background:radial-gradient(120% 100% at 50% 0%,color-mix(in srgb,var(--gold) 20%,transparent),transparent 70%);border-bottom:1px solid var(--border)}
+.bt-head .bt-h-row{display:flex;align-items:center;gap:.55rem}
+.bt-head .bt-close{margin-left:auto;width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;color:var(--text3);background:transparent;border:none;cursor:pointer;transition:color .15s,background .15s}
+.bt-head .bt-close:hover{color:var(--text);background:var(--surface2)}
+.bt-head .bt-close .icon{width:18px;height:18px}
+.bt-srv{display:flex;align-items:center;gap:.5rem;min-width:0}
+.bt-srv-av{width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:.85rem;flex:none}
+.bt-srv-name{font-size:.84rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt-balance{margin-top:.8rem;text-align:center}
+.bt-balance .bt-bal-lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.bt-balance .bt-bal-val{font-size:2rem;font-weight:900;color:var(--gold);line-height:1.1;margin-top:.1rem;font-variant-numeric:tabular-nums}
+.bt-balance .bt-bal-val small{font-size:.85rem;color:var(--text3);font-weight:700;margin-left:.15rem}
+.bt-body{padding:.5rem;display:flex;flex-direction:column;gap:.5rem}
+.bt-action{background:var(--surface2);border:1px solid var(--border);border-radius:13px;padding:.7rem .75rem;display:flex;flex-direction:column;gap:.5rem;transition:border-color .15s,background .15s}
+.bt-action:focus-within{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 6%,var(--surface2))}
+.bt-act-head{display:flex;align-items:center;gap:.5rem}
+.bt-act-ic{width:30px;height:30px;flex:none;border-radius:8px;display:grid;place-items:center}
+.bt-act-ic .icon{width:16px;height:16px}
+.bt-act-ic.wallet{background:color-mix(in srgb,#2ecc71 16%,transparent);color:#2ecc71}
+.bt-act-ic.transfer{background:color-mix(in srgb,#3b9dff 16%,transparent);color:#3b9dff}
+.bt-act-ic.distribute{background:color-mix(in srgb,#a78bfa 16%,transparent);color:#a78bfa}
+.bt-act-title{font-size:.78rem;font-weight:800;line-height:1.1}
+.bt-act-sub{font-size:.62rem;color:var(--text3);line-height:1.3}
+.bt-input-row{display:flex;align-items:center;gap:.4rem}
+.bt-input{flex:1;min-width:0;padding:.5rem .6rem;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:.86rem;font-variant-numeric:tabular-nums;transition:border-color .15s}
+.bt-input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+.bt-input::placeholder{color:var(--text3)}
+.bt-go{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;height:36px;padding:0 .8rem;border-radius:9px;border:none;font-size:.74rem;font-weight:800;cursor:pointer;white-space:nowrap;transition:transform .08s,filter .15s,opacity .15s}
+.bt-go .icon{width:14px;height:14px}
+.bt-go:active{transform:scale(.96)}
+.bt-go:disabled{opacity:.5;cursor:wait}
+.bt-go.wallet{background:linear-gradient(180deg,#34d97a,#22c55e);color:#04230f}
+.bt-go.transfer{background:linear-gradient(180deg,#52a8ff,#3b9dff);color:#04182e}
+.bt-go.distribute{background:linear-gradient(180deg,#b69bff,#a78bfa);color:#1a1030}
+.bt-go:hover:not(:disabled){filter:brightness(1.08)}
+.bt-status{margin:.1rem .8rem .8rem;min-height:1.1rem;font-size:.74rem;font-weight:600;line-height:1.4;text-align:center;transition:opacity .15s}
+.bt-status.good{color:#2ecc71}
+.bt-status.bad{color:var(--red,#e74c3c)}
+.bt-status.idle{color:var(--text3)}
+@media(max-width:420px){.bt-bal-val{font-size:1.7rem}}
 </style>
 </head>
 <body>
@@ -166,42 +209,52 @@ function openBankTools(id){
   var others=Object.keys(SRV).filter(function(k){return k!==id;}).map(function(k){return SRV[k];});
   var dataOpts=others.map(function(o){return '<option value="'+esc(o.id)+'">'+esc(o.name)+'</option>';}).join('');
   var back=document.createElement('div'); back.className='sg-dlg-back';
-  back.innerHTML='<div class="sg-dlg bank-dlg" onclick="event.stopPropagation()">'
-    +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Bank tools</div>'
-    +'<div class="sg-dlg-bank">Bank: <b id="btBank">'+fmt(s.bank)+' FC</b></div>'
-    +'<label class="sg-dlg-lab">Withdraw to your wallet</label>'
-    +'<div class="sg-dlg-row"><input id="btWAmt" type="number" min="1" placeholder="Amount from bank"><button class="btn btn-primary" id="btWBtn">Withdraw</button></div>'
-    +'<div class="sg-dlg-hint">5% bank fee · max 50,000 FC/day. You receive 95% to your wallet.</div>'
-    +'<label class="sg-dlg-lab" style="margin-top:.8rem">Send to another server’s bank</label>'
-    +'<div class="sg-dlg-row"><input id="btToGid" list="btSrvList" type="text" placeholder="Destination server ID"><input id="btTAmt" type="number" min="1" placeholder="Amount" style="max-width:130px"></div>'
-    +'<datalist id="btSrvList">'+dataOpts+'</datalist>'
-    +'<div class="sg-dlg-row"><button class="btn btn-secondary" id="btTBtn" style="flex:1">Send bank → bank</button></div>'
-    +'<div class="sg-dlg-hint">Moves FC straight from this bank into the other server’s bank.</div>'
-    +'<label class="sg-dlg-lab" style="margin-top:.8rem">Pay every registered member</label>'
-    +'<div class="sg-dlg-row"><input id="btDAmt" type="number" min="1" placeholder="FC per member"><button class="btn btn-secondary" id="btDBtn">Pay everyone</button></div>'
-    +'<div class="sg-dlg-hint">Each registered member gets that amount — if the bank covers the total.</div>'
-    +'<div class="sg-dlg-msg" id="btMsg"></div>'
-    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="btClose">Close</button></div>'
+  back.innerHTML='<div class="bt-dlg" onclick="event.stopPropagation()">'
+    +'<div class="bt-head">'
+      +'<div class="bt-h-row"><div class="bt-srv"><div class="bt-srv-av">'+esc(initials(s.name))+'</div><div class="bt-srv-name">'+esc(s.name)+'</div></div>'
+      +'<button class="bt-close" title="Close"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
+      +'<div class="bt-balance"><div class="bt-bal-lbl">Server bank</div><div class="bt-bal-val" id="btBank">'+fmt(s.bank)+'<small>FC</small></div></div>'
+    +'</div>'
+    +'<div class="bt-body">'
+      +'<div class="bt-action">'
+        +'<div class="bt-act-head"><div class="bt-act-ic wallet"><svg class="icon" viewBox="0 0 24 24"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3a2 2 0 1 1 0-4h3"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg></div>'
+          +'<div><div class="bt-act-title">Withdraw to wallet</div><div class="bt-act-sub">5% fee · max 50,000 FC/day · you receive 95%</div></div></div>'
+        +'<div class="bt-input-row"><input id="btWAmt" class="bt-input" type="number" min="1" placeholder="Amount from bank"><button class="bt-go wallet" id="btWBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7 7 7-7"/></svg>Withdraw</button></div>'
+      +'</div>'
+      +'<div class="bt-action">'
+        +'<div class="bt-act-head"><div class="bt-act-ic transfer"><svg class="icon" viewBox="0 0 24 24"><path d="M7 10 4 7l3-3"/><path d="M4 7h13a4 4 0 0 1 0 8h-1"/><path d="M17 14l3 3-3 3"/></svg></div>'
+          +'<div><div class="bt-act-title">Send to another server</div><div class="bt-act-sub">Moves FC straight into the destination bank · no fee</div></div></div>'
+        +'<div class="bt-input-row"><input id="btToGid" class="bt-input" list="btSrvList" type="text" placeholder="Destination server"><input id="btTAmt" class="bt-input" type="number" min="1" placeholder="Amount" style="max-width:110px"></div>'
+        +'<datalist id="btSrvList">'+dataOpts+'</datalist>'
+        +'<div class="bt-input-row"><button class="bt-go transfer" id="btTBtn" style="flex:1"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 14 0M13 6l6 6-6 6"/></svg>Send bank → bank</button></div>'
+      +'</div>'
+      +'<div class="bt-action">'
+        +'<div class="bt-act-head"><div class="bt-act-ic distribute"><svg class="icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>'
+          +'<div><div class="bt-act-title">Pay every member</div><div class="bt-act-sub">Each registered member gets this amount · bank must cover the total</div></div></div>'
+        +'<div class="bt-input-row"><input id="btDAmt" class="bt-input" type="number" min="1" placeholder="FC per member"><button class="bt-go distribute" id="btDBtn"><svg class="icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7 7 7-7"/></svg>Pay all</button></div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="bt-status idle" id="btMsg">Choose an action above.</div>'
   +'</div>';
   function close(){ try{document.body.removeChild(back);}catch(e){} }
   back.addEventListener('click',close);
   document.body.appendChild(back);
-  back.querySelector('#btClose').onclick=close;
+  back.querySelector('.bt-close').onclick=close;
   var msg=back.querySelector('#btMsg');
-  function setBank(v){ if(v==null)return; s.bank=v; var b=back.querySelector('#btBank'); if(b)b.textContent=fmt(v)+' FC'; var be=document.getElementById('bank-'+id); if(be)be.innerHTML=fmt(v)+'<small>FC</small>'; patchCard(s); }
-  function show(cls,t){ msg.className='sg-dlg-msg'+(cls?' '+cls:''); msg.textContent=t; }
-  function go(btn,url,body,ok){ btn.disabled=true; show('','…');
+  function setBank(v){ if(v==null)return; s.bank=v; var b=back.querySelector('#btBank'); if(b)b.innerHTML=fmt(v)+'<small>FC</small>'; var be=document.getElementById('bank-'+id); if(be)be.innerHTML=fmt(v)+'<small>FC</small>'; patchCard(s); }
+  function show(cls,t){ msg.className='bt-status '+cls; msg.textContent=t; }
+  function go(btn,url,body,ok){ btn.disabled=true; show('idle','Working...');
     fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(j){ btn.disabled=false;
         if(j&&j.ok){ show('good',ok(j)); setBank(j.fromBank!=null?j.fromBank:j.bank); }
         else show('bad',(j&&j.error)||'Failed');
       }).catch(function(){ btn.disabled=false; show('bad','Network error'); });
   }
-  back.querySelector('#btWBtn').onclick=function(){ var a=Math.floor(+back.querySelector('#btWAmt').value||0); if(!(a>0))return show('bad','Enter an amount');
-    go(this,'/api/server/bank/withdraw',{gid:id,amount:a},function(j){return 'Withdrew '+fmt(j.net)+' FC (5% fee '+fmt(j.fee)+'). '+fmt(j.remainingToday)+' left today.';}); };
+  back.querySelector('#btWBtn').onclick=function(){ var a=Math.floor(+back.querySelector('#btWAmt').value||0); if(!(a>0))return show('bad','Enter an amount to withdraw');
+    go(this,'/api/server/bank/withdraw',{gid:id,amount:a},function(j){return 'Withdrew '+fmt(j.net)+' FC · fee '+fmt(j.fee)+' · '+fmt(j.remainingToday)+' left today.';}); };
   back.querySelector('#btTBtn').onclick=function(){ var to=(back.querySelector('#btToGid').value||'').trim(); var a=Math.floor(+back.querySelector('#btTAmt').value||0);
-    if(!to)return show('bad','Enter a destination server ID'); if(!(a>0))return show('bad','Enter an amount');
-    go(this,'/api/server/bank/transfer',{fromGid:id,toGid:to,amount:a},function(j){return 'Sent '+fmt(a)+' FC to that server’s bank.';}); };
+    if(!to)return show('bad','Choose a destination server'); if(!(a>0))return show('bad','Enter an amount');
+    go(this,'/api/server/bank/transfer',{fromGid:id,toGid:to,amount:a},function(j){return 'Sent '+fmt(a)+' FC to that server bank.';}); };
   back.querySelector('#btDBtn').onclick=function(){ var a=Math.floor(+back.querySelector('#btDAmt').value||0); if(!(a>0))return show('bad','Enter FC per member');
     if(!confirm('Pay '+fmt(a)+' FC to every registered member of this server?'))return;
     go(this,'/api/server/bank/distribute',{gid:id,amount:a},function(j){return 'Paid '+fmt(j.perUser)+' FC to '+fmt(j.users)+' members ('+fmt(j.total)+' FC total).';}); };
