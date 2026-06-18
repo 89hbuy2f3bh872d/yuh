@@ -7,30 +7,37 @@
 <link rel="stylesheet" href="/assets/css/app.css">
 <link rel="stylesheet" href="/assets/css/house.css">
 <style>
-/* Chicken Road */
-.cr-road{display:flex;overflow-x:auto;border-radius:14px;background:linear-gradient(180deg,#1b2030,#0f1320);min-height:300px;scroll-behavior:smooth;border:1px solid var(--border)}
-.cr-empty{margin:auto;color:var(--text3);font-size:.86rem;padding:2rem;text-align:center}
-.cr-lane{flex:0 0 96px;display:flex;flex-direction:column;align-items:center;border-right:2px dashed rgba(255,255,255,.07);position:relative;padding:.55rem 0}
-.cr-lane.curb,.cr-lane.finish{flex-basis:80px;background:repeating-linear-gradient(45deg,#2a3140,#2a3140 9px,#222835 9px,#222835 18px)}
-.cr-lane.curb{border-right:4px solid #3a4456}.cr-lane.finish{border-right:0;justify-content:center}
-.cr-mult{font-size:.74rem;font-weight:800;color:var(--text2);background:rgba(0,0,0,.4);border-radius:99px;padding:.12rem .55rem;margin-bottom:.4rem;white-space:nowrap}
+/* Chicken Road — fixed viewport, the road slides under the chicken (no scrollbar) */
+.cr-view{position:relative;height:312px;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#10141f,#0a0d15);border:1px solid var(--border)}
+.cr-track{display:flex;height:100%;transition:transform .34s cubic-bezier(.3,1,.4,1);will-change:transform}
+.cr-empty{margin:auto;color:var(--text3);font-size:.84rem;padding:2rem;text-align:center;align-self:center}
+.cr-lane{flex:0 0 92px;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:linear-gradient(180deg,#23272f,#181b22);border-right:3px dashed rgba(255,221,0,.16);padding-top:.55rem}
+.cr-lane.curb,.cr-lane.finish{background:linear-gradient(180deg,#1c3a25,#13291b)}
+.cr-lane.curb{border-right:4px solid rgba(255,255,255,.12)}.cr-lane.finish{border-right:0}
+.cr-mult{font-size:.72rem;font-weight:800;color:#cfd6e4;background:rgba(0,0,0,.42);border-radius:99px;padding:.12rem .5rem;white-space:nowrap;z-index:2}
 .cr-zone{flex:1;width:100%;position:relative;display:flex;align-items:center;justify-content:center}
-.cr-line{position:absolute;left:50%;top:6px;bottom:6px;width:0;border-left:3px dashed rgba(255,221,0,.4);transform:translateX(-50%)}
-.cr-lane.done{background:linear-gradient(180deg,rgba(34,197,94,.16),rgba(34,197,94,.04))}
-.cr-lane.done .cr-mult{color:#37e07a;background:rgba(34,197,94,.18)}
-.cr-lane.done .cr-line{border-color:rgba(34,197,94,.35)}
-.cr-lane.dead{background:linear-gradient(180deg,rgba(239,68,68,.24),rgba(239,68,68,.05))}
-.cr-lane.cashed{background:linear-gradient(180deg,rgba(241,196,15,.22),rgba(241,196,15,.05))}
-.cr-lane.next .cr-mult{color:var(--gc,#f97316);background:rgba(249,115,22,.18);box-shadow:0 0 0 1px var(--gc,#f97316) inset}
-.cr-chk{font-size:2.1rem;line-height:1;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55));z-index:3}
-.cr-block{position:absolute;bottom:5px;font-size:1.05rem;z-index:1}
-.cr-car{position:absolute;font-size:2rem;z-index:2;animation:crCar .35s ease}
-@keyframes crCar{from{transform:translateY(-46px) scale(.7);opacity:0}to{transform:none;opacity:1}}
-.cr-flag{font-size:1.9rem}
-@keyframes crHop{0%{transform:translateY(0)}45%{transform:translateY(-20px) scale(1.05)}100%{transform:translateY(0)}}
-.cr-hop{animation:crHop .26s ease}
-.cr-diff .seg-b{display:flex;flex-direction:column;line-height:1.1;gap:1px;padding:.35rem .5rem}
-.cr-diff .seg-b small{font-size:.56rem;opacity:.72;font-weight:600}
+.cr-line{position:absolute;left:50%;top:4px;bottom:22px;width:0;border-left:3px dashed rgba(255,221,0,.2);transform:translateX(-50%)}
+.cr-foot{font-size:.55rem;font-weight:800;letter-spacing:.07em;color:var(--text3);padding-bottom:.4rem}
+.cr-lane.done{background:linear-gradient(180deg,#1c3a25,#13291b)}
+.cr-lane.done .cr-mult{color:#37e07a;background:rgba(34,197,94,.2)}
+.cr-lane.dead{background:linear-gradient(180deg,#3b1d1d,#281313)}
+.cr-lane.cashed .cr-mult{color:#ffd34d;background:rgba(241,196,15,.2)}
+.cr-lane.next{background:linear-gradient(180deg,#2b303d,#21252f)}
+.cr-lane.next .cr-mult{color:#fff;background:var(--gc,#f97316);box-shadow:0 0 14px -2px var(--gc,#f97316)}
+.cr-risk{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:.6rem;font-weight:800;color:#fff;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.16);border-radius:99px;padding:.12rem .45rem;white-space:nowrap;z-index:2}
+.cr-chk{font-size:2.2rem;line-height:1;filter:drop-shadow(0 5px 7px rgba(0,0,0,.6));z-index:4}
+.cr-block{position:absolute;bottom:24px;font-size:1.05rem;z-index:1}
+.cr-car{position:absolute;top:0;font-size:2rem;z-index:3;animation:crCar .42s ease forwards}
+@keyframes crCar{from{transform:translateY(-64px);opacity:0}60%{opacity:1}to{transform:translateY(46px);opacity:1}}
+.cr-flag{font-size:2rem}
+@keyframes crHop{0%{transform:translateY(0)}45%{transform:translateY(-26px) scale(1.08)}100%{transform:translateY(0)}}
+.cr-hop{animation:crHop .3s ease}
+.cr-fade{position:absolute;top:0;bottom:0;width:36px;pointer-events:none;z-index:5}
+.cr-fade.l{left:0;background:linear-gradient(90deg,rgba(10,13,21,.95),transparent)}
+.cr-fade.r{right:0;background:linear-gradient(270deg,rgba(10,13,21,.95),transparent)}
+.cr-hud{position:absolute;top:.5rem;right:.6rem;text-align:right;z-index:6;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:11px;padding:.35rem .7rem}
+.cr-hud b{font-size:1.4rem;font-weight:900;color:#fff;display:block;line-height:1}
+.cr-hud small{font-size:.62rem;color:var(--text2)}
 .cr-cross{background:var(--gc,#f97316)!important;color:#1a0d00!important}
 </style>
 </head>
@@ -374,39 +381,42 @@ function hlCash(){
   }).catch(function(){busy=false;});
 }
 // ── Chicken Road ──────────────────────────────────────────────────────────
-var CHK_DIFF=[{k:'easy',name:'Easy',death:'5%'},{k:'medium',name:'Medium',death:'12%'},{k:'hard',name:'Hard',death:'22%'},{k:'daredevil',name:'Daredevil',death:'40%'}];
 RENDER.chicken=function(){
-  GAME._active=false; GAME._step=0; GAME._diff='medium'; GAME._mult=1;
-  $('hgBoard').innerHTML='<div class="cr-road" id="crRoad"><div class="cr-empty">Pick a difficulty, then Start.<br>Cross lane by lane — each crossed lane is locked safe. Cash out any time before a car gets you.</div></div>';
+  GAME._active=false; GAME._step=0; GAME._mult=1;
+  $('hgBoard').innerHTML='<div class="cr-view" id="crView"><div class="cr-track" id="crTrack"><div class="cr-empty">Hit Start, then Cross lane by lane.<br>Every lane has a 10–50% chance of a car — shown before you step. Cleared lanes lock safe; cash out any time.</div></div><div class="cr-fade l"></div><div class="cr-fade r"></div><div class="cr-hud" id="crHud" hidden><b id="crHudMult">1.00×</b><small id="crHudCash">Cash out</small></div></div>';
   $('hgControls').innerHTML=
-    '<div class="seg cr-diff" id="crDiff">'+CHK_DIFF.map(function(x){return '<button class="seg-b'+(x.k==='medium'?' on':'')+'" onclick="crSetDiff(\''+x.k+'\',this)">'+x.name+'<small>'+x.death+' car</small></button>';}).join('')+'</div>'+
     '<button class="play-btn" id="crStart" onclick="crStart()">Start</button>'+
     '<button class="play-btn cr-cross hidden" id="crCross" onclick="crStep()">Cross</button>'+
     '<button class="play-btn cash hidden" id="crCash" onclick="crCash()">Cash out</button>';
 };
-function crSetDiff(k,b){ if(GAME._active)return; GAME._diff=k; document.querySelectorAll('#crDiff .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on'); }
-function crResetUI(){ var s=$('crStart'),df=$('crDiff'),cr=$('crCross'),ca=$('crCash'); if(cr)cr.classList.add('hidden'); if(ca)ca.classList.add('hidden'); if(s)s.classList.remove('hidden'); if(df)df.classList.remove('hidden'); }
+function crResetUI(){ var s=$('crStart'),cr=$('crCross'),ca=$('crCash'),hud=$('crHud'); if(cr)cr.classList.add('hidden'); if(ca)ca.classList.add('hidden'); if(s)s.classList.remove('hidden'); if(hud)hud.hidden=true; }
 function crReset(){ GAME._active=false; busy=false; crResetUI(); }
 function crBuildRoad(lanes,mults){
-  var h='<div class="cr-lane curb done" data-i="0"><div class="cr-zone"><div class="cr-chk" id="crChk">🐔</div></div></div>';
-  for(var i=1;i<=lanes;i++){ h+='<div class="cr-lane" id="cr-l'+i+'" data-i="'+i+'"><div class="cr-mult">'+Number(mults[i-1]).toFixed(2)+'×</div><div class="cr-zone"><div class="cr-line"></div></div></div>'; }
-  h+='<div class="cr-lane finish"><div class="cr-flag">🏁</div></div>';
-  $('crRoad').innerHTML=h; crMarkNext(1); crScroll(0);
+  var h='<div class="cr-lane curb done"><div class="cr-zone"><div class="cr-chk" id="crChk">🐔</div></div><div class="cr-foot">START</div></div>';
+  for(var i=1;i<=lanes;i++){ h+='<div class="cr-lane" id="cr-l'+i+'"><div class="cr-mult">'+Number(mults[i-1]).toFixed(2)+'×</div><div class="cr-zone"><div class="cr-line"></div></div><div class="cr-foot">'+i+'</div></div>'; }
+  h+='<div class="cr-lane finish"><div class="cr-mult">🏁</div><div class="cr-zone"><div class="cr-flag">🏁</div></div><div class="cr-foot">WIN</div></div>';
+  $('crTrack').innerHTML=h; $('crTrack').style.transform='translateX(0)'; crMarkNext(1); crScroll(0);
 }
-function crMarkNext(i){ document.querySelectorAll('#crRoad .cr-lane.next').forEach(function(x){x.classList.remove('next');}); var l=$('cr-l'+i); if(l)l.classList.add('next'); }
-function crScroll(i){ try{ var road=$('crRoad'); var lane=$('cr-l'+i)||road.firstChild; if(road&&lane) road.scrollLeft=lane.offsetLeft-road.clientWidth/2+lane.clientWidth/2; }catch(e){} }
-function crSetCross(nextMult,laneNo){ var b=$('crCross'); if(b) b.textContent='Cross → '+(laneNo?'lane '+laneNo+' ':'')+(nextMult?'('+Number(nextMult).toFixed(2)+'×)':''); }
+function crMarkNext(i){
+  document.querySelectorAll('#crTrack .cr-lane.next').forEach(function(x){ x.classList.remove('next'); var r=x.querySelector('.cr-risk'); if(r)r.remove(); });
+  var l=$('cr-l'+i); if(!l)return; l.classList.add('next');
+  var d=(GAME._deaths&&GAME._deaths[i-1]!=null)?GAME._deaths[i-1]:null;
+  if(d!=null){ var z=l.querySelector('.cr-zone'); var b=document.createElement('div'); b.className='cr-risk'; b.textContent='🚗 '+d+'%'; z.appendChild(b); }
+}
+function crScroll(i){ var t=$('crTrack'); if(!t||!t.children.length)return; var lane=$('cr-l'+i)||t.children[0]; var anchor=t.children[0].offsetWidth||92; var x=Math.max(0,(lane?lane.offsetLeft:0)-anchor); t.style.transform='translateX(-'+x+'px)'; }
+function crUpdHud(mult,payout){ var m=$('crHudMult'),c=$('crHudCash'); if(m)m.textContent=Number(mult).toFixed(2)+'×'; if(c)c.textContent=payout?('Cash '+fmt(payout)+' FC'):'Cash out'; }
+function crSetCross(nextMult,laneNo,death){ var b=$('crCross'); if(b) b.textContent='Cross → '+(nextMult?Number(nextMult).toFixed(2)+'× ':'')+(death!=null?'· '+death+'% 🚗':''); }
 function crStart(){
   if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
   busy=true;
-  post('chicken/start',{bet:bet(),diff:GAME._diff}).then(function(d){
+  post('chicken/start',{bet:bet()}).then(function(d){
     busy=false; if(d.error){msg(d.error,'bad');return;}
-    bal=d.balance; setBal(); GAME._active=true; GAME._step=0; GAME._mult=1; GAME._lanes=d.lanes; GAME._mults=d.mults;
+    bal=d.balance; setBal(); GAME._active=true; GAME._step=0; GAME._mult=1; GAME._lanes=d.lanes; GAME._mults=d.mults; GAME._deaths=d.deaths;
     crBuildRoad(d.lanes,d.mults);
-    $('crStart').classList.add('hidden'); $('crDiff').classList.add('hidden');
-    $('crCross').classList.remove('hidden'); $('crCash').classList.add('hidden');
-    crSetCross(d.nextMult,1);
-    msg('Tap Cross to step onto lane 1 — '+d.deathPct+'% chance of a car.');
+    $('crStart').classList.add('hidden'); $('crCross').classList.remove('hidden'); $('crCash').classList.add('hidden');
+    var hud=$('crHud'); if(hud)hud.hidden=false; crUpdHud(1,0);
+    crSetCross(d.nextMult,1,d.nextDeath);
+    msg('Lane 1 ahead — '+d.nextDeath+'% chance of a car. Cross, or chicken out.');
   }).catch(function(){busy=false;});
 }
 function crStep(){
@@ -416,21 +426,21 @@ function crStep(){
     busy=false; if(d.error){ msg(d.error,'bad'); if(/active/i.test(d.error)) crReset(); return; }
     if(d.dead){
       GAME._active=false; sfx('lose');
-      var dl=$('cr-l'+target); if(dl){ dl.classList.remove('next'); dl.classList.add('dead'); var z=dl.querySelector('.cr-zone'); var car=document.createElement('div'); car.className='cr-car'; car.textContent='🚗'; z.appendChild(car); var chk=$('crChk'); if(chk){ z.appendChild(chk); chk.textContent='💥'; } }
+      var dl=$('cr-l'+target); if(dl){ dl.classList.remove('next'); var rr=dl.querySelector('.cr-risk'); if(rr)rr.remove(); dl.classList.add('dead'); var z=dl.querySelector('.cr-zone'); var car=document.createElement('div'); car.className='cr-car'; car.textContent=['🚗','🚙','🚕','🚌'][Math.floor(Math.random()*4)]; z.appendChild(car); var chk=$('crChk'); if(chk){ z.appendChild(chk); chk.textContent='💥'; } }
       crScroll(target); crResetUI();
       msg('Splat! A car got you on lane '+target+'. Lost '+fmt(bet())+' FC','bad'); return;
     }
     GAME._step=d.step; GAME._mult=d.mult;
     var lane=$('cr-l'+d.step);
-    if(lane){ lane.classList.remove('next'); lane.classList.add('done'); var zz=lane.querySelector('.cr-zone'); var chk=$('crChk'); if(chk&&zz){ zz.appendChild(chk); chk.classList.remove('cr-hop'); void chk.offsetWidth; chk.classList.add('cr-hop'); } var rb=document.createElement('div'); rb.className='cr-block'; rb.textContent='🚧'; if(zz)zz.appendChild(rb); }
-    crScroll(d.step);
+    if(lane){ lane.classList.remove('next'); var r=lane.querySelector('.cr-risk'); if(r)r.remove(); lane.classList.add('done'); var zz=lane.querySelector('.cr-zone'); var chk=$('crChk'); if(chk&&zz){ zz.appendChild(chk); chk.classList.remove('cr-hop'); void chk.offsetWidth; chk.classList.add('cr-hop'); } var rb=document.createElement('div'); rb.className='cr-block'; rb.textContent='🚧'; if(zz)zz.appendChild(rb); }
+    crScroll(d.step); crUpdHud(d.mult,d.payout);
     if(d.done){
       GAME._active=false; bal=d.balance; setBal(); sfx('win'); crResetUI();
-      msg('Made it across! +'+fmt(d.payout)+' FC ('+Number(d.mult).toFixed(2)+'×)','good'); return;
+      msg('Made it all the way across! +'+fmt(d.payout)+' FC ('+Number(d.mult).toFixed(2)+'×)','good'); return;
     }
     sfx('pop'); crMarkNext(d.step+1);
     $('crCash').classList.remove('hidden'); $('crCash').textContent='Cash out '+fmt(d.payout)+' FC';
-    crSetCross(d.nextMult,d.step+1);
+    crSetCross(d.nextMult,d.step+1,d.nextDeath);
     msg('Lane '+d.step+' cleared · '+Number(d.mult).toFixed(2)+'× banked','good');
   }).catch(function(){busy=false;});
 }

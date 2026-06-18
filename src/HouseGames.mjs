@@ -34,48 +34,50 @@ export function doubleOrNothing(bet) {
   return { win, mult: win ? 2 : 0, payout: win ? bet * 2 : 0 };
 }
 
-// ── Chicken Road difficulty: per-lane death chance + how many lanes to clear.
-// survival p = 1-death. Multiplier after k lanes = EDGE / p^k (3% edge, fair at
-// every step). Higher death = fewer safe lanes but a steeper climb. 10% skill
-// (when to cash) / 90% luck (the roll) — the edge is fixed, you can't beat it.
-export const CHICKEN_DIFF = {
-  easy:      { key: "easy",      p: 0.95, lanes: 24 }, // ~3.3× max
-  medium:    { key: "medium",    p: 0.88, lanes: 22 }, // ~16× max
-  hard:      { key: "hard",      p: 0.78, lanes: 18 }, // ~68× max
-  daredevil: { key: "daredevil", p: 0.60, lanes: 14 }, // ~1240× max
-};
+// ── Chicken Road config. Each lane independently rolls a car-chance between
+// DMIN..DMAX (10–50%) drawn at game start, so every run has a different risk
+// ladder. The cumulative payout multiplier after clearing k lanes is
+// EDGE × ∏(1/(1-death_i)) — the 3% edge is taken once at entry; each extra
+// cross is then fair (no compounding), exactly like real Chicken games. High
+// death rate keeps profit rare. 10% skill (when to cash) / 90% luck (the roll).
+export const CHICKEN = { lanes: 18, dMin: 0.10, dMax: 0.50, maxMult: 5000 };
 
 // ── Stateful games ──────────────────────────────────────────────────────
 export class HouseState {
   constructor() { this.mines = new Map(); this.hilo = new Map(); this.chicken = new Map(); }
 
-  // ── Chicken Road: cross lanes one at a time. Each lane rolls a death chance;
-  // surviving locks that lane in (no re-roll, "road block" — no cars after) and
-  // raises the multiplier. Cash out any time. Clearing every lane forces a cashout.
-  chickenMult(p, step) { return step <= 0 ? 1 : +(EDGE / Math.pow(p, step)).toFixed(3); }
-  startChicken(uid, bet, diff) {
-    const D = CHICKEN_DIFF[diff] || CHICKEN_DIFF.medium;
-    this.chicken.set(uid, { bet, p: D.p, lanes: D.lanes, key: D.key, step: 0, over: false });
-    const mults = []; // per-lane payout multipliers, for the board labels
-    for (let i = 1; i <= D.lanes; i++) mults.push(this.chickenMult(D.p, i));
-    return { diff: D.key, deathPct: +(100 * (1 - D.p)).toFixed(1), lanes: D.lanes, step: 0, mult: 1, nextMult: mults[0], mults };
+  // ── Chicken Road: cross lanes one at a time. Each lane's car-chance is fixed
+  // at game start (10–50%); surviving locks that lane in (no re-roll, "road
+  // block" — no cars after) and banks its multiplier. Cash out any time.
+  // Clearing every lane forces a cashout at the top.
+  startChicken(uid, bet) {
+    const C = CHICKEN, deaths = [], mults = [];
+    let m = EDGE; // 3% edge applied once at entry, then fair per cross
+    for (let i = 0; i < C.lanes; i++) {
+      const d = C.dMin + rnd() * (C.dMax - C.dMin); // this lane's car chance
+      deaths.push(d);
+      m = m / (1 - d);
+      mults.push(Math.min(C.maxMult, +m.toFixed(2)));
+    }
+    this.chicken.set(uid, { bet, deaths, mults, step: 0, over: false });
+    return { lanes: C.lanes, step: 0, mult: 1, mults, deaths: deaths.map((d) => Math.round(d * 100)), nextMult: mults[0], nextDeath: Math.round(deaths[0] * 100) };
   }
   chickenStep(uid) {
     const g = this.chicken.get(uid);
     if (!g || g.over) return { error: "No active game" };
-    if (rnd() < (1 - g.p)) { g.over = true; this.chicken.delete(uid); return { dead: true, step: g.step }; }
+    if (rnd() < g.deaths[g.step]) { g.over = true; this.chicken.delete(uid); return { dead: true, step: g.step }; }
     g.step++;
-    const mult = this.chickenMult(g.p, g.step);
-    if (g.step >= g.lanes) { // crossed the whole road → forced cashout at the top
+    const mult = g.mults[g.step - 1];
+    if (g.step >= g.mults.length) { // crossed the whole road → forced cashout
       g.over = true; this.chicken.delete(uid);
       return { alive: true, step: g.step, mult, payout: Math.round(g.bet * mult), bet: g.bet, done: true };
     }
-    return { alive: true, step: g.step, mult, payout: Math.round(g.bet * mult), nextMult: this.chickenMult(g.p, g.step + 1) };
+    return { alive: true, step: g.step, mult, payout: Math.round(g.bet * mult), nextMult: g.mults[g.step], nextDeath: Math.round(g.deaths[g.step] * 100) };
   }
   chickenCashout(uid) {
     const g = this.chicken.get(uid);
     if (!g || g.over || g.step < 1) return { error: "Nothing to cash out" };
-    const mult = this.chickenMult(g.p, g.step);
+    const mult = g.mults[g.step - 1];
     this.chicken.delete(uid);
     return { mult, payout: Math.round(g.bet * mult), bet: g.bet, step: g.step };
   }

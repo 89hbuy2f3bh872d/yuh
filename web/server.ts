@@ -329,12 +329,33 @@ const INVEST = { assets: new Map<string, Asset>(), ready: false };
 const INVEST_FEE = 0.02, INVEST_TICK_MS = 25_000, INVEST_HIST_MAX = 720;
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
+// Backfill a believable price history so the chart has a curve immediately,
+// instead of "No price history yet" until ticks accrue. Walks from baseline to
+// the asset's real current price; the last point is anchored to price/now.
+function synthHist(a: Asset, n = 96): [number, number][] {
+  const now = Date.now(), pts: [number, number][] = [];
+  let p = a.baseline || a.price || 1;
+  for (let i = 0; i < n; i++) {
+    const meanRev = 0.04 * ((a.baseline || p) - p) / (a.baseline || p || 1);
+    const noise = (Math.random() * 2 - 1) * (a.vol || 0.03);
+    p = Math.max(0.5, p * (1 + Math.max(-0.18, Math.min(0.18, meanRev + noise))));
+    pts.push([now - (n - 1 - i) * INVEST_TICK_MS, Math.round(p * 100) / 100]);
+  }
+  pts[pts.length - 1] = [now, a.price]; // anchor the tail to the live price
+  return pts;
+}
 async function investInit() {
   const rows: any[] = await db.getAssets().catch(() => []);
-  for (const a of rows) INVEST.assets.set(a._id, { bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], ...a } as Asset);
+  let backfilled = 0;
+  for (const a of rows) {
+    const asset = { bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], ...a } as Asset;
+    if (!Array.isArray(asset.hist) || asset.hist.length < 24) { asset.hist = synthHist(asset); backfilled++; }
+    INVEST.assets.set(a._id, asset);
+  }
+  if (backfilled) db.saveAssets([...INVEST.assets.values()]).catch(() => {}); // persist the seeded curves
   INVEST.ready = true;
   setInterval(() => { try { investTick(); } catch (e: any) { console.error("[invest] tick", e?.message); } }, INVEST_TICK_MS);
-  console.log(`[invest] ${INVEST.assets.size} assets live`);
+  console.log(`[invest] ${INVEST.assets.size} assets live (${backfilled} backfilled)`);
 }
 function investTick() {
   const now = Date.now();
@@ -678,7 +699,7 @@ const app = new Elysia()
       try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; } // charge BEFORE clearing the old game
       house.clearChicken(uid);
       wager(bet);
-      return Object.assign(house.startChicken(uid, bet, d?.diff), { ok: true, balance: bal() });
+      return Object.assign(house.startChicken(uid, bet), { ok: true, balance: bal() });
     }
     if (sub === "chicken/step") {
       const r = house.chickenStep(uid);

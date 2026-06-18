@@ -30,8 +30,10 @@
 .iv-cprice .big{font-size:1.7rem;font-weight:800;line-height:1.1}
 .iv-cprice .chg{font-size:.78rem;font-weight:700}
 .iv-canvas-wrap{position:relative;height:300px}
-#chart{width:100%;height:100%;display:block}
+#chart{width:100%;height:100%;display:block;cursor:crosshair}
 .iv-chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text3);font-size:.8rem}
+.iv-tip{position:absolute;pointer-events:none;z-index:6;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.32rem .55rem;font-size:.74rem;font-weight:800;white-space:nowrap;transform:translate(-50%,calc(-100% - 12px));box-shadow:0 8px 20px -8px rgba(0,0,0,.6)}
+.iv-tip .t{display:block;font-size:.58rem;color:var(--text3);font-weight:600;margin-top:1px}
 .iv-bottom{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 .iv-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem}
 .iv-card h3{font-size:.82rem;margin:0 0 .7rem;display:flex;align-items:center;gap:.4rem}
@@ -77,7 +79,7 @@ __SIDEBAR__
           <div class="iv-ctitle"><span class="em" id="cEm">🪙</span><div><div class="nm" id="cNm">—</div><div class="kd" id="cKd"></div></div></div>
           <div class="iv-cprice"><div class="big" id="cPx">—</div><div class="chg" id="cChg"></div></div>
         </div>
-        <div class="iv-canvas-wrap"><canvas id="chart"></canvas><div class="iv-chart-empty" id="cEmpty" hidden>No price history yet.</div></div>
+        <div class="iv-canvas-wrap"><canvas id="chart"></canvas><div class="iv-chart-empty" id="cEmpty" hidden>No price history yet.</div><div class="iv-tip" id="cTip" hidden></div></div>
       </div>
 
       <div class="iv-bottom">
@@ -125,9 +127,10 @@ function renderHead(){
   $('cChg').textContent=(ch>=0?'▲ +':'▼ ')+ch.toFixed(2)+'%'; $('cChg').className='chg '+cls;
   $('tradeTitle').textContent='Trade '+CUR.emoji+' '+CUR.name;
 }
+var CHART=null; // last-drawn geometry, for the hover crosshair
 function drawChart(){
   var cv=$('chart'); if(!cv||!CUR)return; var hist=CUR.hist||[];
-  var empty=$('cEmpty'); if(hist.length<2){ if(empty)empty.hidden=false; var c0=cv.getContext('2d'); c0.clearRect(0,0,cv.width,cv.height); return; } if(empty)empty.hidden=true;
+  var empty=$('cEmpty'); if(hist.length<2){ if(empty)empty.hidden=false; CHART=null; var t0=$('cTip'); if(t0)t0.hidden=true; var c0=cv.getContext('2d'); c0.clearRect(0,0,cv.width,cv.height); return; } if(empty)empty.hidden=true;
   var w=cv.clientWidth||cv.parentNode.clientWidth, h=cv.clientHeight||300, dpr=Math.min(2,window.devicePixelRatio||1);
   cv.width=w*dpr; cv.height=h*dpr; var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
   var ps=hist.map(function(p){return p[1]}); var min=Math.min.apply(null,ps), max=Math.max.apply(null,ps); if(max===min){max+=max*0.01+1;min-=min*0.01+1;}
@@ -143,6 +146,24 @@ function drawChart(){
   // line
   ctx.beginPath(); ctx.moveTo(X(0),Y(ps[0])); for(var j=1;j<hist.length;j++)ctx.lineTo(X(j),Y(ps[j]));
   ctx.strokeStyle=col; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+  // store geometry for the hover crosshair
+  var xs=[],ys=[]; for(var k=0;k<hist.length;k++){xs.push(X(k));ys.push(Y(ps[k]));}
+  CHART={hist:hist,xs:xs,ys:ys,col:col,pad:pad,h:h,dpr:dpr};
+}
+function fmtTime(ts){ try{ var d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function drawCross(idx){
+  var g=CHART, cv=$('chart'); if(!g||!cv||idx<0||idx>=g.xs.length)return;
+  var ctx=cv.getContext('2d'); ctx.setTransform(g.dpr,0,0,g.dpr,0,0);
+  var x=g.xs[idx], y=g.ys[idx];
+  ctx.strokeStyle='rgba(255,255,255,.28)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(x,g.pad); ctx.lineTo(x,g.h-g.pad); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(x,y,4.5,0,Math.PI*2); ctx.fillStyle=g.col; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+  var tip=$('cTip'); if(tip){ tip.innerHTML='<span>'+fmt(g.hist[idx][1])+' FC</span><span class="t">'+fmtTime(g.hist[idx][0])+'</span>'; tip.style.left=x+'px'; tip.style.top=y+'px'; tip.hidden=false; }
+}
+function bindChartHover(){
+  var cv=$('chart'); if(!cv||cv.__hb)return; cv.__hb=1;
+  cv.addEventListener('mousemove',function(ev){ if(!CHART||CHART.xs.length<2)return; var r=cv.getBoundingClientRect(); var mx=ev.clientX-r.left; var idx=0,best=1e9; for(var i=0;i<CHART.xs.length;i++){ var dd=Math.abs(CHART.xs[i]-mx); if(dd<best){best=dd;idx=i;} } drawChart(); drawCross(idx); });
+  cv.addEventListener('mouseleave',function(){ var t=$('cTip'); if(t)t.hidden=true; drawChart(); });
 }
 function renderPf(pf){
   var el=$('pf'); if(!pf||!pf.positions||!pf.positions.length){ el.innerHTML='<div class="iv-empty">No holdings yet.</div>'; return; }
@@ -215,6 +236,7 @@ if(!window.__ivWs){ window.__ivWs=1;
   });
   window.addEventListener('resize',function(){ if(CUR)drawChart(); });
 }
+bindChartHover();
 load();
 </script>
 </body>
