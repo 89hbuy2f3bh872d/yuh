@@ -105,6 +105,11 @@ input,select,textarea{font:inherit;color:inherit}
 .sg-dlg-gate{font-size:.74rem;color:var(--text2);margin-top:.5rem;line-height:1.5;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.55rem .6rem}
 .sg-dlg-gate b{color:var(--gold)}
 .sg-dlg-act{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+/* Bank-tools dialog: wider + rows wrap so the long buttons always fit the frame */
+.sg-dlg.bank-dlg{width:min(460px,94vw);max-height:88vh;overflow-y:auto}
+.bank-dlg .sg-dlg-row{flex-wrap:wrap}
+.bank-dlg .sg-dlg-row input{min-width:0;flex:1 1 130px}
+.bank-dlg .sg-dlg-row .btn{flex:1 0 auto;white-space:nowrap}
 /* Brand logo: hollow rounded square with a static "G". (Spin removed per
    request — kept a gentle glow so the mark still reads as a focal point.) */
 .sb-mark{position:relative;width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;

@@ -153,7 +153,7 @@ function openBankTools(id){
   var others=Object.keys(SRV).filter(function(k){return k!==id;}).map(function(k){return SRV[k];});
   var dataOpts=others.map(function(o){return '<option value="'+esc(o.id)+'">'+esc(o.name)+'</option>';}).join('');
   var back=document.createElement('div'); back.className='sg-dlg-back';
-  back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()">'
+  back.innerHTML='<div class="sg-dlg bank-dlg" onclick="event.stopPropagation()">'
     +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Bank tools</div>'
     +'<div class="sg-dlg-bank">Bank: <b id="btBank">'+fmt(s.bank)+' FC</b></div>'
     +'<label class="sg-dlg-lab">Withdraw to your wallet</label>'
