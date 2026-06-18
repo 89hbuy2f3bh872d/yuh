@@ -299,14 +299,17 @@ Cash out with zero progress must **refund the stake**, never strand the bet. Imp
 
 ## 5. Investing (`web/server.ts` engine + `games/invest.html`)
 
-- Single-writer price engine in `web/server.ts`. **Realistic market model** (not a fixed
-  mean-reverting anchor): a shared **market factor** (`mktDrift`) moves all assets together,
-  per-asset **momentum** (`mom`, autocorrelated returns → trends), **volatility clustering**
-  (`volState`, GARCH-lite — |shock| raises near-future vol, decays to base), and a
-  **drifting fundamental** (`baseline` random-walks toward price, not a fixed rubber-band).
-  Demand `bias` from trades is a transient shove. Bounded ±14%/tick, 2% fee sink.
-  `INVEST_TICK_MS = 25_000`. Validated: positive autocorrelation (trending), positive
-  cross-asset correlation, no systematic floor/ceiling slides over 2k-tick multi-seed runs.
+- Single-writer price engine in `web/server.ts`. **Hard-to-game market model**: a shared
+  **market factor** (`mktDrift`) moves all assets together, weak **momentum** (`mom`, low
+  weight → lag-1 autocorrelation ≈ 0, a random walk — NOT trending, so "sell on the first
+  up-tick" has no edge), **volatility clustering** (`volState`, GARCH-lite), and a **FIXED
+  fair-value anchor** (`baseline` does NOT chase price → genuine over/undervaluation).
+  **Cubic mean-reversion** at extremes: `-0.01*dev - 0.9*dev³` — gentle in the normal band,
+  hard correction when |dev| > ~15% (overbought snaps back). Demand `bias` from trades is a
+  transient shove. Bounded ±14%/tick, 2% fee sink. **Slippage spread** (`investSlippage`):
+  big trades execute at a worse price (up to 6% adverse) → round-tripping is net-negative.
+  `INVEST_TICK_MS = 25_000`. Validated: exploit (sell on first up-tick) = 0% win / -4.8% avg;
+  even perfect-timing holds net only +0.2% after fees+slippage.
 - Assets + holdings in Mongo (`assets`, `holdings` collections). Holdings shape:
   `{ _id: uid, h: { [assetId]: { u: units, c: costBasis } } }`.
 - `investTick()` broadcasts `{ type:'prices', assets:[{id,price,prev}] }` over WS to ALL
@@ -474,6 +477,19 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
     per Rainbow) + low per-reveal coin EV (~0.08×). Base RTP ~82%, buys ~96%.
     Client: `paintGold`/`revealCoins`/4-button buy bar; server `/api/slots/spin` buy-id
     validation now checks `buyCost` instead of hardcoding super/regular.
+12. **Plinko real physics**: was a scripted polyline (ball followed fixed waypoints, never
+    touched pegs). Rewrote as gravity-integrated physics body: bounces UP off each peg
+    (negative vy), parabolic arcs between pegs, ball trail, peg-glow on the exact hit peg.
+    Deterministic via server path (triangular-field peg sequence). Sim-verified: all paths
+    land in the correct bucket.
+13. **Invest market nerf (anti-manipulation)**: old model had strong positive autocorrelation
+    (+0.33) → "sell when it stops rising" was a guaranteed profit. Fixed: weak momentum
+    (autocorr ≈ 0), FIXED baseline anchor (no rubber-band), cubic mean-reversion at extremes,
+    + slippage spread on trades. Exploit win rate 0%; perfect-timing net +0.2%.
+14. **&leaderboard showed everyone at 1000**: Mongo `bal` is a stale starter never updated
+    (balances live in STDB). Fix: `stdb.topBalances(n)` reads the live account cache →
+    `/internal/leaderboard/:limit` → `stdbBridge.leaderboard()` → command uses it for "rich"
+    mode. "earners" (total wagered) still reads Mongo (correct — that's where it lives).
 
 ---
 

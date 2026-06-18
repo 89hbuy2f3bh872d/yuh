@@ -27,6 +27,8 @@ export class StdbBridge {
     } catch { return {}; }
   }
   async balance(uid)                      { const d = await this._get("/internal/balance/" + encodeURIComponent(uid)); return Number(d.bal || 0); }
+  // Top holders by live STDB balance. Returns [{owner, balance}, ...] sorted desc.
+  async leaderboard(limit)                { const d = await this._get("/internal/leaderboard/" + encodeURIComponent(limit || 10)); return Array.isArray(d.rows) ? d.rows : []; }
   async credit(uid, amount)               { return this._post("/internal/credit", { uid, amount }); }
   async deduct(uid, amount)               { return this._post("/internal/deduct", { uid, amount }); }
   async settle(uid, bet, payout)          { return this._post("/internal/settle", { uid, bet, payout }); }

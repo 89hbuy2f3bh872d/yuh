@@ -97,6 +97,17 @@ export class Stdb {
 
   getBalance(owner: string): number { return this.balances.get(owner) ?? 0; }
 
+  // Top-N holders by balance (for the &leaderboard command). Reads the in-memory cache
+  // kept fresh by the `account` table subscription. Balances are authoritative in STDB,
+  // NOT Mongo — Mongo's `bal` field is a stale starter that's never updated, which is why
+  // the old leaderboard showed everyone at 1000.
+  topBalances(limit: number): Array<{ owner: string; balance: number }> {
+    const out: Array<{ owner: string; balance: number }> = [];
+    for (const [owner, balance] of this.balances) if (balance > 0) out.push({ owner, balance });
+    out.sort((a, b) => b.balance - a.balance);
+    return out.slice(0, Math.max(1, Math.min(limit || 10, 100)));
+  }
+
   // ── reducer calls — args as an OBJECT (camelCase keys, matching the codegen).
   //    The call returns a Promise: resolves on commit, rejects (SenderError) on a
   //    server-side error (e.g. "insufficient"). We await it for the authoritative

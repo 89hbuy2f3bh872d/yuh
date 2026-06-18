@@ -380,13 +380,14 @@ async function investInit() {
   setInterval(() => { try { investTick(); } catch (e: any) { console.error("[invest] tick", e?.message); } }, INVEST_TICK_MS);
   console.log(`[invest] ${INVEST.assets.size} assets live (${backfilled} backfilled)`);
 }
-// A more realistic market model per tick:
+// A more realistic, harder-to-game market model per tick:
 //  • a single MARKET FACTOR (mktDrift) moves all assets together — they correlate
-//  • per-asset MOMENTUM (autocorrelation): returns persist → trends emerge
+//  • per-asset MOMENTUM that DECAYS + REVERSES (trends fatigue, then overcorrect) — so
+//    "buy the dip, sell the rip" is NOT a guaranteed win; momentum fights mean-reversion
 //  • VOLATILITY CLUSTERING (GARCH-lite): |shock| raises volState, decays to base
-//  • the FUNDAMENTAL (baseline) DRIFTS slowly with the price (a random walk of value,
-//    not a fixed rubber-band anchor) — so long trends can form and persist
-//  • demand `bias` (from trades) is a transient shove, decays each tick
+//  • a FIXED fair-value anchor (baseline does NOT rubber-band toward price) → genuine
+//    overvaluation/undervaluation, so prices correct hard when stretched
+//  • demand `bias` (from trades) is a transient shove that triggers mean-reversion
 function investTick() {
   const now = Date.now();
   // global market factor: slow drift + occasional regime shifts
@@ -399,15 +400,21 @@ function investTick() {
     const idio = (Math.random() * 2 - 1) * a.vol;                  // asset-specific shock
     // vol-clustering on the asset
     a.volState = Math.max(0.004, 0.8 * a.volState + 0.2 * Math.abs(idio) + a.vol * 0.04);
-    // momentum: last return persists (weak autocorrelation) — gives trends, not static
-    a.mom = 0.84 * a.mom + 0.16 * idio;
-    // fundamental value drifts toward price (random-walk-of-value), not a fixed anchor
-    a.baseline = Math.max(0.5, a.baseline * (1 + 0.02 * ((a.price - a.baseline) / a.baseline) + (Math.random() * 2 - 1) * 0.004));
-    const meanRev = 0.02 * (a.baseline - a.price) / a.baseline;    // gentle pull toward drifting value
-    let drift = INVEST.mktDrift * 0.75 + a.mom * 0.55 + meanRev + idio * 0.35 + (a.bias || 0);
+    // momentum absorbs the new shock but decays — gives some swing continuity without
+    // sustained trends. Weight is LOW so lag-1 autocorrelation stays near zero (a random
+    // walk), not positive (which made "sell on the first down-tick" a guaranteed win).
+    a.mom = 0.82 * a.mom + 0.12 * idio;
+    // FIXED fair-value anchor (baseline does NOT chase the price). Deviation from fair value:
+    const dev = (a.price - a.baseline) / a.baseline;
+    // Mean-reversion only kicks in meaningfully at EXTREMES (|dev| > ~15%): gentle linear
+    // pull in the normal band (so prices wander), strong cubic correction when stretched
+    // (so "ride it to the moon" eventually snaps back). Good timing profits; greedy holds
+    // get corrected. Near-zero autocorrelation → no free "follow the trend" edge.
+    const meanRev = -0.01 * dev - 0.9 * dev * dev * dev;
+    let drift = INVEST.mktDrift * 0.5 + a.mom * 0.22 + meanRev + idio * 0.5 + (a.bias || 0);
     drift = Math.max(-0.14, Math.min(0.14, drift));                 // sane per-tick bound (±14%)
     a.price = Math.max(0.5, Math.min(1e9, Math.round(a.price * (1 + drift) * 100) / 100));
-    a.bias = (a.bias || 0) * 0.6;                                   // demand pressure fades
+    a.bias = (a.bias || 0) * 0.45;                                  // demand pressure fades faster
     (a.hist ||= []).push([now, a.price]);
     if (a.hist.length > INVEST_HIST_MAX) a.hist = a.hist.slice(-INVEST_HIST_MAX);
     a.updatedAt = now;
@@ -417,11 +424,20 @@ function investTick() {
   for (const ws of wsClients) { try { ws.send(msg); } catch {} }
 }
 // A trade shoves demand into the asset's bias (transient) — bigger trades vs. the
-// asset's market cap move it more. Market impact is bounded and decays over ticks.
+// asset's market cap move it more, AND push the executed price against the trader
+// (slippage spread). Market impact is bounded and decays over ticks.
 function investNudge(a: Asset, side: "buy" | "sell", spendFC: number) {
   const mkt = a.price * Math.max(1, a.supply) + 5000;
-  const k = Math.min(0.14, (spendFC / mkt) * 0.7);
-  a.bias = Math.max(-0.18, Math.min(0.18, (a.bias || 0) + (side === "buy" ? k : -k)));
+  const k = Math.min(0.10, (spendFC / mkt) * 0.5);
+  a.bias = Math.max(-0.14, Math.min(0.14, (a.bias || 0) + (side === "buy" ? k : -k)));
+}
+// Slippage: the effective price a trade executes at is shifted AGAINST the trader by a
+// spread proportional to trade size vs. market depth. Big buys pay more, big sells get
+// less — makes spamming buy→sell unprofitable. Returns the price multiplier to apply.
+function investSlippage(a: Asset, side: "buy" | "sell", spendFC: number) {
+  const depth = a.price * Math.max(1, a.supply) + 8000;
+  const impact = Math.min(0.06, (spendFC / depth) * 0.4);   // up to 6% adverse shift
+  return side === "buy" ? 1 + impact : 1 - impact;
 }
 function assetView(a: Asset) {
   const open = a.hist && a.hist.length ? a.hist[0][1] : a.price;
@@ -443,13 +459,17 @@ async function investBuy(uid: string, assetId: string, spendFC: number) {
   if (!(spendFC >= 10)) return { error: "Minimum buy is 10 FC" };
   if (spendFC > 1_000_000_000) return { error: "Max 1,000,000,000 FC per buy" };
   try { await stdb.deduct(uid, spendFC); } catch { return { error: "Insufficient balance" }; }
-  const fee = Math.floor(spendFC * INVEST_FEE), net = spendFC - fee, units = r6(net / a.price);
+  const fee = Math.floor(spendFC * INVEST_FEE), net = spendFC - fee;
+  // slippage: big buys execute at a WORSE (higher) effective price — the trader pays
+  // more per unit, which makes "buy then immediately sell" reliably lose the spread.
+  const execPrice = a.price * investSlippage(a, "buy", spendFC);
+  const units = r6(net / execPrice);
   const h: any = await db.getHoldings(uid).catch(() => ({}));
   const cur = h[assetId] || { u: 0, c: 0 };
   cur.u = r6(cur.u + units); cur.c = Math.round(cur.c + spendFC); h[assetId] = cur;
   await db.setHoldings(uid, h);
   a.supply = r6((a.supply || 0) + units); investNudge(a, "buy", spendFC);
-  return { ok: true, units, price: a.price, fee, spent: spendFC, bal: stdb.getBalance(uid) };
+  return { ok: true, units, price: a.price, execPrice: Math.round(execPrice * 100) / 100, fee, spent: spendFC, bal: stdb.getBalance(uid) };
 }
 async function investSell(uid: string, assetId: string, unitsArg: number | "all") {
   const a = INVEST.assets.get(assetId); if (!a) return { error: "Unknown asset" };
@@ -458,14 +478,17 @@ async function investSell(uid: string, assetId: string, unitsArg: number | "all"
   if (!cur || cur.u <= 0) return { error: "You don't hold any of that" };
   let sellU = unitsArg === "all" ? cur.u : Math.min(cur.u, Number(unitsArg));
   if (!(sellU > 0)) return { error: "Invalid amount" };
-  const gross = sellU * a.price, fee = Math.floor(gross * INVEST_FEE), payout = Math.max(0, Math.floor(gross - fee));
+  // slippage: big sells execute at a WORSE (lower) effective price — the trader receives
+  // less per unit. Combined with the buy slippage, round-tripping is net-negative.
+  const execPrice = a.price * investSlippage(a, "sell", sellU * a.price);
+  const gross = sellU * execPrice, fee = Math.floor(gross * INVEST_FEE), payout = Math.max(0, Math.floor(gross - fee));
   const costPortion = Math.round(cur.c * (sellU / cur.u));
   cur.u = r6(cur.u - sellU); cur.c = Math.max(0, cur.c - costPortion);
   if (cur.u <= 1e-6) delete h[assetId]; else h[assetId] = cur;
   await db.setHoldings(uid, h);
   if (payout > 0) await stdb.credit(uid, payout).catch(() => {});
   a.supply = r6(Math.max(0, (a.supply || 0) - sellU)); investNudge(a, "sell", gross);
-  return { ok: true, units: r6(sellU), price: a.price, payout, pnl: payout - costPortion, bal: stdb.getBalance(uid) };
+  return { ok: true, units: r6(sellU), price: a.price, execPrice: Math.round(execPrice * 100) / 100, payout, pnl: payout - costPortion, bal: stdb.getBalance(uid) };
 }
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
@@ -854,6 +877,9 @@ const app = new Elysia()
       if (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")) { set.status = 403; return { error: "forbidden" }; }
     })
     .get("/balance/:uid", ({ params }) => ({ bal: stdb.getBalance(params.uid) }))
+    // Top holders by live STDB balance — used by the &leaderboard command. Balances are
+    // authoritative in STDB (Mongo's `bal` is a stale starter, never updated).
+    .get("/leaderboard/:limit", ({ params }) => ({ rows: stdb.topBalances(parseInt(String(params.limit)) || 10) }))
     .post("/credit", async ({ body }) => { const b = body as any; try { await stdb.credit(b.uid, Math.floor(b.amount)); return { ok: true, bal: stdb.getBalance(b.uid) }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/deduct", async ({ body }) => { const b = body as any; try { await stdb.deduct(b.uid, Math.floor(b.amount)); return { ok: true, bal: stdb.getBalance(b.uid) }; } catch (e: any) { return { ok: false, error: e?.message }; } })
     .post("/settle", async ({ body }) => { const b = body as any; try { await stdb.settle(b.uid, Math.floor(b.bet), Math.floor(b.payout)); return { ok: true, bal: stdb.getBalance(b.uid) }; } catch (e: any) { return { ok: false, error: e?.message }; } })
