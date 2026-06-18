@@ -34,9 +34,53 @@ export function doubleOrNothing(bet) {
   return { win, mult: win ? 2 : 0, payout: win ? bet * 2 : 0 };
 }
 
+// ── Chicken Road difficulty: per-lane death chance + how many lanes to clear.
+// survival p = 1-death. Multiplier after k lanes = EDGE / p^k (3% edge, fair at
+// every step). Higher death = fewer safe lanes but a steeper climb. 10% skill
+// (when to cash) / 90% luck (the roll) — the edge is fixed, you can't beat it.
+export const CHICKEN_DIFF = {
+  easy:      { key: "easy",      p: 0.95, lanes: 24 }, // ~3.3× max
+  medium:    { key: "medium",    p: 0.88, lanes: 22 }, // ~16× max
+  hard:      { key: "hard",      p: 0.78, lanes: 18 }, // ~68× max
+  daredevil: { key: "daredevil", p: 0.60, lanes: 14 }, // ~1240× max
+};
+
 // ── Stateful games ──────────────────────────────────────────────────────
 export class HouseState {
-  constructor() { this.mines = new Map(); this.hilo = new Map(); }
+  constructor() { this.mines = new Map(); this.hilo = new Map(); this.chicken = new Map(); }
+
+  // ── Chicken Road: cross lanes one at a time. Each lane rolls a death chance;
+  // surviving locks that lane in (no re-roll, "road block" — no cars after) and
+  // raises the multiplier. Cash out any time. Clearing every lane forces a cashout.
+  chickenMult(p, step) { return step <= 0 ? 1 : +(EDGE / Math.pow(p, step)).toFixed(3); }
+  startChicken(uid, bet, diff) {
+    const D = CHICKEN_DIFF[diff] || CHICKEN_DIFF.medium;
+    this.chicken.set(uid, { bet, p: D.p, lanes: D.lanes, key: D.key, step: 0, over: false });
+    const mults = []; // per-lane payout multipliers, for the board labels
+    for (let i = 1; i <= D.lanes; i++) mults.push(this.chickenMult(D.p, i));
+    return { diff: D.key, deathPct: +(100 * (1 - D.p)).toFixed(1), lanes: D.lanes, step: 0, mult: 1, nextMult: mults[0], mults };
+  }
+  chickenStep(uid) {
+    const g = this.chicken.get(uid);
+    if (!g || g.over) return { error: "No active game" };
+    if (rnd() < (1 - g.p)) { g.over = true; this.chicken.delete(uid); return { dead: true, step: g.step }; }
+    g.step++;
+    const mult = this.chickenMult(g.p, g.step);
+    if (g.step >= g.lanes) { // crossed the whole road → forced cashout at the top
+      g.over = true; this.chicken.delete(uid);
+      return { alive: true, step: g.step, mult, payout: Math.round(g.bet * mult), bet: g.bet, done: true };
+    }
+    return { alive: true, step: g.step, mult, payout: Math.round(g.bet * mult), nextMult: this.chickenMult(g.p, g.step + 1) };
+  }
+  chickenCashout(uid) {
+    const g = this.chicken.get(uid);
+    if (!g || g.over || g.step < 1) return { error: "Nothing to cash out" };
+    const mult = this.chickenMult(g.p, g.step);
+    this.chicken.delete(uid);
+    return { mult, payout: Math.round(g.bet * mult), bet: g.bet, step: g.step };
+  }
+  chickenActive(uid) { return this.chicken.has(uid); }
+  clearChicken(uid) { this.chicken.delete(uid); }
 
   // Mines: 25-tile grid, M mines. Multiplier rises per safe reveal.
   startMines(uid, bet, mineCount) {
@@ -121,4 +165,5 @@ export const HOUSE_GAMES = [
   { id: "coinflip", name: "Coinflip", tag: "Heads or tails — 1.96×", color: "#eab308" },
   { id: "hilo", name: "HiLo", tag: "Higher or lower, build a streak", color: "#22c55e" },
   { id: "double", name: "Double or Nothing", tag: "All in for 2× — 49%", color: "#3b82f6" },
+  { id: "chicken", name: "Chicken Road", tag: "Cross the road, dodge the cars, cash out", color: "#f97316" },
 ];

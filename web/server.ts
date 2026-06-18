@@ -673,6 +673,25 @@ const app = new Elysia()
       if ((r as any).error) return r;
       await payWin((r as any).payout, (r as any).bet ?? 0); return Object.assign(r, { balance: bal() });
     }
+    if (sub === "chicken/start") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; } // charge BEFORE clearing the old game
+      house.clearChicken(uid);
+      wager(bet);
+      return Object.assign(house.startChicken(uid, bet, d?.diff), { ok: true, balance: bal() });
+    }
+    if (sub === "chicken/step") {
+      const r = house.chickenStep(uid);
+      if ((r as any).error) return r;
+      if ((r as any).dead) { db.recordGame?.(uid, false, 0).catch(() => {}); return Object.assign(r, { balance: bal() }); }
+      if ((r as any).done) { await payWin((r as any).payout, (r as any).bet ?? 0); db.recordGame?.(uid, true, 0).catch(() => {}); return Object.assign(r, { balance: bal() }); }
+      return r; // survived, still crossing — money stays staked
+    }
+    if (sub === "chicken/cashout") {
+      const r = house.chickenCashout(uid);
+      if ((r as any).error) return r;
+      await payWin((r as any).payout, (r as any).bet ?? 0); return Object.assign(r, { balance: bal() });
+    }
     set.status = 404; return { error: "Unknown game" };
   })
   .get("/api/house/games", async ({ request, set }) => {
