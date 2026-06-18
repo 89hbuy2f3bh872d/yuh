@@ -167,11 +167,25 @@ function bindChartHover(){
   cv.addEventListener('mouseleave',function(){ var t=$('cTip'); if(t)t.hidden=true; drawChart(); });
 }
 function renderPf(pf){
-  var el=$('pf'); if(!pf||!pf.positions||!pf.positions.length){ el.innerHTML='<div class="iv-empty">No holdings yet.</div>'; return; }
+  var el=$('pf'); if(!el)return; if(!pf||!pf.positions||!pf.positions.length){ el.innerHTML='<div class="iv-empty">No holdings yet.</div>'; return; }
   el.innerHTML=pf.positions.map(function(p){
     var a=ASSETS.find(function(x){return x.id===p.id})||{emoji:'',name:p.id}; var pnl=Number(p.pnl), cls=pnl>=0?'up':'down';
     return '<div class="iv-pos"><span>'+esc(a.emoji)+'</span><span class="nm">'+esc(a.name)+'</span><span class="v"><b>'+fmt(p.value)+' FC</b><br><span class="'+cls+'" style="font-size:.66rem">'+(pnl>=0?'+':'')+fmt(pnl)+'</span></span></div>';
   }).join('')+'<div class="iv-pf-tot"><span>Total · P&L</span><span>'+fmt(pf.value)+' FC · <span class="'+(pf.pnl>=0?'up':'down')+'">'+(pf.pnl>=0?'+':'')+fmt(pf.pnl)+'</span></span></div>';
+}
+// Live mark-to-market: holdings only move on a trade (which calls load()), but the
+// VALUE ticks every price update. Recompute from cached positions + fresh prices —
+// no server round-trip needed.
+function livePortfolio(priceMap){
+  var pf=window.__PF; if(!pf||!pf.positions||!pf.positions.length) return;
+  var value=0, cost=0;
+  pf.positions.forEach(function(p){
+    var px=(priceMap&&priceMap[p.id]!=null)?priceMap[p.id]:p.price; p.price=px;
+    var v=p.units*px; p.value=Math.round(v); p.pnl=Math.round(v-p.cost);
+    value+=v; cost+=p.cost;
+  });
+  pf.value=Math.round(value); pf.cost=Math.round(cost); pf.pnl=Math.round(value-cost);
+  renderPf(pf);
 }
 function setBal(b){ BAL=b; var e=$('ivBal'); if(e){ e.hidden=false; e.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9h4.5a2 2 0 0 1 0 4H9"/></svg> <span><b>'+fmt(b)+'</b> FC</span>'; } var sb=$('sbBal'); if(sb)sb.textContent=fmt(b); }
 
@@ -233,6 +247,7 @@ if(!window.__ivWs){ window.__ivWs=1;
     var map={}; (d.assets||[]).forEach(function(p){map[p.id]=p.price;});
     ASSETS.forEach(function(a){ if(map[a.id]!=null){ var open=a.open||a.price; a.price=map[a.id]; a.change=open?(a.price-open)/open:0; } });
     if(CUR&&map[CUR.id]!=null){ CUR.price=map[CUR.id]; var op=CUR.open||CUR.price; CUR.change=op?(CUR.price-op)/op:0; (CUR.hist=CUR.hist||[]).push([Date.now(),CUR.price]); if(CUR.hist.length>720)CUR.hist=CUR.hist.slice(-720); drawChart(); renderHead(); }
+    livePortfolio(map);
     renderList();
   });
   window.addEventListener('resize',function(){ if(CUR)drawChart(); });

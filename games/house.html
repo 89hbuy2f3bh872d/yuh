@@ -328,9 +328,11 @@ function mnReveal(i){
 function mnCash(){
   if(busy)return; busy=true;
   post('mines/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;} // keep game active — don't strand the bet
+    busy=false; if(d.error){msg(d.error,'bad');return;}
     GAME._active=false;
-    bal=d.balance; setBal(); sfx('win');
+    bal=d.balance; setBal();
+    if(d.cancelled){ sfx('pop'); for(var k=0;k<25;k++)$('mn-'+k).disabled=true; $('mnCash').classList.add('hidden'); $('mnStart').classList.remove('hidden'); msg('Cashed out early — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
+    sfx('win');
     d.bombs.forEach(function(b){var e=$('mn-'+b);if(!e.classList.contains('safe')){e.classList.add('bomb');e.textContent='💣';}});
     for(var k=0;k<25;k++)$('mn-'+k).disabled=true;
     $('mnCash').classList.add('hidden'); $('mnStart').classList.remove('hidden');
@@ -374,9 +376,11 @@ function hlGuess(dir){
 function hlCash(){
   if(busy)return; busy=true;
   post('hilo/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;} // keep game active — don't strand the bet
+    busy=false; if(d.error){msg(d.error,'bad');return;}
     GAME._active=false;
-    bal=d.balance; setBal(); sfx('win'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent='';
+    bal=d.balance; setBal();
+    if(d.cancelled){ sfx('pop'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent=''; msg('Cashed out early — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
+    sfx('win'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent='';
     msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
   }).catch(function(){busy=false;});
 }
@@ -447,11 +451,13 @@ function crStep(){
 function crCash(){
   if(busy)return; busy=true;
   post('chicken/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;} // keep game active — don't strand the bet
-    GAME._active=false; bal=d.balance; setBal(); sfx('win');
+    busy=false; if(d.error){msg(d.error,'bad');return;}
+    GAME._active=false; bal=d.balance; setBal();
+    if(d.cancelled){ crResetUI(); sfx('pop'); msg('Chickened out — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
+    sfx('win');
     var lane=$('cr-l'+d.step); if(lane){ lane.classList.remove('next'); lane.classList.add('cashed'); }
     crResetUI();
-    msg('Cashed +'+fmt(d.payout)+' FC ('+Number(d.mult).toFixed(2)+'×)','good');
+    msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
   }).catch(function(){busy=false;});
 }
 window.sgPaintTax && window.sgPaintTax(); // show the active server's tax cut

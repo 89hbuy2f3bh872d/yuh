@@ -76,12 +76,19 @@ export class HouseState {
   }
   chickenCashout(uid) {
     const g = this.chicken.get(uid);
-    if (!g || g.over || g.step < 1) return { error: "Nothing to cash out" };
+    if (!g || g.over) return { error: "No active game" };
+    // Nothing banked yet → just cancel (refund the stake). The bet was deducted at
+    // start; the route layer refunds it via STDB. This mirrors "cash out = back out"
+    // in every game — you never strand a bet by cashing out with no progress.
+    if (g.step < 1) { this.chicken.delete(uid); return { cancelled: true, refund: g.bet, bet: g.bet, step: 0 }; }
     const mult = g.mults[g.step - 1];
     this.chicken.delete(uid);
     return { mult, payout: Math.round(g.bet * mult), bet: g.bet, step: g.step };
   }
   chickenActive(uid) { return this.chicken.has(uid); }
+  // If a game is still open when a new one starts (or on cashout-with-no-progress),
+  // return the staked bet so it can be refunded. Idempotent — returns 0 if nothing open.
+  chickenRefundIfOpen(uid) { const g = this.chicken.get(uid); if (!g || g.over) return 0; this.chicken.delete(uid); return g.bet; }
   clearChicken(uid) { this.chicken.delete(uid); }
 
   // Mines: 25-tile grid, M mines. Multiplier rises per safe reveal.
@@ -115,13 +122,17 @@ export class HouseState {
   }
   minesCashout(uid) {
     const g = this.mines.get(uid);
-    if (!g || g.over || !g.revealed.length) return { error: "Nothing to cash out" };
+    if (!g || g.over) return { error: "No active game" };
+    // No safe reveals yet → cancel and refund the stake (cash out = back out).
+    if (!g.revealed.length) { this.mines.delete(uid); return { cancelled: true, refund: g.bet, bet: g.bet, bombs: [...g.grid] }; }
     const mult = this.minesMult(g, g.revealed.length);
     const bombs = [...g.grid];
     this.mines.delete(uid);
     return { mult, payout: Math.round(g.bet * mult), bet: g.bet, bombs };
   }
   minesActive(uid) { return this.mines.has(uid); }
+  // Refund a stranded open game (started but never cashed/lost). 0 if nothing open.
+  minesRefundIfOpen(uid) { const g = this.mines.get(uid); if (!g || g.over) return 0; this.mines.delete(uid); return g.bet; }
   clearMines(uid) { this.mines.delete(uid); }
 
   // HiLo: uniform 13-rank draws. "higher" = higher-or-equal, "lower" = lower-or-equal.
@@ -151,13 +162,17 @@ export class HouseState {
   }
   hiloCashout(uid) {
     const g = this.hilo.get(uid);
-    if (!g || g.over || g.mult <= 1) return { error: "Nothing to cash out" };
+    if (!g || g.over) return { error: "No active game" };
+    // No winning streak yet → cancel and refund the stake (cash out = back out).
+    if (g.mult <= 1) { this.hilo.delete(uid); return { cancelled: true, refund: g.bet, bet: g.bet }; }
     const payout = Math.round(g.bet * g.mult);
     const mult = g.mult, bet = g.bet;
     this.hilo.delete(uid);
     return { mult: +mult.toFixed(3), payout, bet };
   }
   hiloActive(uid) { return this.hilo.has(uid); }
+  // Refund a stranded open game (started but never cashed/busted). 0 if nothing open.
+  hiloRefundIfOpen(uid) { const g = this.hilo.get(uid); if (!g || g.over) return 0; this.hilo.delete(uid); return g.bet; }
   clearHilo(uid) { this.hilo.delete(uid); }
 }
 
