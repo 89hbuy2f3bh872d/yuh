@@ -726,6 +726,20 @@ const app = new Elysia()
       if (v.over) { await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, v.staked).catch(() => {}); }
       return Object.assign(v, { balance: bal() });
     }
+    // Video Poker
+    if (sub === "poker/deal") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try { await stdb.deduct(uid, bet); } catch { return { error: "Insufficient balance" }; }
+      wager(bet);
+      const v: any = cards.vpDeal(uid, bet);
+      return Object.assign(v, { balance: bal() });
+    }
+    if (sub === "poker/draw") {
+      const v: any = cards.vpDraw(uid, Array.isArray(d?.holds) ? d.holds : []);
+      if (v.error) return v;
+      await payWin(v.payout, v.staked); db.recordGame?.(uid, v.payout > v.staked, v.staked).catch(() => {});
+      return Object.assign(v, { balance: bal() });
+    }
     // Baccarat (stateless)
     if (sub === "baccarat") {
       if (!goodBet) return { error: "Invalid bet" };

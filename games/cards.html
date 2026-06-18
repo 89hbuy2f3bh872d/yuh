@@ -7,47 +7,71 @@
 <link rel="stylesheet" href="/assets/css/app.css">
 <style>
 .cg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
-.cg-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.1rem;cursor:pointer;transition:border-color .15s,transform .12s}
-.cg-card:hover{border-color:var(--accent);transform:translateY(-2px)}
-.cg-card .em{font-size:2rem}
-.cg-card h3{margin:.4rem 0 .2rem;font-size:1rem}
-.cg-card p{font-size:.74rem;color:var(--text3);line-height:1.4;margin:0}
-.cg-rtp{font-size:.62rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:.1rem .45rem;display:inline-block;margin-top:.5rem}
+.cg-tile{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.2rem;cursor:pointer;transition:border-color .15s,transform .12s;position:relative;overflow:hidden}
+.cg-tile:hover{border-color:var(--accent);transform:translateY(-3px)}
+.cg-tile .suit{position:absolute;right:-10px;top:-14px;font-size:5rem;opacity:.07}
+.cg-tile h3{margin:.2rem 0 .25rem;font-size:1.05rem}
+.cg-tile p{font-size:.74rem;color:var(--text3);line-height:1.45;margin:0;min-height:2.4em}
+.cg-rtp{font-size:.62rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:.12rem .5rem;display:inline-block;margin-top:.7rem}
+
 /* table */
-.felt{background:radial-gradient(120% 100% at 50% 0,#143a2a,#0c2418 70%);border:1px solid var(--border);border-radius:16px;padding:1.1rem;min-height:380px;display:flex;flex-direction:column;gap:.8rem;position:relative}
-.felt-row{display:flex;flex-direction:column;gap:.4rem;align-items:center}
-.felt-lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:.5rem}
-.felt-lbl b{color:#fff;font-size:.78rem;background:rgba(0,0,0,.35);border-radius:99px;padding:.05rem .5rem}
-.hand{display:flex;gap:.4rem;min-height:96px;align-items:center;flex-wrap:wrap;justify-content:center}
-.pc{width:64px;height:90px;border-radius:9px;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:space-between;padding:.35rem .45rem;font-weight:800;box-shadow:0 6px 16px -6px rgba(0,0,0,.6);animation:deal .28s ease}
-.pc.red{color:#d11}
-.pc .pc-s{font-size:1.5rem;text-align:right;line-height:1}
-.pc.back{background:repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 6px,#2546a8 6px,#2546a8 12px);border:2px solid #fff2}
-@keyframes deal{from{opacity:0;transform:translateY(-26px) rotate(-6deg)}to{opacity:1;transform:none}}
-.felt-mid{flex:1;display:grid;place-items:center}
-.cg-result{font-size:1.5rem;font-weight:900;text-align:center;padding:.4rem 1.2rem;border-radius:12px;animation:pop .3s ease}
-.cg-result.win{color:#2ecc71;background:rgba(46,204,113,.12)}
-.cg-result.lose{color:#e74c3c;background:rgba(231,76,60,.1)}
-.cg-result.push{color:#f1c40f;background:rgba(241,196,15,.1)}
-@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
-.cg-controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:1rem}
-.bet-box2{display:flex;align-items:center;gap:.4rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.3rem .5rem}
-.bet-box2 input{width:90px;background:transparent;border:0;color:var(--text);font-size:.95rem;font-weight:700;outline:none}
-.bet-box2 button{width:26px;height:26px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-weight:700}
-.cg-act{display:flex;gap:.5rem;flex-wrap:wrap}
-.cg-btn{padding:.6rem 1.2rem;border-radius:11px;font-weight:800;font-size:.82rem}
+.table-wrap{display:grid;grid-template-columns:1fr;gap:1rem}
+.felt{background:radial-gradient(130% 110% at 50% -10%,#1a4d36 0%,#0e2a1d 60%,#0a2016 100%);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:1.4rem 1.1rem;min-height:430px;display:flex;flex-direction:column;gap:.6rem;position:relative;box-shadow:inset 0 0 90px rgba(0,0,0,.4)}
+.zone{display:flex;flex-direction:column;align-items:center;gap:.5rem}
+.zone-lbl{font-size:.64rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:.5rem}
+.zone-lbl b{color:#fff;font-size:.82rem;background:rgba(0,0,0,.35);border-radius:99px;padding:.08rem .55rem;font-variant-numeric:tabular-nums}
+.hand{display:flex;gap:.45rem;min-height:106px;align-items:center;justify-content:center;flex-wrap:wrap}
+.mid{flex:1;display:grid;place-items:center;min-height:40px}
+/* cards */
+.pc{width:70px;height:98px;border-radius:10px;background:linear-gradient(160deg,#fff,#eef1f5);color:#1a1a2e;position:relative;box-shadow:0 8px 18px -8px rgba(0,0,0,.7);animation:deal .32s cubic-bezier(.2,.9,.3,1.2) backwards;flex:none}
+.pc .tl{position:absolute;top:5px;left:7px;font-weight:800;font-size:.92rem;line-height:.9;text-align:center}
+.pc .tl .s{font-size:.8rem}
+.pc .ctr{position:absolute;inset:0;display:grid;place-items:center;font-size:2.1rem}
+.pc.red{color:#d11a2a}
+.pc.back{background:repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 7px,#2a4cb0 7px,#2a4cb0 14px);border:2px solid rgba(255,255,255,.15)}
+.pc.hold-on{outline:3px solid var(--accent);outline-offset:1px;transform:translateY(-8px)}
+.pc.holdable{cursor:pointer;transition:transform .12s}
+.pc.holdable:hover{transform:translateY(-5px)}
+.pc .held{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);font-size:.54rem;font-weight:800;letter-spacing:.05em;color:var(--bg);background:var(--accent);border-radius:99px;padding:.05rem .4rem}
+@keyframes deal{from{opacity:0;transform:translateY(-30px) rotate(-7deg) scale(.9)}to{opacity:1;transform:none}}
+.cg-result{font-size:1.5rem;font-weight:900;text-align:center;padding:.45rem 1.3rem;border-radius:13px;animation:pop .3s ease}
+.cg-result.win{color:#37e07a;background:rgba(46,204,113,.14);box-shadow:0 0 28px -6px rgba(46,204,113,.5)}
+.cg-result.lose{color:#ff5b5b;background:rgba(231,76,60,.12)}
+.cg-result.push{color:#ffd34d;background:rgba(241,196,15,.12)}
+.cg-result small{display:block;font-size:.7rem;font-weight:600;opacity:.85;margin-top:.1rem}
+@keyframes pop{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+.cg-toast{position:absolute;left:50%;bottom:.7rem;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font-size:.74rem;padding:.35rem .85rem;border-radius:99px;opacity:0;transition:opacity .2s;pointer-events:none}
+.cg-toast.show{opacity:1}
+/* poker paytable */
+.paytable{display:none;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:.5rem .7rem;font-size:.68rem;color:rgba(255,255,255,.8)}
+.paytable.show{display:block}
+.paytable .pt-row{display:flex;justify-content:space-between;padding:.12rem 0}
+.paytable .pt-row.on{color:#37e07a;font-weight:800}
+.paytable .pt-row b{color:#ffd34d}
+/* controls */
+.cg-controls{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;margin-top:1rem}
+.bet-box2{display:flex;align-items:center;gap:.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:.3rem .4rem}
+.bet-box2 .bx{width:30px;height:30px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-weight:800;font-size:1rem}
+.bet-box2 .bx:hover{color:var(--accent);border-color:var(--accent)}
+.bet-box2 input{width:96px;background:transparent;border:0;color:var(--text);font-size:.98rem;font-weight:800;outline:none;text-align:center;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+.bet-box2 input::-webkit-outer-spin-button,.bet-box2 input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.bet-box2 .fc{color:var(--text3);font-size:.66rem;padding-right:.35rem}
+.cg-chips{display:flex;gap:.3rem}
+.cg-chips button{padding:.4rem .6rem;border-radius:8px;background:var(--surface2);border:1px solid var(--border);font-size:.66rem;font-weight:700;color:var(--text2)}
+.cg-chips button:hover{border-color:var(--accent);color:var(--accent)}
+.cg-act{display:flex;gap:.5rem;flex-wrap:wrap;margin-left:auto}
+.cg-btn{padding:.65rem 1.4rem;border-radius:12px;font-weight:800;font-size:.84rem;letter-spacing:.02em}
 .cg-btn.deal{background:var(--accent);color:var(--bg)}
 .cg-btn.hit{background:#3b9dff;color:#04121f}
 .cg-btn.stand{background:#e67e22;color:#1a0d00}
 .cg-btn.dbl{background:#9b59b6;color:#fff}
 .cg-btn:disabled{opacity:.4;cursor:not-allowed}
 .bac-sides{display:flex;gap:.4rem}
-.bac-side{flex:1;padding:.5rem;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-weight:700;font-size:.78rem;color:var(--text2);text-align:center}
+.bac-side{padding:.5rem .7rem;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-weight:700;font-size:.76rem;color:var(--text2);text-align:center;cursor:pointer}
 .bac-side.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-.bac-side small{display:block;font-size:.6rem;color:var(--text3);font-weight:600}
-.cg-toast{position:absolute;left:50%;bottom:.6rem;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;font-size:.74rem;padding:.35rem .8rem;border-radius:99px;opacity:0;transition:opacity .2s}
-.cg-toast.show{opacity:1}
-@media(max-width:560px){.pc{width:52px;height:74px}.pc .pc-s{font-size:1.2rem}}
+.bac-side small{display:block;font-size:.58rem;color:var(--text3);font-weight:600}
+.bac-side.on small{color:var(--accent)}
+@media(max-width:600px){.pc{width:54px;height:76px}.pc .ctr{font-size:1.5rem}.cg-act{margin-left:0;width:100%}.cg-btn{flex:1}}
 </style>
 </head>
 <body>
@@ -58,7 +82,7 @@ __SIDEBAR__
   <div id="view-list">
     <div class="page-head"><div>
       <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><rect width="14" height="18" x="5" y="3" rx="2"/><path d="M9.5 8 12 6l2.5 2M9.5 16 12 18l2.5-2"/></svg> Card Games</h1>
-      <div class="page-sub">Server-dealt, provably resolved. Realistic RTP.</div>
+      <div class="page-sub">Dealt server-side from a freshly shuffled shoe. Realistic odds.</div>
     </div><span class="srv-tax-note" hidden></span></div>
     <div class="cg-grid" id="cgGrid"><div class="empty">Loading…</div></div>
   </div>
@@ -74,19 +98,24 @@ __SIDEBAR__
       </div>
     </div>
 
-    <div class="felt">
-      <div class="felt-row"><div class="felt-lbl" id="topLbl">Dealer <b id="topTot">—</b></div><div class="hand" id="topHand"></div></div>
-      <div class="felt-mid"><div class="cg-result hidden" id="cgResult"></div></div>
-      <div class="felt-row"><div class="hand" id="botHand"></div><div class="felt-lbl" id="botLbl">You <b id="botTot">—</b></div></div>
-      <div class="cg-toast" id="cgToast"></div>
+    <div class="table-wrap">
+      <div class="felt">
+        <div class="zone" id="topZone"><div class="zone-lbl" id="topLbl"><span>Dealer</span> <b id="topTot">—</b></div><div class="hand" id="topHand"></div></div>
+        <div class="mid"><div class="cg-result hidden" id="cgResult"></div></div>
+        <div class="zone" id="pokerZone" style="display:none"><div class="hand" id="pokerHand"></div><div class="zone-lbl" id="pokerHint" style="color:rgba(255,255,255,.55)">Tap cards to hold, then Draw</div></div>
+        <div class="zone" id="botZone"><div class="hand" id="botHand"></div><div class="zone-lbl" id="botLbl"><span>You</span> <b id="botTot">—</b></div></div>
+        <div class="paytable" id="paytable"></div>
+        <div class="cg-toast" id="cgToast"></div>
+      </div>
     </div>
 
     <div class="cg-controls">
-      <div class="bet-box2"><button onclick="stepBet(-1)">−</button><input id="bet" type="number" min="1" value="100"><button onclick="stepBet(1)">+</button><span style="color:var(--text3);font-size:.7rem">FC</span></div>
+      <div class="bet-box2"><button class="bx" onclick="stepBet(-1)">−</button><input id="bet" type="number" min="1" value="100"><button class="bx" onclick="stepBet(1)">+</button><span class="fc">FC</span></div>
+      <div class="cg-chips"><button onclick="setBet(100)">100</button><button onclick="setBet(500)">500</button><button onclick="setBet(1000)">1K</button><button onclick="bet2x()">2×</button><button onclick="setBet('max')">Max</button></div>
       <div id="bacBets" class="bac-sides hidden">
-        <div class="bac-side on" data-side="player" onclick="pickSide('player')">Player<small>pays 1:1</small></div>
-        <div class="bac-side" data-side="banker" onclick="pickSide('banker')">Banker<small>pays 0.95:1</small></div>
-        <div class="bac-side" data-side="tie" onclick="pickSide('tie')">Tie<small>pays 8:1</small></div>
+        <div class="bac-side on" data-side="player" onclick="pickSide('player')">Player<small>1:1</small></div>
+        <div class="bac-side" data-side="banker" onclick="pickSide('banker')">Banker<small>0.95:1</small></div>
+        <div class="bac-side" data-side="tie" onclick="pickSide('tie')">Tie<small>8:1</small></div>
       </div>
       <div class="cg-act" id="cgAct"></div>
     </div>
@@ -97,95 +126,106 @@ __SIDEBAR__
 <script>
 function $(id){return document.getElementById(id);}
 function fmt(n){return Number(n||0).toLocaleString();}
-var GAMES=[], GAME=null, bal=0, busy=false, bacSide='player';
+var GAMES=[], GAME=null, bal=0, busy=false, bacSide='player', holds={};
 var SUIT={S:'♠',H:'♥',D:'♦',C:'♣'};
 
 function refreshBal(){ return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){ if(d&&d.bal!=null){ bal=Number(d.bal); setBal(); } }).catch(function(){}); }
 function setBal(){ var b=$('balMeter'); if(b)b.textContent=fmt(bal); var s=$('sbBal'); if(s)s.textContent=fmt(bal); }
 function bet(){ return Math.max(1, Math.floor(Number($('bet').value)||0)); }
-function stepBet(d){ var steps=[10,50,100,250,500,1000,2500,5000,10000]; var v=bet(); if(d>0){ for(var i=0;i<steps.length;i++)if(steps[i]>v){$('bet').value=steps[i];return;} $('bet').value=v*2; } else { for(var j=steps.length-1;j>=0;j--)if(steps[j]<v){$('bet').value=steps[j];return;} $('bet').value=Math.max(1,Math.floor(v/2)); } }
-function toast(m){ var t=$('cgToast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1600); }
+function setBet(v){ if(busy)return; $('bet').value = v==='max'?Math.max(1,Math.floor(bal)):v; }
+function bet2x(){ if(busy)return; $('bet').value=Math.max(1,bet()*2); }
+function stepBet(dir){ if(busy)return; var steps=[10,25,50,100,250,500,1000,2500,5000,10000,25000]; var v=bet();
+  if(dir>0){ for(var i=0;i<steps.length;i++)if(steps[i]>v){$('bet').value=steps[i];return;} $('bet').value=v*2; }
+  else { for(var j=steps.length-1;j>=0;j--)if(steps[j]<v){$('bet').value=steps[j];return;} $('bet').value=Math.max(1,Math.floor(v/2)); } }
+function toast(m){ var t=$('cgToast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1500); }
 
-function cardHtml(c){ if(!c||c.hidden) return '<div class="pc back"></div>'; var red=(c.s==='H'||c.s==='D'); return '<div class="pc'+(red?' red':'')+'"><span class="pc-r">'+c.r+'</span><span class="pc-s">'+(SUIT[c.s]||c.s)+'</span></div>'; }
-function renderHand(el,cards){ $(el).innerHTML=(cards||[]).map(cardHtml).join(''); }
-function result(kind,text){ var r=$('cgResult'); r.className='cg-result '+kind; r.textContent=text; r.classList.remove('hidden'); }
+function cardHtml(c,idx,holdable){ if(!c||c.hidden) return '<div class="pc back"></div>';
+  var red=(c.s==='H'||c.s==='D'); var cls='pc'+(red?' red':'')+(holdable?' holdable':'')+(holdable&&holds[idx]?' hold-on':'');
+  var attr = holdable!=null ? ' data-i="'+idx+'" onclick="toggleHold('+idx+')"' : '';
+  return '<div class="'+cls+'"'+attr+'><span class="tl">'+c.r+'<br><span class="s">'+(SUIT[c.s]||c.s)+'</span></span><span class="ctr">'+(SUIT[c.s]||c.s)+'</span>'+(holdable&&holds[idx]?'<span class="held">HELD</span>':'')+'</div>'; }
+function renderHand(el,cards){ $(el).innerHTML=(cards||[]).map(function(c){return cardHtml(c);}).join(''); }
+function renderPoker(cards,holdable){ $('pokerHand').innerHTML=(cards||[]).map(function(c,i){return cardHtml(c,i,holdable?true:null);}).join(''); }
+function result(kind,text,sub){ var r=$('cgResult'); r.className='cg-result '+kind; r.innerHTML=text+(sub?'<small>'+sub+'</small>':''); r.classList.remove('hidden'); }
 function clearResult(){ $('cgResult').classList.add('hidden'); }
 
 function loadGames(){
-  fetch('/api/cards/games').then(function(r){return r.json()}).then(function(d){
-    GAMES=d.games||[]; var g=$('cgGrid');
-    g.innerHTML=GAMES.map(function(x){ return '<div class="cg-card" onclick="openGame(\''+x.id+'\')"><div class="em">'+x.emoji+'</div><h3>'+x.name+'</h3><p>'+x.blurb+'</p><span class="cg-rtp">RTP '+x.rtp+'%</span></div>'; }).join('');
+  fetch('/api/cards/games').then(function(r){return r.json()}).then(function(d){ GAMES=d.games||[];
+    $('cgGrid').innerHTML=GAMES.map(function(x){ return '<div class="cg-tile" onclick="openGame(\''+x.id+'\')"><span class="suit">'+x.emoji+'</span><div class="em" style="font-size:1.8rem">'+x.emoji+'</div><h3>'+x.name+'</h3><p>'+x.blurb+'</p><span class="cg-rtp">RTP '+x.rtp+'%</span></div>'; }).join('');
   }).catch(function(){ $('cgGrid').innerHTML='<div class="empty">Failed to load.</div>'; });
 }
 function openGame(id){ GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME)return;
   $('view-list').classList.add('hidden'); $('view-game').classList.remove('hidden');
   $('cgTitle').textContent=GAME.name; $('cgSub').textContent=GAME.blurb;
-  $('topHand').innerHTML=''; $('botHand').innerHTML=''; $('topTot').textContent='—'; $('botTot').textContent='—'; clearResult();
-  $('bacBets').classList.toggle('hidden', id!=='baccarat');
-  $('topLbl').firstChild.textContent = id==='baccarat'?'Banker ':'Dealer ';
-  $('botLbl').firstChild.textContent = id==='baccarat'?'Player ':'You ';
-  busy=false; renderControls();
-  refreshBal(); window.sgPaintTax && window.sgPaintTax();
+  $('topHand').innerHTML=''; $('botHand').innerHTML=''; $('pokerHand').innerHTML=''; $('topTot').textContent='—'; $('botTot').textContent='—'; clearResult(); holds={};
+  var poker=id==='poker', bac=id==='baccarat';
+  $('bacBets').classList.toggle('hidden', !bac);
+  $('topZone').style.display = poker?'none':''; $('botZone').style.display = poker?'none':'';
+  $('pokerZone').style.display = poker?'':'none'; $('paytable').classList.toggle('show', poker);
+  if(!poker){ $('topLbl').firstChild.textContent = bac?'Banker':'Dealer'; $('botLbl').firstChild.textContent = bac?'Player':'You'; }
+  busy=false; renderControls(); refreshBal(); window.sgPaintTax && window.sgPaintTax();
 }
 function backList(){ if(busy)return; $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
 
 function renderControls(state){
   var act=$('cgAct');
   if(GAME.id==='blackjack'){
-    if(state && !state.over){
-      act.innerHTML='<button class="cg-btn hit" onclick="bjAct(\'hit\')"'+(state.canHit?'':' disabled')+'>Hit</button>'
-        +'<button class="cg-btn stand" onclick="bjAct(\'stand\')"'+(state.canStand?'':' disabled')+'>Stand</button>'
-        +'<button class="cg-btn dbl" onclick="bjAct(\'double\')"'+(state.canDouble?'':' disabled')+'>Double</button>';
-    } else {
-      act.innerHTML='<button class="cg-btn deal" onclick="bjDeal()">Deal</button>';
-    }
+    act.innerHTML = (state && !state.over)
+      ? '<button class="cg-btn hit" onclick="bjAct(\'hit\')"'+(state.canHit?'':' disabled')+'>Hit</button><button class="cg-btn stand" onclick="bjAct(\'stand\')"'+(state.canStand?'':' disabled')+'>Stand</button><button class="cg-btn dbl" onclick="bjAct(\'double\')"'+(state.canDouble?'':' disabled')+'>Double</button>'
+      : '<button class="cg-btn deal" onclick="bjDeal()">Deal</button>';
+  } else if(GAME.id==='poker'){
+    act.innerHTML = (state==='dealt')
+      ? '<button class="cg-btn deal" onclick="pkDraw()">Draw</button>'
+      : '<button class="cg-btn deal" onclick="pkDeal()">Deal</button>';
   } else {
     act.innerHTML='<button class="cg-btn deal" onclick="bacDeal()">Deal</button>';
   }
 }
 function pickSide(s){ if(busy)return; bacSide=s; document.querySelectorAll('.bac-side').forEach(function(b){b.classList.toggle('on',b.dataset.side===s);}); }
+function renderPaytable(highlightKey){
+  var rows=[['Royal Flush','royal',250],['Straight Flush','sf',50],['Four of a Kind','quads',25],['Full House','fh',9],['Flush','flush',6],['Straight','straight',4],['Three of a Kind','trips',3],['Two Pair','twopair',2],['Jacks or Better','jacks',1]];
+  $('paytable').innerHTML=rows.map(function(r){return '<div class="pt-row'+(highlightKey===r[1]?' on':'')+'"><span>'+r[0]+'</span><b>'+r[2]+'×</b></div>';}).join('');
+}
 
 // ── Blackjack ──
-function bjDeal(){
-  if(busy)return; var b=bet(); if(b>bal){ toast('Not enough balance'); return; }
-  busy=true; clearResult(); bal-=b; setBal();
-  post('blackjack/start',{bet:b}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; renderControls(); return; } showBj(d); });
-}
-function bjAct(a){ if(busy)return; busy=true;
-  if(a==='double'){ var b=bet(); if(b>bal){ toast('Not enough to double'); busy=false; return; } bal-=b; setBal(); }
-  post('blackjack/'+a,{}).then(function(d){ if(d.error){ toast(d.error); busy=false; return; } showBj(d); });
-}
-function showBj(d){
-  renderHand('topHand', d.dealer); renderHand('botHand', d.player);
+function bjDeal(){ if(busy)return; var b=bet(); if(b>bal){toast('Not enough balance');return;} busy=true; clearResult(); bal-=b; setBal();
+  post('blackjack/start',{bet:b}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; renderControls(); return; } showBj(d); }); }
+function bjAct(a){ if(busy)return; busy=true; if(a==='double'){ var b=bet(); if(b>bal){toast('Not enough to double');busy=false;return;} bal-=b; setBal(); }
+  post('blackjack/'+a,{}).then(function(d){ if(d.error){ toast(d.error); busy=false; renderControls(lastBj); return; } showBj(d); }); }
+var lastBj=null;
+function showBj(d){ lastBj=d; renderHand('topHand',d.dealer); renderHand('botHand',d.player);
   $('topTot').textContent = d.dealerTotal!=null ? d.dealerTotal : (d.dealerUp+' + ?');
-  $('botTot').textContent = d.playerTotal + (d.soft && !d.over ? ' (soft)' : '');
+  $('botTot').textContent = d.playerTotal + (d.soft && !d.over ? ' soft' : '');
   if(d.balance!=null){ bal=Number(d.balance); setBal(); }
-  if(d.over){
-    var net=d.payout - d.staked;
-    if(d.outcome==='blackjack'){ result('win','BLACKJACK! +'+fmt(net)); }
-    else if(d.outcome==='win'){ result('win','You win +'+fmt(net)); }
-    else if(d.outcome==='push'){ result('push','Push'); }
-    else { result('lose', d.outcome==='bust'?'Bust':'Dealer wins'); }
+  if(d.over){ var net=d.payout-d.staked;
+    if(d.outcome==='blackjack') result('win','Blackjack!','+'+fmt(net)+' FC');
+    else if(d.outcome==='win') result('win','You win','+'+fmt(net)+' FC');
+    else if(d.outcome==='push') result('push','Push','bet returned');
+    else result('lose', d.outcome==='bust'?'Bust':'Dealer wins');
     busy=false; renderControls(null);
-  } else { busy=false; renderControls(d); }
-}
+  } else { busy=false; renderControls(d); } }
+
+// ── Video Poker ──
+function toggleHold(i){ if(busy)return; holds[i]=!holds[i]; var el=document.querySelector('#pokerHand .pc[data-i="'+i+'"]'); if(el){ el.classList.toggle('hold-on',holds[i]); el.querySelector('.held')&&el.querySelector('.held').remove(); if(holds[i]){ el.insertAdjacentHTML('beforeend','<span class="held">HELD</span>'); } } }
+function pkDeal(){ if(busy)return; var b=bet(); if(b>bal){toast('Not enough balance');return;} busy=true; clearResult(); holds={}; bal-=b; setBal(); renderPaytable('');
+  post('poker/deal',{bet:b}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; renderControls(); return; }
+    renderPoker(d.cards,true); if(d.balance!=null){bal=Number(d.balance);setBal();} $('pokerHint').textContent='Tap cards to HOLD, then Draw'; busy=false; renderControls('dealt'); }); }
+function pkDraw(){ if(busy)return; busy=true; var keep=[]; for(var i=0;i<5;i++)if(holds[i])keep.push(i);
+  post('poker/draw',{holds:keep}).then(function(d){ if(d.error){ toast(d.error); busy=false; renderControls('dealt'); return; }
+    renderPoker(d.cards,false); renderPaytable(d.rank); if(d.balance!=null){bal=Number(d.balance);setBal();}
+    var net=d.payout-d.staked;
+    if(d.payout>d.staked) result('win',d.rankName,'+'+fmt(net)+' FC');
+    else if(d.payout===d.staked) result('push',d.rankName,'bet returned');
+    else result('lose','No win','—'+fmt(d.staked)+' FC');
+    $('pokerHint').textContent=''; busy=false; renderControls(); }); }
 
 // ── Baccarat ──
-function bacDeal(){
-  if(busy)return; var b=bet(); if(b>bal){ toast('Not enough balance'); return; }
-  busy=true; clearResult(); bal-=b; setBal();
-  post('baccarat',{bet:b,side:bacSide}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; return; } showBac(d); });
-}
-function showBac(d){
-  renderHand('topHand', d.banker); renderHand('botHand', d.player);
-  $('topTot').textContent=d.bv; $('botTot').textContent=d.pv;
-  if(d.balance!=null){ bal=Number(d.balance); setBal(); }
-  var net=d.payout - d.staked;
-  if(d.payout>d.staked) result('win', (d.outcome==='tie'?'TIE 8:1! ':(d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1))+' wins ')+'+'+fmt(net));
-  else if(d.payout===d.staked) result('push', d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1)+' — push');
-  else result('lose', (d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1))+' wins');
-  busy=false;
-}
+function bacDeal(){ if(busy)return; var b=bet(); if(b>bal){toast('Not enough balance');return;} busy=true; clearResult(); bal-=b; setBal();
+  post('baccarat',{bet:b,side:bacSide}).then(function(d){ if(d.error){ toast(d.error); bal+=b; setBal(); busy=false; return; } showBac(d); }); }
+function showBac(d){ renderHand('topHand',d.banker); renderHand('botHand',d.player); $('topTot').textContent=d.bv; $('botTot').textContent=d.pv;
+  if(d.balance!=null){ bal=Number(d.balance); setBal(); } var net=d.payout-d.staked; var w=d.outcome.charAt(0).toUpperCase()+d.outcome.slice(1);
+  if(d.payout>d.staked) result('win', d.outcome==='tie'?'Tie! 8:1':w+' wins','+'+fmt(net)+' FC');
+  else if(d.payout===d.staked) result('push', w+' — push','bet returned');
+  else result('lose', w+' wins'); busy=false; }
 
 function post(sub,body){ return fetch('/api/cards/'+sub,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json()}).catch(function(){ busy=false; return {error:'Network error'}; }); }
 

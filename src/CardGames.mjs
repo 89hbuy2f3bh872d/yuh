@@ -20,13 +20,47 @@ function bjTotal(cards) { let v = 0, a = 0; for (const c of cards) { v += bjVal(
 function bjSoft(cards) { let v = 0, a = 0; for (const c of cards) { v += bjVal(c.r); if (c.r === "A") a++; } return v <= 21 && a > 0; }
 function isBJ(cards) { return cards.length === 2 && bjTotal(cards) === 21; }
 
+// Video-poker hand evaluator (5 cards) → paytable multiplier (total return; a high
+// pair returns the stake = push). Jacks-or-Better "9/6"-style table, ≈ 98–99% with
+// optimal holds.
+const POKER_ORDER = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+function evalPoker(cards) {
+  const ranks = cards.map((c) => c.r), suits = cards.map((c) => c.s);
+  const counts = {}; for (const r of ranks) counts[r] = (counts[r] || 0) + 1;
+  const cv = Object.values(counts).sort((a, b) => b - a);
+  const flush = suits.every((s) => s === suits[0]);
+  const vals = [...new Set(ranks.map((r) => POKER_ORDER.indexOf(r)))].sort((a, b) => a - b);
+  let straight = false, high = -1;
+  if (vals.length === 5) {
+    if (vals[4] - vals[0] === 4) { straight = true; high = vals[4]; }
+    else if (vals.join() === "0,1,2,3,12") { straight = true; high = 3; } // A-2-3-4-5 wheel (5-high)
+  }
+  const pairR = Object.keys(counts).find((r) => counts[r] === 2);
+  const highPair = pairR && ["J", "Q", "K", "A"].includes(pairR);
+  if (straight && flush && high === 12) return { key: "royal", name: "Royal Flush", mult: 250 };
+  if (straight && flush) return { key: "sf", name: "Straight Flush", mult: 50 };
+  if (cv[0] === 4) return { key: "quads", name: "Four of a Kind", mult: 25 };
+  if (cv[0] === 3 && cv[1] === 2) return { key: "fh", name: "Full House", mult: 9 };
+  if (flush) return { key: "flush", name: "Flush", mult: 6 };
+  if (straight) return { key: "straight", name: "Straight", mult: 4 };
+  if (cv[0] === 3) return { key: "trips", name: "Three of a Kind", mult: 3 };
+  if (cv[0] === 2 && cv[1] === 2) return { key: "twopair", name: "Two Pair", mult: 2 };
+  if (cv[0] === 2 && highPair) return { key: "jacks", name: "Jacks or Better", mult: 1 };
+  return { key: "none", name: "No win", mult: 0 };
+}
+export const POKER_PAYTABLE = [
+  ["Royal Flush", 250], ["Straight Flush", 50], ["Four of a Kind", 25], ["Full House", 9],
+  ["Flush", 6], ["Straight", 4], ["Three of a Kind", 3], ["Two Pair", 2], ["Jacks or Better", 1],
+];
+
 export const CARD_GAMES = [
   { id: "blackjack", name: "Blackjack", emoji: "♠", rtp: 99.5, blurb: "Beat the dealer to 21 without busting. Blackjack pays 3:2." },
+  { id: "poker", name: "Video Poker", emoji: "♣", rtp: 98.4, blurb: "Jacks or Better — hold the cards you want, draw the rest." },
   { id: "baccarat", name: "Baccarat", emoji: "♦", rtp: 98.9, blurb: "Bet on Player, Banker (−5%) or Tie (8:1)." },
 ];
 
 export class CardGames {
-  constructor() { this.bj = new Map(); } // uid → blackjack hand
+  constructor() { this.bj = new Map(); this.vp = new Map(); } // uid → blackjack / video-poker hand
 
   bjActive(uid) { return this.bj.has(uid); }
   clearBj(uid) { this.bj.delete(uid); }
@@ -85,6 +119,25 @@ export class CardGames {
       canHit: !g.over, canStand: !g.over, canDouble: !g.over && g.player.length === 2,
       bet: g.bet, staked: g.staked, payout: g.payout, outcome: g.outcome,
     };
+  }
+
+  // ── Video Poker — Jacks or Better (stateful: deal → hold → draw) ─────────
+  vpDeal(uid, bet) {
+    this.vp.delete(uid);
+    const deck = freshShoe(1);
+    const cards = [draw(deck), draw(deck), draw(deck), draw(deck), draw(deck)];
+    this.vp.set(uid, { deck, cards, bet, over: false });
+    return { game: "poker", cards, over: false, bet, staked: bet, paytable: POKER_PAYTABLE };
+  }
+  vpActive(uid) { return this.vp.has(uid); }
+  vpDraw(uid, holds) {
+    const g = this.vp.get(uid); if (!g || g.over) return { error: "No active hand" };
+    const keep = new Set((Array.isArray(holds) ? holds : []).map(Number).filter((i) => i >= 0 && i < 5));
+    for (let i = 0; i < 5; i++) if (!keep.has(i)) g.cards[i] = draw(g.deck);
+    const ev = evalPoker(g.cards);
+    const payout = g.bet * ev.mult;                          // total return; pair = push
+    this.vp.delete(uid);
+    return { game: "poker", cards: g.cards, over: true, rank: ev.key, rankName: ev.name, mult: ev.mult, payout, staked: g.bet };
   }
 
   // ── Baccarat (stateless, full third-card rules) ──────────────────────────
