@@ -27,10 +27,11 @@ function clampTaxBps(bps) {
   return Math.max(0, Math.min(MAX_TAX_BPS, v));
 }
 
-// Investing — seed assets. FLX = the currency index (stable); the rest are NFTs that
-// start cheap and rise with demand. `baseline` = mean-reversion target, `vol` = volatility.
+// Investing — seed assets. FC-T = the FluxCoin index whose value tracks total FC in
+// circulation (like USD-T tracking dollar reserves); the rest are NFTs that start cheap
+// and rise with demand. `baseline` = mean-reversion target, `vol` = volatility.
 const INVEST_SEED = [
-  { _id: "flx",       kind: "flx", name: "FluxCoin Index", emoji: "🪙", color: "#f1c40f", price: 100, baseline: 100, vol: 0.010 },
+  { _id: "fct",       kind: "fct", name: "FC-T",          emoji: "🪙", color: "#f1c40f", price: 1.00, baseline: 1.00, vol: 0.004 },
   { _id: "pixelpeng", kind: "nft", name: "Pixel Penguin",  emoji: "🐧", color: "#3b9dff", price: 5,   baseline: 9,   vol: 0.060 },
   { _id: "goldape",   kind: "nft", name: "Gold Ape",       emoji: "🦍", color: "#f5a623", price: 8,   baseline: 16,  vol: 0.070 },
   { _id: "cryptcat",  kind: "nft", name: "Crypt Cat",      emoji: "🐱", color: "#9b59b6", price: 3,   baseline: 7,   vol: 0.080 },
@@ -519,6 +520,16 @@ export class Database {
   // ─── Investing (assets + per-user holdings) ─────────────────────────────────
   async seedAssets() {
     if (!this._assets) return;
+    // One-time migration: rename the legacy "flx" (FluxCoin Index) to "fct" (FC-T), which
+    // now tracks total FC in circulation. Preserve price/history if the doc exists.
+    const legacy = await this._assets.findOne({ _id: "flx" }).catch(() => null);
+    if (legacy && !await this._assets.findOne({ _id: "fct" }, { projection: { _id: 1 } }).catch(() => null)) {
+      const fct = INVEST_SEED.find(a => a._id === "fct");
+      await this._assets.insertOne({ ...legacy, ...fct, _id: "fct", kind: "fct", name: "FC-T", baseline: fct.baseline, vol: fct.vol }).catch(() => {});
+      await this._assets.deleteOne({ _id: "flx" }).catch(() => {});
+      // Re-key any holdings from flx → fct so existing positions carry over.
+      await this._holdings.updateMany({ "h.flx": { $exists: true } }, { $rename: { "h.flx": "h.fct" } }).catch(() => {});
+    }
     for (const a of INVEST_SEED) {
       const ex = await this._assets.findOne({ _id: a._id }, { projection: { _id: 1 } }).catch(() => null);
       if (!ex) await this._assets.insertOne({ ...a, bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], updatedAt: Date.now() }).catch(() => {});

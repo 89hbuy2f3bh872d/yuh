@@ -97,6 +97,15 @@ export class Stdb {
 
   getBalance(owner: string): number { return this.balances.get(owner) ?? 0; }
 
+  // Total FC in circulation (sum of all positive balances) — the money supply. FC-T's
+  // price tracks this, so it reflects how many Fluxer coins exist (like USD-T tracking
+  // dollar reserves). Cheap to compute from the in-memory cache.
+  totalSupply(): number {
+    let total = 0;
+    for (const balance of this.balances.values()) if (balance > 0) total += balance;
+    return total;
+  }
+
   // Top-N holders by balance (for the &leaderboard command). Reads the in-memory cache
   // kept fresh by the `account` table subscription. Balances are authoritative in STDB,
   // NOT Mongo — Mongo's `bal` field is a stale starter that's never updated, which is why

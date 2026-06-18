@@ -240,37 +240,42 @@ function pkDraw(){
   });
 }
 function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-// Physics tick: integrate the ball under gravity; when it reaches a peg-hit point's Y,
-// bounce off it toward the next peg's X (deterministic, server-decided), with a real
-// parabolic arc + lateral velocity so the motion reads as genuine Plinko physics.
+// Physics tick: the ball falls under gravity and is STEERED toward the next peg's X by a
+// horizontal spring (so it can never drift off-path or off-screen). On reaching a peg it
+// bounces up modestly (gravity brings it back down), giving a natural Plinko feel. The
+// server's path decides left/right at each peg → deterministic bucket outcome.
 function pkTick(now){
   var P=PK; if(!P)return;
   if(!P.cv||!document.body.contains(P.cv)){ P.raf=0; if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; } // left plinko
   if(!P.last)P.last=now; var dt=Math.min(0.032,(now-P.last)/1000); P.last=now;
-  var G=P.ry*17;   // gravity (px/s²)
+  var G=P.ry*20;          // gravity (px/s²) — accelerates the fall naturally
+  var SPRING=11;          // horizontal spring stiffness toward the target peg/bucket X
+  var minX=P.cx-P.gx*6.5, maxX=P.cx+P.gx*6.5;   // hard board bounds (can't leave)
   for(var i=P.balls.length-1;i>=0;i--){
     var b=P.balls[i];
-    // check for a peg collision at the current hit point
+    // current target X: the next peg to hit, or the landing bucket once past all pegs
+    var tgtX = b.hitIdx<b.hits.length ? b.hits[b.hitIdx].x : b.landX;
+    // horizontal spring: pull toward target X (this keeps the ball on its path + in bounds)
+    b.vx += (tgtX - b.x) * SPRING * dt;
+    b.vx *= (1 - 4.5*dt);   // horizontal damping — settles toward the target, no endless drift
+    // peg collision: when the ball reaches the current peg's row
     if(b.hitIdx<b.hits.length){
       var h=b.hits[b.hitIdx];
       if(b.y>=h.y){
-        b.y=h.y;                                      // snap onto the peg (no sink-through)
-        P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;  // glow ONLY this peg (row+x key)
-        b.pegGlow={row:h.row, x:h.x, at:now};         // track the exact hit for the draw pass
-        // lateral kick toward the NEXT peg (or the landing bucket); keeps the ball on-path
-        var next = b.hitIdx+1<b.hits.length ? b.hits[b.hitIdx+1].x : b.landX;
-        b.vx = (next-h.x) * 6.5;                       // proportional lateral velocity
-        b.vy = -P.ry*4.2;                              // bounce UP off the peg (gravity brings it back)
+        b.y=h.y;                                        // snap onto the peg (no sink-through)
+        P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;    // glow ONLY this peg
+        b.vy = -P.ry*2.4;                               // modest bounce UP (gravity reverses it)
+        b.vx += (Math.random()*2-1) * P.gx * 1.2;       // small natural jiggle off the peg
         b.hitIdx++;
         if(window.SG)SG.sfx('tick');
       }
     }
     // integrate
     b.vy+=G*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    // hard clamp to board bounds (safety net — ball can NEVER leave the canvas)
+    if(b.x<minX){b.x=minX;b.vx=Math.abs(b.vx)*0.3;}
+    if(b.x>maxX){b.x=maxX;b.vx=-Math.abs(b.vx)*0.3;}
     b.trail.push({x:b.x,y:b.y}); if(b.trail.length>9)b.trail.shift();
-    // clamp x toward the landing target once past the last peg (settles into the bucket)
-    if(b.hitIdx>=b.hits.length){ b.vx=(b.landX-b.x)*6; }
-    if(b.row===undefined)b.row=b.hitIdx;
     if(b.y>=P.bucketY-6){ pkLand(b); P.balls.splice(i,1); }
   }
   pkDraw();
@@ -326,7 +331,7 @@ function pkSpawn(d){
   var landX=P.cx + (d.slot-6)*P.gx;
   P.balls.push({
     x:P.cx, y:P.topY-P.ry*0.6,                  // start just above the first peg
-    vx:0, vy:0,
+    vx:0, vy:P.ry*1.5,                           // small initial drop so it falls naturally
     hits:hits, hitIdx:0,
     slot:d.slot, mult:d.mult, payout:d.payout,
     landX:landX, trail:[]

@@ -397,6 +397,20 @@ function investTick() {
 
   for (const a of INVEST.assets.values()) {
     a.prevPrice = a.price;
+    // FC-T tracks total FC in circulation (like USD-T tracking reserves). Its "fair value"
+    // is the money supply normalized: supply / 1e6 (1M FC in circulation = 1.00 FC-T).
+    // Smooth toward it so the price doesn't jerk each tick, plus a tiny noise wiggle.
+    if (a.kind === "fct") {
+      const supply = stdb.totalSupply();
+      const fair = Math.max(0.01, supply / 1_000_000);
+      a.price = Math.round((a.price + (fair - a.price) * 0.12 + (Math.random() * 2 - 1) * 0.002) * 1000) / 1000;
+      a.price = Math.max(0.01, a.price);
+      a.bias = (a.bias || 0) * 0.45;
+      (a.hist ||= []).push([now, a.price]);
+      if (a.hist.length > INVEST_HIST_MAX) a.hist = a.hist.slice(-INVEST_HIST_MAX);
+      a.updatedAt = now;
+      continue;
+    }
     const idio = (Math.random() * 2 - 1) * a.vol;                  // asset-specific shock
     // vol-clustering on the asset
     a.volState = Math.max(0.004, 0.8 * a.volState + 0.2 * Math.abs(idio) + a.vol * 0.04);

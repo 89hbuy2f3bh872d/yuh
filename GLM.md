@@ -310,6 +310,10 @@ Cash out with zero progress must **refund the stake**, never strand the bet. Imp
   big trades execute at a worse price (up to 6% adverse) → round-tripping is net-negative.
   `INVEST_TICK_MS = 25_000`. Validated: exploit (sell on first up-tick) = 0% win / -4.8% avg;
   even perfect-timing holds net only +0.2% after fees+slippage.
+- **FC-T** (`_id: "fct"`, formerly `flx` "FluxCoin Index") — its price tracks **total FC in
+  circulation** (the money supply, via `stdb.totalSupply()`), like USD-T tracking reserves.
+  Fair value = supply / 1M (1M FC → 1.00 FC-T); `investTick` smooths toward it (12%/tick)
+  with a tiny noise wiggle. Other assets use the random-walk model above.
 - Assets + holdings in Mongo (`assets`, `holdings` collections). Holdings shape:
   `{ _id: uid, h: { [assetId]: { u: units, c: costBasis } } }`.
 - `investTick()` broadcasts `{ type:'prices', assets:[{id,price,prev}] }` over WS to ALL
@@ -490,6 +494,14 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
     (balances live in STDB). Fix: `stdb.topBalances(n)` reads the live account cache →
     `/internal/leaderboard/:limit` → `stdbBridge.leaderboard()` → command uses it for "rich"
     mode. "earners" (total wagered) still reads Mongo (correct — that's where it lives).
+15. **FC-T (was FluxCoin Index / flx)**: renamed to `fct`, price now tracks total FC in
+    circulation (`stdb.totalSupply()` / 1M) like USD-T. Migration in `seedAssets`: renames
+    the legacy `flx` doc + re-keys holdings `h.flx`→`h.fct`.
+16. **Plinko physics v2 (spring-steered)**: v1 used a fixed lateral-velocity kick at each
+    peg with no damping → ball drifted sideways off-screen. Rewrote: horizontal **spring**
+    pulls the ball toward its target peg X (can't leave the path), damped bounce on contact,
+    hard board-bounds clamp as safety net. Sim-verified: all paths land correctly, ball
+    never leaves bounds.
 
 ---
 

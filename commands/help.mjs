@@ -19,7 +19,7 @@ export default {
                 `**\`${prefix}work\`** — Work a shift for FC\n` +
                 `**\`${prefix}pay <@user> <amount>\`** — Send FC to someone\n` +
                 `**\`${prefix}shop\`** — Buy server roles with FC\n` +
-                `**\`${prefix}invest\`** — Trade NFTs & the FluxCoin index\n` +
+                `**\`${prefix}invest\`** — Trade NFTs & the FC-T index\n` +
                 `**\`${prefix}leaderboard\`** — Top FC holders`,
             },
             {

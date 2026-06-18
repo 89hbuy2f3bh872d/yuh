@@ -66,7 +66,7 @@ __SIDEBAR__
   <div class="page-head">
     <div>
       <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> Invest</h1>
-      <div class="page-sub">Trade NFTs &amp; the FluxCoin index with FC. Prices move on demand + the market.</div>
+      <div class="page-sub">Trade NFTs &amp; the FC-T index with FC. FC-T tracks total Fluxer coins in circulation.</div>
     </div>
     <span class="srv-tax-note" id="ivBal" hidden></span>
   </div>
@@ -117,13 +117,13 @@ function renderList(){
     var ch=(a.change||0)*100, cls=ch>=0?'up':'down';
     return '<div class="iv-row'+(CUR&&CUR.id===a.id?' on':'')+'" style="--accent:'+esc(a.color)+'" onclick="selectAsset(\''+esc(a.id)+'\')">'
       +'<span class="iv-em">'+esc(a.emoji)+'</span>'
-      +'<div class="iv-meta"><div class="iv-name">'+esc(a.name)+'</div><div class="iv-kind">'+(a.kind==='flx'?'Currency':'NFT')+'</div></div>'
+      +'<div class="iv-meta"><div class="iv-name">'+esc(a.name)+'</div><div class="iv-kind">'+(a.kind==='fct'?'Index':'NFT')+'</div></div>'
       +'<div class="iv-px"><div class="p">'+fmt(a.price)+'</div><div class="c '+cls+'">'+(ch>=0?'+':'')+ch.toFixed(1)+'%</div></div></div>';
   }).join('');
 }
 function renderHead(){
   if(!CUR)return; var ch=(CUR.change||0)*100, cls=ch>=0?'up':'down';
-  $('cEm').textContent=CUR.emoji; $('cNm').textContent=CUR.name; $('cKd').textContent=CUR.kind==='flx'?'FluxCoin Index':'NFT · '+CUR.id;
+  $('cEm').textContent=CUR.emoji; $('cNm').textContent=CUR.name; $('cKd').textContent=CUR.kind==='fct'?'FC-T Index':'NFT · '+CUR.id;
   $('cPx').textContent=fmt(CUR.price)+' FC';
   $('cChg').textContent=(ch>=0?'▲ +':'▼ ')+ch.toFixed(2)+'%'; $('cChg').className='chg '+cls;
   $('tradeTitle').textContent='Trade '+CUR.emoji+' '+CUR.name;

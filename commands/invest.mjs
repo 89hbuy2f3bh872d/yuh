@@ -25,7 +25,7 @@ function findAsset(assets, arg) {
 export default {
   name: "invest",
   aliases: ["market", "stocks", "nft", "portfolio"],
-  description: "Invest in NFTs + the FluxCoin index. `&invest buy <asset> <amount>`",
+  description: "Invest in NFTs + the FC-T index. `&invest buy <asset> <amount>`",
 
   async execute({ message, args, db, embed }) {
     const uid = message.author.id;
