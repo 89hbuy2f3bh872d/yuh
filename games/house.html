@@ -145,8 +145,9 @@ RENDER.plinko=function(){
   $('hgControls').innerHTML=
     '<div class="seg"><button class="seg-b" onclick="pkRisk(\'low\',this)">Low</button><button class="seg-b on" onclick="pkRisk(\'med\',this)">Med</button><button class="seg-b" onclick="pkRisk(\'high\',this)">High</button></div>'+
     '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>'+
-    '<div class="pk-count" id="pkCount" style="text-align:center;font-size:.66rem;color:var(--text-3);margin-top:.3rem">0 / '+MAXBALLS+' balls</div>';
-  if(!window._pkResize){ window._pkResize=true; window.addEventListener('resize',function(){ if(GAME&&GAME.id==='plinko')pkInit(); }); }
+    '<div class="pk-count" id="pkCount" style="text-align:center;font-size:.66rem;color:var(--text3);margin-top:.3rem">0 / '+MAXBALLS+' balls</div>';
+  // Gate on the live canvas, not the closed-over GAME (this listener is bound once).
+  if(!window._pkResize){ window._pkResize=true; window.addEventListener('resize',function(){ if(document.getElementById('pkCanvas'))pkInit(); }); }
   setTimeout(pkInit,30);
 };
 function pkColor(m){ return m>=20?'#ff3b3b':m>=8?'#ff6b1a':m>=3?'#ff9d1a':m>=1.5?'#ffc933':m>=1?'#ffe14d':'#6b7280'; }

@@ -107,7 +107,10 @@ function delTicket(id){
   fetch('/api/tickets/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){ if(d&&d.error){alert(d.error);return;} removeTicket(id); }).catch(function(){});
 }
 loadTickets(); // one initial fetch; everything after is pushed over the WebSocket
-window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='ticket')return; if(d.action==='delete')removeTicket(d.id); else if(d.ticket)upsertTicket(d.ticket); });
+// Register the WS handler ONCE (pjax re-runs this script on every nav into Settings).
+if(!window.__tkWs){ window.__tkWs=1;
+  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='ticket')return; if(d.action==='delete')removeTicket(d.id); else if(d.ticket)upsertTicket(d.ticket); });
+}
 
 (function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
 </script>

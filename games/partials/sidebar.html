@@ -84,6 +84,7 @@
 (function(){
   if(window.__pjax)return; window.__pjax=1;
   var _si=window.setInterval, ints=[];
+  window.__rawSetInterval=function(f,t){ return _si.call(window,f,t); }; // pjax-exempt: outlives page swaps (WS fallback poll)
   window.setInterval=function(f,t){ var id=_si.call(window,f,t); ints.push(id); return id; };
   function clearInts(){ ints.forEach(function(i){ try{clearInterval(i);}catch(e){} }); ints=[]; }
   function internal(href){ return href && href[0]==='/' && href!=='/admin/panel' && !/^\/(logout|login|oauth|assets)/.test(href); }
@@ -258,7 +259,9 @@
 
   var ws=null, pollT=null, tries=0;
   function stopPoll(){ if(pollT){clearInterval(pollT);pollT=null;} }
-  function startPoll(){ if(pollT)return; httpPoll(); pollT=setInterval(httpPoll,5000); }
+  // Use the pjax-exempt timer so a page navigation's clearInts() doesn't silently kill
+  // the WS-fallback poll (which must outlive page swaps).
+  function startPoll(){ if(pollT)return; httpPoll(); pollT=(window.__rawSetInterval||setInterval)(httpPoll,5000); }
   function httpPoll(){
     fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
       if(!d)return; if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0);

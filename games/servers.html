@@ -232,7 +232,7 @@ function editBank(id){
     +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Edit bank</div>'
     +'<div class="sg-dlg-bank">Current: <b>'+fmt(s.bank)+' FC</b></div>'
     +'<label class="sg-dlg-lab">Set bank to (FC)</label>'
-    +'<div class="sg-dlg-row"><input id="bankIn" type="number" min="0" step="1" value="'+(s.bank|0)+'"></div>'
+    +'<div class="sg-dlg-row"><input id="bankIn" type="number" min="0" step="1" value="'+Math.floor(Number(s.bank)||0)+'"></div>'
     +'<div class="sg-dlg-hint">Admin override — sets the server bank to an exact amount.</div>'
     +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="bankCancel">Cancel</button><button class="btn btn-primary" id="bankSave">Save</button></div>'
   +'</div>';
