@@ -240,43 +240,50 @@ function pkDraw(){
   });
 }
 function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-// Physics tick: the ball falls under gravity and is STEERED toward the next peg's X by a
-// horizontal spring (so it can never drift off-path or off-screen). On reaching a peg it
-// bounces up modestly (gravity brings it back down), giving a natural Plinko feel. The
-// server's path decides left/right at each peg → deterministic bucket outcome.
+// Physics tick: the ball falls under gravity and bounces off ANY peg it physically
+// touches (real circular collision against the full peg field — no phasing through pegs).
+// The server's path decides left/right at each ROW so the outcome is deterministic; when
+// the ball reaches a row's collision zone, the scripted direction biases the deflection.
 function pkTick(now){
   var P=PK; if(!P)return;
   if(!P.cv||!document.body.contains(P.cv)){ P.raf=0; if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; } // left plinko
   if(!P.last)P.last=now; var dt=Math.min(0.032,(now-P.last)/1000); P.last=now;
-  var G=P.ry*20;          // gravity (px/s²) — accelerates the fall naturally
-  var SPRING=11;          // horizontal spring stiffness toward the target peg/bucket X
-  var minX=P.cx-P.gx*6.5, maxX=P.cx+P.gx*6.5;   // hard board bounds (can't leave)
+  var G=P.ry*22;                  // gravity (px/s²)
+  var pr=Math.max(3, P.gx*0.14);  // peg radius (match the draw)
+  var br=Math.max(5,Math.min(9,P.gx*0.26));  // ball radius
+  var collideR=pr+br;             // collision distance
+  var minX=P.cx-P.gx*6.5, maxX=P.cx+P.gx*6.5;
   for(var i=P.balls.length-1;i>=0;i--){
     var b=P.balls[i];
-    // current target X: the next peg to hit, or the landing bucket once past all pegs
-    var tgtX = b.hitIdx<b.hits.length ? b.hits[b.hitIdx].x : b.landX;
-    // horizontal spring: pull toward target X (this keeps the ball on its path + in bounds)
-    b.vx += (tgtX - b.x) * SPRING * dt;
-    b.vx *= (1 - 4.5*dt);   // horizontal damping — settles toward the target, no endless drift
-    // peg collision: when the ball reaches the current peg's row
+    // gentle horizontal pull toward the NEXT peg's x — keeps the ball in the gap between
+    // rows so its arc doesn't clip through neighbouring pegs (no phasing).
+    var nextX = b.hitIdx<b.hits.length ? b.hits[b.hitIdx].x : b.landX;
+    b.vx += (nextX - b.x) * 7 * dt;
+    // integrate
+    b.vy+=G*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    b.vx*= (1-3.5*dt);   // horizontal damping
+    // Bounce off the exact scripted peg for the current row (deterministic → correct bucket).
     if(b.hitIdx<b.hits.length){
       var h=b.hits[b.hitIdx];
-      if(b.y>=h.y){
-        b.y=h.y;                                        // snap onto the peg (no sink-through)
-        P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;    // glow ONLY this peg
-        b.vy = -P.ry*2.4;                               // modest bounce UP (gravity reverses it)
-        b.vx += (Math.random()*2-1) * P.gx * 1.2;       // small natural jiggle off the peg
+      if(b.y >= h.y){
+        b.y=h.y;
+        var dir=b.path[h.row]?1:-1;
+        b.x=h.x;                                         // snap to peg for a clean ricochet
+        b.vx = dir*P.gx*2.8 + (Math.random()*2-1)*P.gx*0.25;  // mild lateral + small jiggle
+        b.vy = -P.ry*2.4;                                // bounce up
+        P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;
         b.hitIdx++;
         if(window.SG)SG.sfx('tick');
       }
     }
-    // integrate
-    b.vy+=G*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
-    // hard clamp to board bounds (safety net — ball can NEVER leave the canvas)
+    // hard clamp to board bounds
     if(b.x<minX){b.x=minX;b.vx=Math.abs(b.vx)*0.3;}
     if(b.x>maxX){b.x=maxX;b.vx=-Math.abs(b.vx)*0.3;}
     b.trail.push({x:b.x,y:b.y}); if(b.trail.length>9)b.trail.shift();
-    if(b.y>=P.bucketY-6){ pkLand(b); P.balls.splice(i,1); }
+    if(b.y>=P.bucketY-6){
+      b.x=b.landX;
+      pkLand(b); P.balls.splice(i,1);
+    }
   }
   pkDraw();
   var anyFlash=false, t2=performance.now(); for(var k in P.flash){ if(t2-P.flash[k]<500)anyFlash=true; }
