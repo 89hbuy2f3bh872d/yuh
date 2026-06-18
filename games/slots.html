@@ -201,19 +201,18 @@ function animateFall(cells, fall, delays, dur){
   }
   return maxd+dur;
 }
-// spin-out: the WHOLE board tumbles DOWN out of frame, one ROW at a time — the
-// bottom row leaves first, then the row above it, up to the top. Within each row the
-// cells drop together. Same vertical-drop feel as a win-tumble; no opacity fade.
+// spin-out: the board tumbles DOWN out of frame, one COLUMN at a time (left→right) —
+// the SAME sequencing as dropGrid, just reversed (out instead of in). Within a column
+// the bottom cell leaves first, cascading up. No opacity fade; cells keep their symbol.
 // Returns ms until the last cell has left the frame.
 function spinOut(){
   var W=GAME.W, H=GAME.H, unit=unitPx();
-  var ROWG=turbo?16:42, DUR=turbo?240:380;
+  var COLG=turbo?70:155, ROWG=turbo?8:20, DUR=turbo?240:380;
   var maxd=0;
-  for(var row=H-1; row>=0; row--){                 // bottom row leaves first, going up
-    var leaveAt=(H-1-row)*ROWG;
-    for(var col=0; col<W; col++){
+  for(var col=0; col<W; col++){                       // columns leave left→right
+    for(var row=H-1; row>=0; row--){                  // bottom cell of the column leaves first
       var idx=row*W+col, c=$('cell-'+idx); if(!c||!c.innerHTML.trim())continue;
-      var d=leaveAt; if(d>maxd)maxd=d;
+      var d=col*COLG+(H-1-row)*ROWG; if(d>maxd)maxd=d;
       c.style.transition='none'; c.style.opacity='1'; c.style.transform='translateY(0)';
       void c.offsetWidth;
       c.style.transition='transform '+DUR+'ms cubic-bezier(.45,.05,.55,.4) '+d+'ms';
