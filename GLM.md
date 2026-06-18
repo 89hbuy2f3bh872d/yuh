@@ -110,7 +110,8 @@ Scatters trigger bonuses; multiplier symbols feed bonuses.
 - `animateFall(cells, fall[], delays[], dur)` — the core: places each cell's symbol,
   sets `translateY(-fall*unit)` start, commits, then transitions to `translateY(0)`.
   **Resets `opacity='1'`** (important after a spin-out).
-- `dropGrid(cells)` — spin drop-in: rows from top, left→right ripple within each row.
+- `dropGrid(cells)` — spin drop-in: **columns** from the top, left→right; within a column
+  cells cascade top→bottom (a vertical "reel" fill, not a horizontal row fill).
 - `tumbleFall(next, removed)` — win-tumble: survivors fall into holes, new symbols drop
   from above; vertical gravity, settles bottom→top within each column.
 - `spinOut()` — pre-spin clear: tumbles the **whole board down out of frame**, one column
