@@ -332,7 +332,31 @@ so the overlay stayed visible over a drawn chart AND swallowed canvas mouse even
 
 ---
 
-## 6. Realtime / WebSocket
+## 6. Rakeback (Stake-style cashback on the theoretical house edge)
+
+`rakeback = wager × (effectiveTaxBps/10000) × rakebackPct`. Accrues on **all play** (not just
+losses), per-selected-server. Real cash, no wagering requirement, instant-claim from the lobby
+Rakeback tile. Default `rakebackPct = 5%` (per-guild, owner-configurable 0–20 via
+`POST /api/server/rakeback`). **Halts during a tax holiday** (taxBps=0 → house earns nothing
+to rebate — matches Stake's model).
+
+- **Storage**: Mongo `rakeback` collection, keyed `{_id: uid+"@"+gid}` with `{accrued, wagered,
+  claimed}`. Methods in `Database.mjs`: `addRakeback`, `getRakeback`, `claimRakeback`,
+  `setGuildRakebackPct`, `getGuildRakebackPct`.
+- **Accrual hooks**: `accrueRakeback(uid, gid, wager, taxBps)` in `server.ts` (fire-and-forget,
+  resolves pct from a 60s `rakebackPctCache`). Called at slots spin, house `wager()`, cards
+  `wager()`, and case-battle via the injected `onWager` callback (which also closes the gap
+  where case battles weren't recording `serverstats`).
+- **Endpoints**: `GET /api/rakeback` (pending/claimed/pct for the selected server),
+  `POST /api/rakeback/claim` (credits via `stdb.credit`, 1.5s rate-limit, notifies),
+  `POST /api/server/rakeback` (owner/servers-admin sets pct, broadcasts via `server-econ`).
+- **UI**: lobby Rakeback tile (`games/lobby.html`) — shows pending FC + Claim button, per-server,
+  greys out with "Select a server" when no `srv` cookie. Refreshes on balance WS push.
+- **Math**: 1000 FC @ 15% tax, 5% rakeback → `1000×0.15×0.05 = 7 FC` accrued.
+
+---
+
+## 7. Realtime / WebSocket
 
 One socket per tab at `/ws`. The **central WS client lives in `sidebar.html`** (persistent
 across pjax) and re-dispatches every message as a DOM event:
@@ -351,7 +375,7 @@ Message types: `init`, `balance`, `notification`, `ticket`, `bank`, `server-play
 
 ---
 
-## 7. Sessions / auth
+## 8. Sessions / auth
 
 - OAuth via Fluxer (`/login` → `/oauth/callback`). `oauthStates` map (10-min, single-use) for CSRF.
 - Cookies: `sid` + `uid` (httpOnly), `dtag` + `dav`, `srv` (selected server).
@@ -365,7 +389,7 @@ Message types: `init`, `balance`, `notification`, `ticket`, `bank`, `server-play
 
 ---
 
-## 8. Multi-tenant economy
+## 9. Multi-tenant economy
 
 One **global balance** per user; the **selected server** (`srv` cookie) decides tax/stats.
 Tax is on **PROFIT only** (winnings above stake). Default 1500 bps (15%), cap 5000, floor 1500.
@@ -406,7 +430,7 @@ re-check permissions **server-side**.
 
 ---
 
-## 9. Elysia/Bun gotchas (see CLAUDE.md §4)
+## 10. Elysia/Bun gotchas (see CLAUDE.md §4)
 
 - **No top-level `await`** in `web/server.ts` (PM2's bun-fork `require()`s the entry).
   Use `.then()` chains for background init.
@@ -418,7 +442,7 @@ re-check permissions **server-side**.
 
 ---
 
-## 10. Local validation checklist (no Bun/STDB locally)
+## 11. Local validation checklist (no Bun/STDB locally)
 
 ```bash
 node --check src/HouseGames.mjs          # any .mjs
@@ -432,7 +456,7 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
 
 ---
 
-## 11. Deploy
+## 12. Deploy
 
 - **Web/page/bot only** (no Rust): `pm2 restart sirgreen-web` (+ `sirgreen-bot` if
   `index.mjs`/`CommandHandler.mjs`/`Database.mjs`/`stdbBridge.mjs` changed). Pages are
@@ -445,7 +469,7 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
 
 ---
 
-## 12. Session-specific decisions & fixes (for continuity)
+## 13. Session-specific decisions & fixes (for continuity)
 
 1. **Chicken Road viewport** (`.cr-view`): had no width → flex-shrank to the full ~1840px
    track width inside the centered `.hg-board`, clipping the START lane + chicken.
@@ -500,12 +524,19 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
 16. **Plinko physics v2 (spring-steered)**: v1 used a fixed lateral-velocity kick at each
     peg with no damping → ball drifted sideways off-screen. Rewrote: horizontal **spring**
     pulls the ball toward its target peg X (can't leave the path), damped bounce on contact,
-    hard board-bounds clamp as safety net. Sim-verified: all paths land correctly, ball
-    never leaves bounds.
+    hard board-bound clamp as safety net. Sim-verified: all paths land correctly, ball
+    never leaves bounds. v3 (time-based fall): velocity integration stalled at the top on
+    laggy frames → rewrote as `y = ½gt²` from an always-increasing fall timer (stall-proof).
+17. **Case battle shared mode**: split the entry POT (guaranteed loss after rake). Fixed to
+    split total reward VALUE — good pulls now profit everyone. Net RTP ≈ 90%.
+18. **Rakeback**: Stake-style cashback (`wager × houseEdge × pct`) on all play, per-server.
+    New `rakeback` Mongo collection + `accrueRakeback` hooks at every wager site (slots,
+    house, cards, case-battle — the last also closes the serverstats gap). Claim from the
+    lobby tile. Owner-configurable pct (default 5%). Halts during tax holidays.
 
 ---
 
-## 13. Conventions & standing constraints (from CLAUDE.md §8)
+## 14. Conventions & standing constraints (from CLAUDE.md §8)
 
 - Game outcomes server-authoritative + non-exploitable.
 - STDB owns money; Mongo owns the rest. Never write balances to Mongo.

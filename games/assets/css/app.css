@@ -222,6 +222,18 @@ input,select,textarea{font:inherit;color:inherit}
 .badge-soon{color:var(--text3);background:var(--surface2);border:1px solid var(--border)}
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
 
+/* Rakeback rewards tile */
+.rakeback-tile{--gc:#f59e0b}
+.rakeback-tile .rb-art .icon{color:var(--gold)}
+.rb-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.7rem}
+.rb-amount{display:flex;flex-direction:column;line-height:1.1}
+.rb-amount b{font-size:1.25rem;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
+.rb-amount small{font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.rb-claim{padding:.45rem 1rem;border-radius:9px;border:none;background:linear-gradient(180deg,#fbbf24,#f59e0b);color:#1a1000;font-size:.74rem;font-weight:800;cursor:pointer;transition:transform .1s,filter .15s,opacity .15s}
+.rb-claim:hover:not(:disabled){filter:brightness(1.08)}
+.rb-claim:active:not(:disabled){transform:scale(.96)}
+.rb-claim:disabled{opacity:.4;cursor:default;background:var(--surface2);color:var(--text3)}
+
 /* ── Form controls ────────────────────────────────────────────────────── */
 .input{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:.55rem .75rem;font-size:.84rem;outline:none;transition:border-color .15s;width:100%}
 .input:focus{border-color:var(--accent)}

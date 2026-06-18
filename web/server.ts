@@ -57,6 +57,14 @@ const cb = new CaseBattle({
     recordGame: (u: string, w: boolean, a: number) => db.recordGame ? db.recordGame(u, w, a) : Promise.resolve(),
   },
   getAvatar: async (uid: string) => { const u = await db.getUser(uid).catch(() => null); return u?.av || fluxerAvatarUrl(uid, null); },
+  // Fired on every case-battle wager — records the server wager + accrues rakeback.
+  // Closes the gap where case battles weren't feeding serverstats/rakeback.
+  onWager: (uid: string, gid: string, cost: number) => {
+    if (!gid || !uid || !(cost > 0)) return;
+    (db as any).recordServerWager?.(gid, cost, uid).catch(() => {});
+    broadcastServerPlay(gid, { dGames: 1, dWager: cost });
+    guildTax(gid).then(taxBps => accrueRakeback(uid, gid, cost, taxBps)).catch(() => {});
+  },
 });
 const admin = new AdminPanel(db, cfg.prefix ?? "&");
 // Background init — NO top-level await anywhere in this module, so PM2's bun fork
@@ -271,6 +279,23 @@ async function guildTax(gid: string): Promise<number> {
 function taxOnProfit(profit: number, bps: number): number {
   if (!(profit > 0) || !(bps > 0)) return 0;
   return Math.min(profit, Math.floor(profit * bps / 10000));
+}
+// ── Rakeback: Stake-style cashback on the theoretical house edge ──────────
+// Accrual = wager × (effectiveTaxBps/10000) × rakebackPct. Accrues on ALL play, halts
+// during a tax holiday (taxBps=0 → nothing to rebate). Pct is per-guild (default 5%).
+const rakebackPctCache = new Map<string, { pct: number; until: number }>();
+async function guildRakebackPct(gid: string): Promise<number> {
+  if (!gid) return 5;
+  const hit = rakebackPctCache.get(gid);
+  if (hit && hit.until > Date.now()) return hit.pct;
+  const pct = await (db as any).getGuildRakebackPct?.(gid).catch(() => 5) ?? 5;
+  rakebackPctCache.set(gid, { pct, until: Date.now() + 60_000 });
+  return pct;
+}
+// Fire-and-forget: accrue rakeback on a wager. taxBps=0 (holiday) → no-op.
+function accrueRakeback(uid: string, gid: string, wager: number, taxBps: number) {
+  if (!(taxBps > 0) || !(wager > 0) || !gid || !uid) return;
+  guildRakebackPct(gid).then(pct => (db as any).addRakeback?.(uid, gid, wager, taxBps, pct).catch(() => {})).catch(() => {});
 }
 // A bought Tax Holiday forces the EFFECTIVE tax to 0 while active.
 const holidayActive = (shop: any, now = Date.now()): boolean => (Number(shop?.taxHolidayUntil) || 0) > now;
@@ -538,9 +563,11 @@ async function broadcastServerEcon(gid: string) {
   const econ: any = await (db as any).getGuildEconomy(gid).catch(() => null);
   if (!econ) return;
   const now = Date.now(), shop = econ.shop || {};
+  const rakebackPct = await guildRakebackPct(gid);
   const msg = JSON.stringify({
     type: "server-econ", gid,
     taxBps: econ.taxBps, effTax: effectiveTaxBps(econ.taxBps, shop, now), verified: !!econ.verified,
+    rakebackPct,
     shop: { featuredUntil: shop.featuredUntil || 0, taxHolidayUntil: shop.taxHolidayUntil || 0,
             accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
             featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
@@ -659,6 +686,28 @@ const app = new Elysia()
     return { ok: true, newBal: stdb.getBalance(uid) };
   })
 
+  // ── rakeback (Stake-style cashback on the theoretical house edge) ──────────
+  .get("/api/rakeback", async ({ request, set }) => {
+    const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+    const srv = await requireServer(request, uid);
+    if (!srv) return { accrued: 0, wagered: 0, claimed: 0, pct: 0, taxBps: 0, needServer: true };
+    const r = await (db as any).getRakeback?.(uid, srv.gid).catch(() => ({ accrued: 0, wagered: 0, claimed: 0 })) ?? { accrued: 0, wagered: 0, claimed: 0 };
+    const pct = await guildRakebackPct(srv.gid);
+    return { accrued: r.accrued || 0, wagered: r.wagered || 0, claimed: r.claimed || 0, pct, taxBps: srv.taxBps };
+  })
+  .post("/api/rakeback/claim", async ({ request, set }) => {
+    const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+    if (rl(rlMoney, uid, 1500)) { set.status = 429; return { error: "Slow down a moment" }; }
+    const srv = await requireServer(request, uid);
+    if (!srv) { set.status = 400; return { error: "Select a server to claim rakeback", needServer: true }; }
+    const claimed = await (db as any).claimRakeback?.(uid, srv.gid).catch(() => 0) ?? 0;
+    if (claimed > 0) {
+      await stdb.credit(uid, claimed).catch(() => {});
+      stdb.addNotification(uid, "rakeback", claimed, "", "Rakeback claimed").catch(() => {});
+    }
+    return { ok: true, claimed, balance: stdb.getBalance(uid) };
+  })
+
   // ── slots (whole round resolved server-side, settled atomically) ───────────
   .get("/api/slots/games", async ({ request, set }) => {
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
@@ -689,6 +738,7 @@ const app = new Elysia()
     const tax = taxOnProfit(result.totalWin - cost, srv.taxBps);
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
+    accrueRakeback(uid, srv.gid, cost, srv.taxBps);
     broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost });
     if (result.totalWin > 0) { const p = { gid: srv.gid, win: result.totalWin, tax, at: Date.now() }; pendingSlots.set(uid, p); (db as any).setPendingSlot?.(uid, p).catch(() => {}); }
     return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid), pendingWin: result.totalWin };
@@ -715,7 +765,7 @@ const app = new Elysia()
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
     const bal = () => stdb.getBalance(uid);
-    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
+    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); accrueRakeback(uid, srv.gid, amt, srv.taxBps); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
     // Credit a payout, routing the server's tax on profit (payout − stake) to its bank.
     const payWin = (payout: number, stake: number) => {
       const tax = payout > 0 ? taxOnProfit(payout - stake, srv.taxBps) : 0;
@@ -820,7 +870,7 @@ const app = new Elysia()
     const bet = Math.floor(Number(d?.bet) || 0);
     const goodBet = bet >= 1 && bet <= 1_000_000;
     const bal = () => stdb.getBalance(uid);
-    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
+    const wager = (amt: number) => { (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {}); accrueRakeback(uid, srv.gid, amt, srv.taxBps); broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt }); };
     const payWin = (payout: number, stake: number) => {
       const tax = payout > 0 ? taxOnProfit(payout - stake, srv.taxBps) : 0;
       (db as any).recordServerPayout?.(srv.gid, payout, tax).catch(() => {});
@@ -1276,6 +1326,23 @@ app.post("/api/server/tax", async ({ request, body, set }) => {
   taxCache.set(gid, { bps: saved, until: Date.now() + 60_000 }); // refresh hot cache immediately
   broadcastServerEcon(gid); // push the new rate to everyone live
   return { ok: true, taxBps: saved };
+});
+
+// Owner/servers-admin: set the server's rakeback percentage (0–20%).
+app.post("/api/server/rakeback", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  if (rl(rlBankOps, uid, 2500)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const b = body as any;
+  const gid = String(b?.gid || parseCookies(request).srv || "");
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  const manageAll = await canManageServers(uid);
+  if (g.ownerId !== uid && !manageAll) { set.status = 403; return { error: "Only the server owner can set rakeback" }; }
+  const pct = Math.max(0, Math.min(20, Math.floor(Number(b?.percent) || 0)));
+  await (db as any).setGuildRakebackPct?.(gid, pct).catch(() => {});
+  rakebackPctCache.set(gid, { pct, until: Date.now() + 60_000 });
+  broadcastServerEcon(gid);
+  return { ok: true, rakebackPct: pct };
 });
 
 // ── Servers dashboard data (owner-only): each owned server's tax, bank + stats ─

@@ -87,6 +87,9 @@ export class CaseBattle {
     this._bal = opts.bal;
     this._db = opts.db || {};
     this._getAvatar = opts.getAvatar || (async () => "");
+    // Hook fired on every real-player wager (deduct). Wired by server.ts to record the
+    // server wager + accrue rakeback. gid/taxBps are resolved per-battle at create time.
+    this._onWager = opts.onWager || (() => {});
     this.active = new Map();        // battleId → battle
     this.userBattle = new Map();    // uid → battleId
     this.custom = [];
@@ -213,11 +216,13 @@ export class CaseBattle {
       for (let i = 0; i < qty; i++) { validatedCases.push({ tier: tier.id, cost: tier.entry }); entryCost += tier.entry; }
     }
     if (!(await this._bal.deduct(uid, entryCost))) return { error: "Insufficient balance" };
+    this._onWager(uid, gid, entryCost);
     const av = avatar || await this._getAvatar(uid);
     const battleId = crypto.randomBytes(8).toString("hex");
     const battle = {
       id: battleId, creatorUid: uid, mode, maxPlayers: mp, cases: validatedCases, cost: entryCost, pot: entryCost * mp,
       speed: sp, jackpot: !!jackpot, crazy: !!crazy, hidden: !!hidden, phase: "pending",
+      gid: gid || null,                 // remembered so join/recreate accrue to the right server
       players: [{ uid, tag, avatar: av, cost: entryCost, rewards: [], totalValue: 0, netWin: 0 }],
       createdAt: Date.now(), resolvedAt: 0, winnerUid: null, watchers: new Set(), recreateAccepts: new Set(), recreateBattleId: null,
     };
@@ -231,6 +236,7 @@ export class CaseBattle {
     if (battle.players.some(p => p.uid === uid)) return { error: "Already in this battle" };
     if (battle.players.length >= battle.maxPlayers) return { error: "Battle is full" };
     if (!(await this._bal.deduct(uid, battle.cost))) return { error: "Insufficient balance" };
+    this._onWager(uid, battle.gid, battle.cost);
     const av = avatar || await this._getAvatar(uid);
     battle.players.push({ uid, tag, avatar: av, cost: battle.cost, rewards: [], totalValue: 0, netWin: 0 });
     this.userBattle.set(uid, battleId);
@@ -270,6 +276,7 @@ export class CaseBattle {
           battle.recreateAccepts.delete(pl.uid);
           return { error: `${pl.tag || pl.uid} can no longer afford it` };
         }
+        this._onWager(pl.uid, battle.gid, battle.cost);
         charged.push(pl.uid);
       }
       const newId = crypto.randomBytes(8).toString("hex");

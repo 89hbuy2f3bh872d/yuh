@@ -88,6 +88,7 @@ export class Database {
     this._guilds  = this._db.collection("guilds");
     this._tokens  = this._db.collection("logintokens");
     this._srvStats = this._db.collection("serverstats");
+    this._rakeback = this._db.collection("rakeback");  // per-user-per-server rakeback ledger
     this._assets   = this._db.collection("assets");    // investing: tradeable assets + price history
     this._holdings = this._db.collection("holdings");  // investing: per-user positions
     // Ensure indexes
@@ -613,6 +614,59 @@ export class Database {
     if (!this._srvStats) return [];
     const field = { wagered: "wagered", taxed: "taxed", games: "gp", payout: "payout" }[sortKey] || "wagered";
     return this._srvStats.find({}).sort({ [field]: -1 }).limit(Math.min(200, Math.max(1, limit | 0))).toArray().catch(() => []);
+  }
+
+  // ─── Rakeback (Stake-style cashback on the theoretical house edge) ─────────
+  // Per-user-per-server ledger keyed by uid+"@"+gid. Accrual = wager × (taxBps/10000) × pct.
+  // Accrual halts during a tax holiday (taxBps=0 → house earns nothing to rebate).
+  /** Accrue rakeback for a wager. Fire-and-forget from every play site. */
+  async addRakeback(uid, gid, wager, taxBps, pct) {
+    if (!this._rakeback || !gid || !isValidUserId(uid)) return;
+    const w = Math.max(0, Math.floor(Number(wager) || 0));
+    const tb = Math.max(0, Number(taxBps) || 0);
+    const p = Math.max(0, Math.min(20, Number(pct) || 0));
+    if (!(w > 0) || !(tb > 0) || !(p > 0)) return;            // 0 tax (holiday) or 0% → no accrual
+    const earn = Math.floor(w * tb / 10000 * p / 100);         // FC pending
+    if (!(earn > 0)) return;
+    await this._rakeback.updateOne(
+      { _id: uid + "@" + gid },
+      { $inc: { accrued: earn, wagered: w }, $set: { uid, gid, updatedAt: Date.now() } },
+      { upsert: true }
+    ).catch(() => {});
+  }
+  /** Read a player's rakeback state for a server. */
+  async getRakeback(uid, gid) {
+    if (!this._rakeback || !gid || !isValidUserId(uid)) return { accrued: 0, wagered: 0, claimed: 0 };
+    const r = await this._rakeback.findOne({ _id: uid + "@" + gid }).catch(() => null);
+    return { accrued: r?.accrued || 0, wagered: r?.wagered || 0, claimed: r?.claimed || 0 };
+  }
+  /** Atomically claim (read + zero) the pending rakeback. Returns the FC amount claimed. */
+  async claimRakeback(uid, gid) {
+    if (!this._rakeback || !gid || !isValidUserId(uid)) return 0;
+    // Read the pending amount, then move it into claimed + zero accrued. Single-tab
+    // claim (user-initiated, rate-limited) so the read-then-write race is negligible.
+    const r = await this._rakeback.findOne({ _id: uid + "@" + gid }).catch(() => null);
+    const amt = Math.max(0, Math.floor(r?.accrued || 0));
+    if (amt > 0) {
+      await this._rakeback.updateOne(
+        { _id: uid + "@" + gid },
+        { $inc: { claimed: amt }, $set: { accrued: 0, updatedAt: Date.now() } }
+      ).catch(() => {});
+    }
+    return amt;
+  }
+  /** Owner config: set a guild's rakeback percentage (0–20). */
+  async setGuildRakebackPct(gid, pct) {
+    if (!this._guilds || !gid) return;
+    const p = Math.max(0, Math.min(20, Math.floor(Number(pct) || 0)));
+    await this._guilds.updateOne({ _id: String(gid) }, { $set: { rakebackPct: p } }, { upsert: true }).catch(() => {});
+  }
+  /** Read a guild's configured rakeback percentage (default 5). */
+  async getGuildRakebackPct(gid) {
+    if (!this._guilds || !gid) return 5;
+    const g = await this._guilds.findOne({ _id: String(gid) }, { projection: { rakebackPct: 1 } }).catch(() => null);
+    const p = Number(g?.rakebackPct);
+    return Number.isFinite(p) ? Math.max(0, Math.min(20, p)) : 5;
   }
 
   // ─── Per-server shop / economy (owner perks bought with the server bank) ─────
