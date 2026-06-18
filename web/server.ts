@@ -938,7 +938,6 @@ app.post("/api/server/shop/buy", async ({ request, body, set }) => {
   }
   await (db as any).mergeGuildShop(gid, patch).catch(() => {});
   if (item.id === "tax_holiday") taxCache.delete(gid); // holiday must take effect immediately
-  const now = Date.now();
   return { ok: true, bank: stdb.getServerBank(gid),
     shop: { featuredUntil: patch.featuredUntil ?? shop.featuredUntil ?? 0, taxHolidayUntil: patch.taxHolidayUntil ?? shop.taxHolidayUntil ?? 0,
             accent: HEX_RE.test(patch.accent ?? shop.accent ?? "") ? (patch.accent ?? shop.accent) : null,
