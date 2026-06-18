@@ -47,6 +47,41 @@ export const CB_BUILTIN_TIERS = [
     { s: "🐉", n: "Dragon Scale", v: 130000, w: 14 }, { s: "🦄", n: "Unicorn Horn", v: 220000, w: 10 }, { s: "👑", n: "Divine Crown", v: 380000, w: 6 }, { s: "🌌", n: "Universe Shard", v: 600000, w: 4 }, { s: "✨", n: "God Slayer", v: 1000000, w: 2 } ] },
 ];
 
+// ── case tier value helpers + owner-case validation ──────────────────────────
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const safeHex = (v, fb) => HEX_RE.test(String(v ?? "")) ? String(v) : fb;
+function tierEv(t) { const w = t.items.reduce((s, i) => s + i.w, 0); return w ? t.items.reduce((s, i) => s + i.v * i.w, 0) / w : 0; }
+function tierRtpPct(t) { return Math.round(tierEv(t) / (t.entry || 1) * 100); }
+
+// Owner-made cases must keep a house edge — average return capped so a server owner
+// can't publish a +EV ("free profit") case. Built-in/admin cases are exempt.
+export const MAX_SERVER_CASE_RTP = 0.95;
+function validateServerCase(d, gid) {
+  const rawId = String(d?.id ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 24);
+  if (!rawId) return { error: "Give the case a short id (letters, numbers, - or _)" };
+  const id = "s_" + gid + "_" + rawId;
+  const label = String(d?.label ?? "").trim().slice(0, 24);
+  if (!label) return { error: "Label is required" };
+  const entry = Math.floor(Number(d?.entry));
+  if (!(entry >= 10 && entry <= 10_000_000)) return { error: "Entry must be between 10 and 10,000,000 FC" };
+  const items0 = Array.isArray(d?.items) ? d.items : [];
+  if (items0.length < 2 || items0.length > 16) return { error: "A case needs between 2 and 16 items" };
+  const items = [];
+  for (const it of items0) {
+    const s = (String(it?.s ?? "").trim().slice(0, 8)) || "🎁";
+    const n = (String(it?.n ?? "").trim().slice(0, 40)) || "Item";
+    const v = Math.floor(Number(it?.v));
+    const w = Math.floor(Number(it?.w));
+    if (!(v >= 0 && v <= entry * 250)) return { error: `"${n}" value must be 0–${entry * 250} FC (≤ 250× entry)` };
+    if (!(w >= 1 && w <= 1_000_000)) return { error: `"${n}" weight must be 1–1,000,000` };
+    items.push({ s, n, v, w });
+  }
+  const tier = { id, gid, label, entry, color: safeHex(d?.color, "#2ecc71"), bg: safeHex(d?.bg, "#0a1f0a"), builtIn: false, items };
+  const rtp = tierEv(tier) / entry;
+  if (rtp > MAX_SERVER_CASE_RTP) return { error: `This case pays back ${Math.round(rtp * 100)}% on average — the max is ${Math.round(MAX_SERVER_CASE_RTP * 100)}% so the house keeps an edge. Lower the item values or raise the entry.` };
+  return { tier, rtp };
+}
+
 export class CaseBattle {
   constructor(opts) {
     this._bal = opts.bal;
@@ -142,10 +177,12 @@ export class CaseBattle {
   }
 
   // ── route operations (return plain payloads) ───────────────────────────────
-  getTiers() {
-    return { tiers: this.allTiers().map(t => ({
-      id: t.id, label: t.label, entry: t.entry, color: t.color, bg: t.bg, builtIn: !!t.builtIn,
-      rtp: Math.round(t.items.reduce((s, i) => s + i.v * i.w, 0) / t.items.reduce((s, i) => s + i.w, 0) / t.entry * 100),
+  // Tiers visible on a given server: built-in + global custom + THIS server's cases.
+  // (A server must never see another server's custom cases.)
+  getTiers(gid) {
+    return { tiers: this.allTiers().filter(t => !t.gid || t.gid === gid).map(t => ({
+      id: t.id, label: t.label, entry: t.entry, color: t.color, bg: t.bg, builtIn: !!t.builtIn, server: !!t.gid,
+      rtp: tierRtpPct(t),
       items: t.items.map(i => ({ s: i.s, n: i.n, v: i.v })),
     })) };
   }
@@ -157,7 +194,7 @@ export class CaseBattle {
       creatorUid: b.creatorUid, phase: b.phase, createdAt: b.createdAt, watcherCount: b.watchers ? b.watchers.size : 0,
     })).sort((a, b) => a.createdAt - b.createdAt) };
   }
-  async create(uid, tag, avatar, data) {
+  async create(uid, tag, avatar, data, gid) {
     const { cases, mode, maxPlayers, speed, jackpot, crazy, hidden } = data || {};
     if (!Array.isArray(cases) || cases.length === 0) return { error: "At least one case is required" };
     if (!["regular", "shared"].includes(mode)) return { error: "Invalid mode" };
@@ -166,6 +203,7 @@ export class CaseBattle {
     const validatedCases = []; let entryCost = 0;
     for (const c of cases) {
       const tier = this.tierById(c.tier); if (!tier) return { error: `Invalid tier: ${c.tier}` };
+      if (tier.gid && tier.gid !== gid) return { error: "That case is only available on its own server" };
       const qty = Math.max(1, Math.min(20, Number(c.qty) || 1));
       for (let i = 0; i < qty; i++) { validatedCases.push({ tier: tier.id, cost: tier.entry }); entryCost += tier.entry; }
     }
@@ -282,4 +320,28 @@ export class CaseBattle {
   async addTier(tier) { if (this.tierById(tier.id)) return { error: "Tier id exists" }; this.custom.push(tier); await this._db.saveCustomTiers?.(this.custom); return { tier }; }
   async editTier(id, patch) { const i = this.custom.findIndex(t => t.id === id); if (i < 0) return { error: "Not found" }; this.custom[i] = { ...this.custom[i], ...patch, id, builtIn: false }; await this._db.saveCustomTiers?.(this.custom); return { tier: this.custom[i] }; }
   async deleteTier(id) { const i = this.custom.findIndex(t => t.id === id); if (i < 0) return { error: "Not found" }; this.custom.splice(i, 1); await this._db.saveCustomTiers?.(this.custom); return { ok: true }; }
+
+  // ── server-owner cases (per-guild, RTP-validated) ──────────────────────────
+  serverCases(gid) {
+    return this.custom.filter(t => t.gid === gid).map(t => ({
+      id: t.id, label: t.label, entry: t.entry, color: t.color, bg: t.bg, rtp: tierRtpPct(t),
+      items: t.items.map(i => ({ s: i.s, n: i.n, v: i.v, w: i.w })),
+    }));
+  }
+  async addServerCase(gid, input) {
+    const v = validateServerCase(input, gid); if (v.error) return { error: v.error };
+    if (this.custom.some(t => t.id === v.tier.id)) return { error: "You already have a case with that id" };
+    if (this.custom.filter(t => t.gid === gid).length >= 12) return { error: "Max 12 custom cases per server" };
+    this.custom.push(v.tier); await this._db.saveCustomTiers?.(this.custom); return { ok: true, id: v.tier.id, rtp: Math.round(v.rtp * 100) };
+  }
+  async editServerCase(gid, id, input) {
+    const i = this.custom.findIndex(t => t.id === id && t.gid === gid); if (i < 0) return { error: "Case not found" };
+    const rawId = String(id).replace("s_" + gid + "_", ""); // id is immutable on edit
+    const v = validateServerCase({ ...input, id: rawId }, gid); if (v.error) return { error: v.error };
+    this.custom[i] = v.tier; await this._db.saveCustomTiers?.(this.custom); return { ok: true, rtp: Math.round(v.rtp * 100) };
+  }
+  async deleteServerCase(gid, id) {
+    const i = this.custom.findIndex(t => t.id === id && t.gid === gid); if (i < 0) return { error: "Case not found" };
+    this.custom.splice(i, 1); await this._db.saveCustomTiers?.(this.custom); return { ok: true };
+  }
 }

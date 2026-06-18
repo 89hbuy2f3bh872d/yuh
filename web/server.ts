@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import { Database } from "../src/Database.mjs";
 import * as Slots from "../src/SlotEngine.mjs";
 import { HouseState, plinko, coinflip, doubleOrNothing, HOUSE_GAMES, PLINKO } from "../src/HouseGames.mjs";
-import { CaseBattle } from "../src/CaseBattle.mjs";
+import { CaseBattle, MAX_SERVER_CASE_RTP } from "../src/CaseBattle.mjs";
 import { AdminPanel } from "../src/AdminPanel.mjs";
 import { Stdb } from "./src/stdb.ts";
 
@@ -161,6 +161,17 @@ async function ownsAnyServer(uid: string, gids: string[]): Promise<boolean> {
 const canManageServers = (uid: string): Promise<boolean> => admin.can(uid, "servers").catch(() => false);
 // Tax exemption (no 15% floor, no vote to raise): the "tax" or "servers" permission.
 const isTaxExempt = async (uid: string): Promise<boolean> => (await admin.can(uid, "tax").catch(() => false)) || (await canManageServers(uid));
+// Auth for editing a server's settings: must be its owner, or a "servers" admin.
+// Returns the uid on success, or {status,error} to return.
+async function serverEditAuth(request: Request, gid: string): Promise<string | { status: number; error: string }> {
+  const uid = await resolveSession(request);
+  if (!uid) return { status: 401, error: "Not logged in" };
+  if (!gid) return { status: 400, error: "Unknown server" };
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) return { status: 404, error: "Unknown server" };
+  if (g.ownerId !== uid && !(await canManageServers(uid))) return { status: 403, error: "Only the server owner can do that" };
+  return uid;
+}
 async function renderPage(request: Request, set: any, file: string, active: string, extra: Record<string, string> = {}) {
   const uid = await resolveSession(request);
   if (!uid) { return redir(set, "/login"); }
@@ -685,9 +696,9 @@ app.get("/servers", async ({ request, set }) => {
 
 // ── Case Battle API (engine: ../src/CaseBattle.mjs; balances via STDB) ───────
 const authed = async (request: Request, set: any) => { const uid = await resolveSession(request); if (!uid) { set.status = 401; } return uid; };
-app.get("/api/case-battle/tiers", async ({ request, set }) => { if (!(await authed(request, set))) return { error: "Not logged in" }; return cb.getTiers(); });
+app.get("/api/case-battle/tiers", async ({ request, set }) => { if (!(await authed(request, set))) return { error: "Not logged in" }; return cb.getTiers(parseCookies(request).srv || ""); });
 app.get("/api/case-battle/list", async ({ request }) => { await resolveSession(request); return cb.list(); });
-app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request, uid))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body); });
+app.post("/api/case-battle/create", async ({ request, body, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; const srv = await requireServer(request, uid); if (!srv) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.create(uid, c.dtag || uid, c.dav || "", body, srv.gid); });
 app.post("/api/case-battle/:id/join", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; if (!(await requireServer(request, uid))) { set.status = 400; return { error: "Select a server to play on", needServer: true }; } const c = parseCookies(request); return cb.join(uid, c.dtag || uid, c.dav || "", (params as any).id); });
 app.post("/api/case-battle/:id/bot", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.addBot(uid, (params as any).id); });
 app.post("/api/case-battle/:id/recreate", async ({ request, params, set }) => { const uid = await authed(request, set); if (!uid) return { error: "Not logged in" }; return cb.recreate(uid, (params as any).id); });
@@ -740,7 +751,7 @@ app.post("/api/admin/users/:id/balance", ({ request, params, body, set }) => adm
   stdb.addNotification(target, "balance", bal, "Admin", `An admin set your balance to ${bal.toLocaleString()} FC`).catch(() => {});
   return { bal };
 }));
-app.get("/api/admin/cases", ({ request, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return { tiers: cb.allTiers() }; }));
+app.get("/api/admin/cases", ({ request, set }) => adminApi(request, set, async (uid) => { if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; } return { tiers: cb.allTiers().filter((t: any) => !t.gid) }; }));
 app.post("/api/admin/cases", ({ request, body, set }) => adminApi(request, set, async (uid) => {
   if (!(await admin.can(uid, "cases"))) { set.status = 403; return { error: "Missing permission" }; }
   const d = body as any; if (!d.id || !d.label || !d.entry || !Array.isArray(d.items) || !d.items.length) return { error: "id, label, entry, items[] required" };
@@ -1087,6 +1098,40 @@ app.post("/api/server/verify", async ({ request, body, set }) => {
   console.log(`[audit] verify by ${uid} on ${gid}: ${verified}`);
   broadcastServerEcon(gid); // live badge update on dashboard + leaderboard
   return { ok: true, verified };
+});
+
+// ── server-owner custom cases (per-guild; RTP-capped so they can't be +EV) ────
+app.get("/api/server/cases", async ({ request, query, set }) => {
+  const gid = String((query as any)?.gid || parseCookies(request).srv || "");
+  const auth = await serverEditAuth(request, gid);
+  if (typeof auth !== "string") { set.status = auth.status; return { error: auth.error }; }
+  return { cases: cb.serverCases(gid), maxRtp: Math.round(MAX_SERVER_CASE_RTP * 100) };
+});
+app.post("/api/server/cases", async ({ request, body, set }) => {
+  const b = body as any; const gid = String(b?.gid || parseCookies(request).srv || "");
+  const auth = await serverEditAuth(request, gid);
+  if (typeof auth !== "string") { set.status = auth.status; return { error: auth.error }; }
+  if (rl(rlShop, auth + ":cases:" + gid, 1200)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const r: any = await cb.addServerCase(gid, b);
+  if (r?.error) { set.status = 400; return r; }
+  return r;
+});
+app.put("/api/server/cases/:id", async ({ request, params, body, set }) => {
+  const b = body as any; const gid = String(b?.gid || parseCookies(request).srv || "");
+  const auth = await serverEditAuth(request, gid);
+  if (typeof auth !== "string") { set.status = auth.status; return { error: auth.error }; }
+  if (rl(rlShop, auth + ":cases:" + gid, 1200)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const r: any = await cb.editServerCase(gid, decodeURIComponent((params as any).id), b);
+  if (r?.error) { set.status = 400; return r; }
+  return r;
+});
+app.delete("/api/server/cases/:id", async ({ request, params, query, set }) => {
+  const gid = String((query as any)?.gid || parseCookies(request).srv || "");
+  const auth = await serverEditAuth(request, gid);
+  if (typeof auth !== "string") { set.status = auth.status; return { error: auth.error }; }
+  const r: any = await cb.deleteServerCase(gid, decodeURIComponent((params as any).id));
+  if (r?.error) { set.status = 400; return r; }
+  return r;
 });
 
 // ── global server leaderboard (any logged-in user) ───────────────────────────
