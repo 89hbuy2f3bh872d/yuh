@@ -578,7 +578,7 @@ const app = new Elysia()
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
     broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost });
-    pendingSlots.set(uid, { gid: srv.gid, win: result.totalWin, tax, at: Date.now() });
+    if (result.totalWin > 0) pendingSlots.set(uid, { gid: srv.gid, win: result.totalWin, tax, at: Date.now() });
     return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid), pendingWin: result.totalWin };
   })
   // Pay out the win held from the last spin (called when the animation finishes).
