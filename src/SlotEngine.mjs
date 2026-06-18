@@ -21,7 +21,7 @@ const HIDDEN_BOOST = 1.7; // hidden bonus multiplier-symbol frequency boost
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 0.995,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.08,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
     reel: [["blue", 90], ["green", 68], ["purple", 50], ["red", 26], ["apple", 14], ["grape", 8], ["melon", 4]],
     pays: {
@@ -29,12 +29,12 @@ const GAMES = {
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
       apple: payRows(0.6, 1.5, 3, 10), grape: payRows(0.9, 2.2, 5, 15), melon: payRows(1.5, 4, 9, 25),
     },
-    scatter: { id: "SC", emoji: "🍭", chance: 0.0163, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🍬", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3], [25, 0.9]] },
+    scatter: { id: "SC", emoji: "🍭", chance: 0.017, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
+    mult: { emoji: "🍬", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3.5], [25, 1.0]] },
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.01,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.08,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
     reel: [["ring", 90], ["glass", 68], ["chalice", 50], ["crown", 26], ["blue", 14], ["green", 8], ["red", 4]],
     pays: {
@@ -42,13 +42,13 @@ const GAMES = {
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
       blue: payRows(0.6, 1.5, 3, 10), green: payRows(0.9, 2.4, 5.5, 16), red: payRows(1.6, 4.5, 10, 30),
     },
-    scatter: { id: "SC", emoji: "⚡", chance: 0.0163, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🪙", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3], [25, 0.9]] },
+    scatter: { id: "SC", emoji: "⚡", chance: 0.017, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
+    mult: { emoji: "🪙", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3.5], [25, 1.0]] },
   },
   bandit: {
     id: "bandit", name: "Wild Bandit", tag: "Cluster pays · Golden Squares & Rainbow", color: "#f59e0b",
     engine: "bandit",
-    W: 6, H: 5, minCluster: 5, maxWinX: 10000, payScale: 1.0,
+    W: 6, H: 5, minCluster: 5, maxWinX: 10000, payScale: 1.05,
     sym: { clover: "🍀", coin: "🪙", gem: "💎", key: "🗝️", sack: "💰", crown: "👑", raccoon: "🦝" },
     reel: [["clover", 100], ["coin", 74], ["gem", 50], ["key", 28], ["sack", 15], ["crown", 7], ["raccoon", 3]],
     pays: {
@@ -58,15 +58,14 @@ const GAMES = {
     // Camera scatter triggers free spins: 3 → Luck, 4 → All That Glitters Is Gold, 5 → Treasure (Rainbow)
     scatter: { id: "SC", emoji: "📷", chance: 0.0145, payX: { 3: 1, 4: 3, 5: 10, 6: 50 } },
     // Rainbow symbol lands on the grid and activates stored Golden Squares (reveals coins)
-    rainbow: { id: "RB", emoji: "🌈", chance: 0.011 },
+    rainbow: { id: "RB", emoji: "🌈", chance: 0.013 },
     // Coin reveal bands (value in bet-multiples) when a Rainbow activates a Golden Square.
-    // Per-reveal EV ~0.08x: a base spin's Rainbow activates ~7-15 accumulated squares →
-    // ~1x; across the bonus this keeps coin RTP sane while Silver/Gold stay exciting.
-    // tier: label; w: relative weight; lo/hi: payout band in x-bet.
+    // Tuned for ~95% base RTP with real big-hit potential (gold tier 8-80×). The revealedSet
+    // bound (a square pays once per win) + slippage prevent the buy-sell exploit.
     coins: [
-      { tier: "bronze", w: 1000, lo: 0.02, hi: 0.12 },
-      { tier: "silver", w: 40, lo: 0.5, hi: 2 },
-      { tier: "gold", w: 1.5, lo: 5, hi: 50 },
+      { tier: "bronze", w: 1000, lo: 0.03, hi: 0.15 },
+      { tier: "silver", w: 30, lo: 0.8, hi: 2 },
+      { tier: "gold", w: 1.5, lo: 8, hi: 80 },
     ],
     // Free-spin tiers by camera count
     tiers: { 3: { mode: "luck", spins: 8 }, 4: { mode: "gold", spins: 12 }, 5: { mode: "rainbow", spins: 12 } },
@@ -392,7 +391,7 @@ export function buyCost(id, kind) {
 }
 export const SLOT_GAME_IDS = Object.keys(GAMES);
 
-// Auto-price buy bonuses so their RTP ≈ target. Candy/olympus → 87% (2 buys).
+// Auto-price buy bonuses so their RTP ≈ target. Candy/olympus → 95% (2 buys).
 // Bandit direct-entry buys (luck/gold) → 96%; FeatureSpins/Rainbow use fixed spec mults.
 (function priceBuys() {
   const N = 30000, bet = 20;
@@ -412,7 +411,7 @@ export const SLOT_GAME_IDS = Object.keys(GAMES);
         if (entry) entry.mult = cost;
       }
     } else {
-      const TARGET = 0.87;
+      const TARGET = 0.95;
       for (const kind of ["regular", "super"]) {
         let sum = 0;
         for (let i = 0; i < N; i++) sum += runRound(cfg, bet, kind).totalWin;
