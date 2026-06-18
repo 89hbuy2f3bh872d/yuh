@@ -110,14 +110,14 @@ Scatters trigger bonuses; multiplier symbols feed bonuses.
 - `animateFall(cells, fall[], delays[], dur)` — the core: places each cell's symbol,
   sets `translateY(-fall*unit)` start, commits, then transitions to `translateY(0)`.
   **Resets `opacity='1'`** (important after a spin-out).
-- `dropGrid(cells)` — spin drop-in: **columns** from the top, **right→LEFT** (mirrors the
-  spin-out, which clears left→right); within a column cells cascade top→bottom.
+- `dropGrid(cells)` — spin drop-in: **columns** from the top, **left→right** (mirrors the
+  spin-out, which clears right→left); within a column cells cascade top→bottom.
 - `tumbleFall(next, removed)` — win-tumble: survivors fall into holes, new symbols drop
   from above; vertical gravity, settles bottom→top within each column.
 - `spinOut()` — pre-spin clear: tumbles the **whole board down out of frame, one COLUMN at
-  a time (left→right)** — the mirror of `dropGrid`'s sequencing. Within a column the bottom
-  cell leaves first, cascading up. **No opacity fade** — cells keep their symbol and slide
-  off the bottom. Skipped when the board is empty.
+  a time (right→left)** — mirrored by `dropGrid`, which fills left→right. Within a column
+  the bottom cell leaves first, cascading up. **No opacity fade** — cells keep their symbol
+  and slide off the bottom. Skipped when the board is empty.
 - `animateSpin` flow: `clearFx()` → `spinOut()` (if content) → `dropGrid(step0)` →
   per-step `win`/`pop`/`tumbleFall` loop → multiplier reveal.
 

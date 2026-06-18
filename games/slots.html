@@ -201,18 +201,18 @@ function animateFall(cells, fall, delays, dur){
   }
   return maxd+dur;
 }
-// spin-out: the board tumbles DOWN out of frame, one COLUMN at a time (left→right) —
-// the SAME sequencing as dropGrid, just reversed (out instead of in). Within a column
-// the bottom cell leaves first, cascading up. No opacity fade; cells keep their symbol.
+// spin-out: the board tumbles DOWN out of frame, one COLUMN at a time (right→left) —
+// mirrored by dropGrid, which fills left→right. Within a column the bottom cell leaves
+// first, cascading up. No opacity fade; cells keep their symbol.
 // Returns ms until the last cell has left the frame.
 function spinOut(){
   var W=GAME.W, H=GAME.H, unit=unitPx();
   var COLG=turbo?70:155, ROWG=turbo?8:20, DUR=turbo?240:380;
   var maxd=0;
-  for(var col=0; col<W; col++){                       // columns leave left→right
+  for(var col=W-1; col>=0; col--){                    // columns leave right→left
     for(var row=H-1; row>=0; row--){                  // bottom cell of the column leaves first
       var idx=row*W+col, c=$('cell-'+idx); if(!c||!c.innerHTML.trim())continue;
-      var d=col*COLG+(H-1-row)*ROWG; if(d>maxd)maxd=d;
+      var d=(W-1-col)*COLG+(H-1-row)*ROWG; if(d>maxd)maxd=d;
       c.style.transition='none'; c.style.opacity='1'; c.style.transform='translateY(0)';
       void c.offsetWidth;
       c.style.transition='transform '+DUR+'ms cubic-bezier(.45,.05,.55,.4) '+d+'ms';
@@ -221,12 +221,12 @@ function spinOut(){
   }
   return maxd+DUR;
 }
-// spin entrance: new symbols fall in one COLUMN at a time, RIGHT→LEFT (mirrors the
-// spin-out, which clears left→right). Within a column the cells cascade top→bottom.
+// spin entrance: new symbols fall in one COLUMN at a time, LEFT→RIGHT (mirrors the
+// spin-out, which clears right→left). Within a column the cells cascade top→bottom.
 // Cells start above the board (out of frame) and drop cleanly into place.
 function dropGrid(cells){
   var W=GAME.W, COLG=turbo?70:155, ROWG=turbo?8:20, f=new Array(cells.length), del=new Array(cells.length);
-  for(var i=0;i<cells.length;i++){ var row=(i/W)|0, col=i%W; f[i]=row+2; del[i]=(W-1-col)*COLG+row*ROWG; }
+  for(var i=0;i<cells.length;i++){ var row=(i/W)|0, col=i%W; f[i]=row+2; del[i]=col*COLG+row*ROWG; }
   return animateFall(cells, f, del, turbo?240:420);
 }
 // tumble: survivors fall into the holes, new symbols fall from above — only moved cells animate,
