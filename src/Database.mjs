@@ -465,6 +465,40 @@ export class Database {
   /** Tell the web service to push a "servers changed" event to this user's tabs. */
   async notifyUserGuilds(uid) { try { await this._bridge?.userGuildsChanged?.(String(uid)); } catch { /* best-effort */ } }
 
+  /** All user IDs registered to a guild (it's in their `gids`). For bank-wide payouts. */
+  async getGuildUserIds(guildId) {
+    if (!this._users || !guildId) return [];
+    const rows = await this._users.find({ gids: String(guildId) }, { projection: { _id: 1 } }).toArray().catch(() => []);
+    return rows.map(r => String(r._id)).filter(isValidUserId);
+  }
+  /** Per-owner daily bank-withdraw ledger, stored on the user doc as `bwd = { d, t }`
+   *  (UTC day string + total withdrawn that day). Caps cash-out from server banks. */
+  async bankWithdrawnToday(uid, day) {
+    if (!this._users || !isValidUserId(uid)) return 0;
+    const u = await this._users.findOne({ _id: uid.trim() }, { projection: { bwd: 1 } }).catch(() => null);
+    return (u?.bwd && u.bwd.d === day) ? (Number(u.bwd.t) || 0) : 0;
+  }
+  async recordBankWithdraw(uid, day, amount) {
+    if (!this._users || !isValidUserId(uid)) return;
+    const cur = await this.bankWithdrawnToday(uid, day);
+    await this._users.updateOne({ _id: uid.trim() }, { $set: { bwd: { d: day, t: cur + Math.floor(amount) } } }, { upsert: true }).catch(() => {});
+  }
+
+  // ─── Pending slot win (persisted so an uncollected win survives a web restart) ──
+  async setPendingSlot(uid, p) {
+    if (!this._users || !isValidUserId(uid)) return;
+    await this._users.updateOne({ _id: uid.trim() }, { $set: { psl: p } }, { upsert: true }).catch(() => {});
+  }
+  async clearPendingSlot(uid) {
+    if (!this._users || !isValidUserId(uid)) return;
+    await this._users.updateOne({ _id: uid.trim() }, { $unset: { psl: "" } }).catch(() => {});
+  }
+  async loadPendingSlots() {
+    if (!this._users) return [];
+    const rows = await this._users.find({ psl: { $exists: true } }, { projection: { psl: 1 } }).toArray().catch(() => []);
+    return rows.map(r => ({ uid: String(r._id), ...(r.psl || {}) }));
+  }
+
   // ─── Server role shop (buy Discord roles with FC; 75% → server bank) ────────
   async getRoleShop(id) {
     if (!this._guilds) return [];

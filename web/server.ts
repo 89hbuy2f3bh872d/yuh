@@ -207,6 +207,7 @@ function rl(map: Map<string, number>, key: string, ms: number): boolean {
 const rlMoney = new Map<string, number>();
 const rlShop = new Map<string, number>(); // throttle shop buy/remove per user+server (anti-cycling)
 const rlXfer = new Map<string, number>(); // per-transfer throttle (anti chip-dump spam)
+const rlBankOps = new Map<string, number>(); // owner bank transfer/withdraw/distribute throttle
 // Hourly transfer velocity: cap how many sends a user can make per rolling hour.
 const XFER_PER_HOUR = 25;
 const xferLog = new Map<string, number[]>();
@@ -227,6 +228,7 @@ const pendingSlots = new Map<string, { gid: string; win: number; tax: number; at
 async function slotsCollect(uid: string): Promise<number> {
   const p = pendingSlots.get(uid); if (!p) return 0;
   pendingSlots.delete(uid);
+  (db as any).clearPendingSlot?.(uid).catch(() => {}); // drop the persisted copy
   if (p.win > 0) {
     await stdb.creditWin(uid, p.win, p.gid, p.tax).catch(() => {});
     (db as any).recordServerPayout?.(p.gid, p.win, p.tax).catch(() => {});
@@ -235,6 +237,20 @@ async function slotsCollect(uid: string): Promise<number> {
   return p.win;
 }
 setInterval(() => { const cut = Date.now() - 120_000; for (const [uid, p] of pendingSlots) if (p.at < cut) slotsCollect(uid).catch(() => {}); }, 60_000);
+// On boot, pay out any win that was pending when the web service last stopped (persisted in
+// Mongo) — so a restart between spin and collect never eats a win. Runs once, after STDB warms.
+function recoverPendingSlots() {
+  (db as any).loadPendingSlots?.().then((rows: any[]) => {
+    for (const r of (rows || [])) {
+      if (!r?.uid) continue;
+      if (!(r.win > 0)) { (db as any).clearPendingSlot?.(r.uid).catch(() => {}); continue; }
+      stdb.creditWin(r.uid, r.win, r.gid || "", r.tax || 0)
+        .then(() => { (db as any).recordServerPayout?.(r.gid, r.win, r.tax).catch(() => {}); (db as any).clearPendingSlot?.(r.uid).catch(() => {}); console.log(`[slots] recovered uncollected win ${r.win} for ${r.uid}`); })
+        .catch(() => {});
+    }
+  }).catch(() => {});
+}
+stdb.ready().then(() => setTimeout(recoverPendingSlots, 2500)).catch(() => {}); // once STDB is up (+ buffer for Mongo)
 
 // ── per-server tax (winnings cut → server bank) ──────────────────────────────
 // Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
@@ -610,7 +626,7 @@ const app = new Elysia()
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
     broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost });
-    if (result.totalWin > 0) pendingSlots.set(uid, { gid: srv.gid, win: result.totalWin, tax, at: Date.now() });
+    if (result.totalWin > 0) { const p = { gid: srv.gid, win: result.totalWin, tax, at: Date.now() }; pendingSlots.set(uid, p); (db as any).setPendingSlot?.(uid, p).catch(() => {}); }
     return { game: game.id, bet, cost, buy, spins: result.spins, totalWin: result.totalWin, tax, freeTriggered: result.freeTriggered, freeAwarded: result.freeAwarded, mode: result.mode, superMult: result.superMult, superPre: result.superPre, balance: stdb.getBalance(uid), pendingWin: result.totalWin };
   })
   // Pay out the win held from the last spin (called when the animation finishes).
@@ -1261,6 +1277,88 @@ app.post("/api/server/bank", async ({ request, body, set }) => {
   }
   console.log(`[audit] bank-edit by ${uid} on ${gid}: ${current} → ${target} (Δ${diff})`); // trail for manual adjustments
   return { ok: true, bank: target };
+});
+
+// ── Owner bank tools (server OWNER, or a `servers` admin): move bank→bank, withdraw to
+//    your own wallet (5% fee, 50k/day), or pay every registered member a flat amount.
+const BANK_OP_MAX = 1_000_000_000;     // per-op ceiling (= MAX_DELTA in STDB)
+const WITHDRAW_DAY_CAP = 50_000;       // FC an owner may pull to their wallet per day
+const WITHDRAW_FEE_BPS = 500;          // 5% bank fee → sink
+async function ownsOrManages(uid: string, g: any): Promise<boolean> {
+  return !!g && (g.ownerId === uid || await canManageServers(uid));
+}
+
+app.post("/api/server/bank/transfer", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const fromGid = String(b?.fromGid || ""), toGid = String(b?.toGid || "");
+  const amount = Math.floor(Number(b?.amount) || 0);
+  if (!fromGid || !toGid) { set.status = 400; return { error: "Pick both servers" }; }
+  if (fromGid === toGid) { set.status = 400; return { error: "Pick two different servers" }; }
+  if (!(amount > 0)) { set.status = 400; return { error: "Enter an amount" }; }
+  if (amount > BANK_OP_MAX) { set.status = 400; return { error: "Max 1,000,000,000 FC per transfer" }; }
+  const from = await db.getGuild(fromGid).catch(() => null);
+  const to = await db.getGuild(toGid).catch(() => null);
+  if (!from || !to) { set.status = 404; return { error: "Unknown server" }; }
+  if (!(await ownsOrManages(uid, from))) { set.status = 403; return { error: "Only the sending server's owner can do that" }; }
+  if (rl(rlBankOps, uid, 1500)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const fromBefore = stdb.getServerBank(fromGid);
+  if (fromBefore < amount) { set.status = 400; return { error: "That bank doesn't have enough" }; }
+  try { await stdb.bankSpend(fromGid, amount); await stdb.creditWin(uid, amount, toGid, amount); }
+  catch (e: any) { set.status = 400; return { error: "Transfer failed: " + (e?.message || e) }; }
+  console.log(`[audit] bank-transfer by ${uid}: ${fromGid} → ${toGid} : ${amount}`);
+  return { ok: true, fromBank: fromBefore - amount, toBank: stdb.getServerBank(toGid) + amount };
+});
+
+app.post("/api/server/bank/withdraw", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const amount = Math.floor(Number(b?.amount) || 0); // gross pulled from the bank
+  if (!(amount > 0)) { set.status = 400; return { error: "Enter an amount" }; }
+  if (amount > BANK_OP_MAX) { set.status = 400; return { error: "Amount too large" }; }
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (!(await ownsOrManages(uid, g))) { set.status = 403; return { error: "Only the server owner can withdraw" }; }
+  if (rl(rlBankOps, uid, 1500)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const day = new Date().toISOString().slice(0, 10);
+  const used = await (db as any).bankWithdrawnToday(uid, day);
+  if (used + amount > WITHDRAW_DAY_CAP) { set.status = 400; return { error: `Daily withdraw cap is ${WITHDRAW_DAY_CAP.toLocaleString()} FC — used ${used.toLocaleString()} today` }; }
+  const before = stdb.getServerBank(gid);
+  if (before < amount) { set.status = 400; return { error: "Bank doesn't have that much" }; }
+  const fee = Math.floor(amount * WITHDRAW_FEE_BPS / 10000), net = amount - fee;
+  try { await stdb.bankSpend(gid, amount); await stdb.credit(uid, net); }
+  catch (e: any) { set.status = 400; return { error: "Withdraw failed: " + (e?.message || e) }; }
+  await (db as any).recordBankWithdraw(uid, day, amount);
+  stdb.addNotification(uid, "bank", net, g.name || "Server", `withdrew ${net.toLocaleString()} FC from ${g.name || "server"} bank (5% fee)`).catch(() => {});
+  console.log(`[audit] bank-withdraw by ${uid} from ${gid}: gross ${amount} fee ${fee} net ${net}`);
+  return { ok: true, withdrawn: amount, fee, net, bank: before - amount, balance: stdb.getBalance(uid), remainingToday: Math.max(0, WITHDRAW_DAY_CAP - used - amount) };
+});
+
+app.post("/api/server/bank/distribute", async ({ request, body, set }) => {
+  const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
+  const b = body as any;
+  const gid = String(b?.gid || "");
+  const amount = Math.floor(Number(b?.amount) || 0); // FC per registered user
+  if (!(amount > 0)) { set.status = 400; return { error: "Enter an amount per user" }; }
+  const g = await db.getGuild(gid).catch(() => null);
+  if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  if (!(await ownsOrManages(uid, g))) { set.status = 403; return { error: "Only the server owner can do that" }; }
+  if (rl(rlBankOps, uid, 5000)) { set.status = 429; return { error: "Slow down a moment" }; }
+  const uids: string[] = await (db as any).getGuildUserIds(gid).catch(() => []);
+  const n = uids.length;
+  if (!n) { set.status = 400; return { error: "No registered users on this server yet" }; }
+  const total = amount * n;
+  if (total > BANK_OP_MAX) { set.status = 400; return { error: `Total ${total.toLocaleString()} FC exceeds the 1,000,000,000 cap — lower the amount` }; }
+  const before = stdb.getServerBank(gid);
+  if (before < total) { set.status = 400; return { error: `Need ${total.toLocaleString()} FC (${n} users × ${amount}); bank has ${Math.floor(before).toLocaleString()}` }; }
+  try { await stdb.bankSpend(gid, total); }
+  catch (e: any) { set.status = 400; return { error: "Payout failed: " + (e?.message || e) }; }
+  // Bank is debited atomically; credit each member in the background — balances stream back
+  // over WS as they land.
+  (async () => { for (const u of uids) { await stdb.credit(u, amount).catch(() => {}); stdb.addNotification(u, "bank", amount, g.name || "Server", `received ${amount.toLocaleString()} FC from ${g.name || "your server"}`).catch(() => {}); } })();
+  console.log(`[audit] bank-distribute by ${uid} from ${gid}: ${amount} × ${n} = ${total}`);
+  return { ok: true, perUser: amount, users: n, total, bank: before - total };
 });
 
 // ── server Shop: buy a perk with the server bank (owner only) ─────────────────

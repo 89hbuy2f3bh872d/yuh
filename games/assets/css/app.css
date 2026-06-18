@@ -100,6 +100,8 @@ input,select,textarea{font:inherit;color:inherit}
 .sg-dlg-row input{flex:1;padding:.5rem .6rem;border:1px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:1rem}
 .sg-dlg-row span{color:var(--text3)}
 .sg-dlg-hint{font-size:.68rem;color:var(--text3);margin-top:.5rem;line-height:1.45}
+.sg-dlg-msg{font-size:.74rem;margin-top:.7rem;min-height:1em;line-height:1.4}
+.sg-dlg-msg.good{color:#2ecc71}.sg-dlg-msg.bad{color:#e74c3c}
 .sg-dlg-gate{font-size:.74rem;color:var(--text2);margin-top:.5rem;line-height:1.5;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.55rem .6rem}
 .sg-dlg-gate b{color:var(--gold)}
 .sg-dlg-act{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}

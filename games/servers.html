@@ -130,6 +130,7 @@ function card(s){
     + '<div class="svc-tax"><span class="t-lbl">Tax on winnings <span class="t-val" id="tax-'+esc(s.id)+'">'+((sh.taxHoliday)?'0% · holiday':(s.tax/100)+'%')+'</span></span>'
       + (s.manage?'<button class="btn btn-secondary btn-sm" onclick="editTax(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Edit</button>':'')+'</div>'
     + ((s.owner||s.manage)?'<button class="btn btn-primary svc-shop-btn" onclick="openShop(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg> Open Shop</button>':'')
+    + ((s.owner||s.manage)?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="openBankTools(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg> Bank tools</button>':'')
     + (s.manage?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="editInvite(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+(s.invite?'Edit join link':'Add join link')+'</button>':'')
     + (s.manage?'<button class="btn btn-secondary svc-shop-btn" style="margin-top:.4rem" onclick="manageCases(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5M17 3a3 3 0 0 0 0 6h2V3zM7 21a3 3 0 0 0 0-6H5v6z"/></svg> Manage cases</button>':'')
     + (CAN_VERIFY?'<button class="btn '+(s.verified?'btn-secondary':'btn-primary')+' svc-shop-btn" style="margin-top:.4rem" onclick="verifyServer(\''+esc(s.id)+'\')"><svg class="icon" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg> '+(s.verified?'Verified — remove':'Verify server')+'</button>':'')
@@ -145,6 +146,53 @@ function verifyServer(id){ var s=SRV[id]; if(!s)return;
     .catch(function(){ alert('Failed'); }); }
 
 function patchCard(s){ var el=document.getElementById('svc-'+s.id); if(!el)return; el.outerHTML=card(s); }
+
+// ── Bank tools: withdraw to wallet (5% fee, 50k/day), bank→bank, pay all members ──
+function openBankTools(id){
+  var s=SRV[id]; if(!s)return;
+  var others=Object.keys(SRV).filter(function(k){return k!==id;}).map(function(k){return SRV[k];});
+  var dataOpts=others.map(function(o){return '<option value="'+esc(o.id)+'">'+esc(o.name)+'</option>';}).join('');
+  var back=document.createElement('div'); back.className='sg-dlg-back';
+  back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()">'
+    +'<div class="sg-dlg-h"><b>'+esc(s.name)+'</b> · Bank tools</div>'
+    +'<div class="sg-dlg-bank">Bank: <b id="btBank">'+fmt(s.bank)+' FC</b></div>'
+    +'<label class="sg-dlg-lab">Withdraw to your wallet</label>'
+    +'<div class="sg-dlg-row"><input id="btWAmt" type="number" min="1" placeholder="Amount from bank"><button class="btn btn-primary" id="btWBtn">Withdraw</button></div>'
+    +'<div class="sg-dlg-hint">5% bank fee · max 50,000 FC/day. You receive 95% to your wallet.</div>'
+    +'<label class="sg-dlg-lab" style="margin-top:.8rem">Send to another server’s bank</label>'
+    +'<div class="sg-dlg-row"><input id="btToGid" list="btSrvList" type="text" placeholder="Destination server ID"><input id="btTAmt" type="number" min="1" placeholder="Amount" style="max-width:130px"></div>'
+    +'<datalist id="btSrvList">'+dataOpts+'</datalist>'
+    +'<div class="sg-dlg-row"><button class="btn btn-secondary" id="btTBtn" style="flex:1">Send bank → bank</button></div>'
+    +'<div class="sg-dlg-hint">Moves FC straight from this bank into the other server’s bank.</div>'
+    +'<label class="sg-dlg-lab" style="margin-top:.8rem">Pay every registered member</label>'
+    +'<div class="sg-dlg-row"><input id="btDAmt" type="number" min="1" placeholder="FC per member"><button class="btn btn-secondary" id="btDBtn">Pay everyone</button></div>'
+    +'<div class="sg-dlg-hint">Each registered member gets that amount — if the bank covers the total.</div>'
+    +'<div class="sg-dlg-msg" id="btMsg"></div>'
+    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="btClose">Close</button></div>'
+  +'</div>';
+  function close(){ try{document.body.removeChild(back);}catch(e){} }
+  back.addEventListener('click',close);
+  document.body.appendChild(back);
+  back.querySelector('#btClose').onclick=close;
+  var msg=back.querySelector('#btMsg');
+  function setBank(v){ if(v==null)return; s.bank=v; var b=back.querySelector('#btBank'); if(b)b.textContent=fmt(v)+' FC'; var be=document.getElementById('bank-'+id); if(be)be.innerHTML=fmt(v)+'<small>FC</small>'; patchCard(s); }
+  function show(cls,t){ msg.className='sg-dlg-msg'+(cls?' '+cls:''); msg.textContent=t; }
+  function go(btn,url,body,ok){ btn.disabled=true; show('','…');
+    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
+      .then(function(r){return r.json()}).then(function(j){ btn.disabled=false;
+        if(j&&j.ok){ show('good',ok(j)); setBank(j.fromBank!=null?j.fromBank:j.bank); }
+        else show('bad',(j&&j.error)||'Failed');
+      }).catch(function(){ btn.disabled=false; show('bad','Network error'); });
+  }
+  back.querySelector('#btWBtn').onclick=function(){ var a=Math.floor(+back.querySelector('#btWAmt').value||0); if(!(a>0))return show('bad','Enter an amount');
+    go(this,'/api/server/bank/withdraw',{gid:id,amount:a},function(j){return 'Withdrew '+fmt(j.net)+' FC (5% fee '+fmt(j.fee)+'). '+fmt(j.remainingToday)+' left today.';}); };
+  back.querySelector('#btTBtn').onclick=function(){ var to=(back.querySelector('#btToGid').value||'').trim(); var a=Math.floor(+back.querySelector('#btTAmt').value||0);
+    if(!to)return show('bad','Enter a destination server ID'); if(!(a>0))return show('bad','Enter an amount');
+    go(this,'/api/server/bank/transfer',{fromGid:id,toGid:to,amount:a},function(j){return 'Sent '+fmt(a)+' FC to that server’s bank.';}); };
+  back.querySelector('#btDBtn').onclick=function(){ var a=Math.floor(+back.querySelector('#btDAmt').value||0); if(!(a>0))return show('bad','Enter FC per member');
+    if(!confirm('Pay '+fmt(a)+' FC to every registered member of this server?'))return;
+    go(this,'/api/server/bank/distribute',{gid:id,amount:a},function(j){return 'Paid '+fmt(j.perUser)+' FC to '+fmt(j.users)+' members ('+fmt(j.total)+' FC total).';}); };
+}
 
 function load(){
   fetch('/api/my-servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){

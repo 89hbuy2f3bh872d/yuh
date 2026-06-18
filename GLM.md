@@ -74,9 +74,13 @@ No minting or double-spend is possible there. `lib.rs` consts:
   `pendingSlots` Map → `stdb.creditWin(uid, win, gid, tax)` at `/api/slots/collect`
   (when the animation finishes). A 60s sweep credits stale wins so a closed tab never
   loses one; the next spin also auto-collects the previous. **This in-memory hold is
-  intentional** — the win is decided at spin, just paid later. (Moving it to a STDB
-  table is deploy-gated: needs VPS `spacetime publish` + `spacetime generate`; gains
-  nothing since money is already atomic in STDB at both ends.)
+  intentional** — the win is decided at spin, just paid later.
+  - **Restart-safe (2026):** the pending win is ALSO persisted to Mongo (`psl` on the user
+    doc) on spin and `$unset` on collect, so a web restart between spin and collect doesn't
+    eat it. On boot, `recoverPendingSlots()` (gated on `stdb.ready()`) credits every leftover
+    `psl`. So a win is paid even if the player never clicks/sees collect, across tab-close
+    AND restarts. (Narrow residual: a re-spin within ~3s of boot can overwrite a leftover
+    before recovery — negligible.)
 - **Stateless house** (plinko/coinflip/double): deduct → resolve → `payWin` (creditWin with tax) in one call.
 - **Stateful house** (mines/hilo/chicken) + **cards** (blackjack/baccarat): deduct at start, `payWin` on resolve/cashout.
 
@@ -327,6 +331,21 @@ Tax is on **PROFIT only** (winnings above stake). Default 1500 bps (15%), cap 50
 - **Server bank** (STDB `server_bank`): accrues tax. Owner/admin perks spend it.
 - Tax comes FROM winnings → `stdb.creditWin(uid, payout, gid, tax)` routes it to the bank.
 - `taxOnProfit(profit, bps)` = `min(profit, floor(profit*bps/10000))`.
+
+### Owner bank tools (2026) — `/servers` "Bank tools" dialog (`openBankTools`)
+Server OWNER (or a `servers` admin) can, from the Servers dashboard:
+- **Bank → bank**: `POST /api/server/bank/transfer {fromGid,toGid,amount}` — `bankSpend(from)` +
+  `creditWin(uid, amount, toGid, amount)` (the credit_win-as-bank-add trick: owner nets 0,
+  dest bank += amount). No fee.
+- **Withdraw → own wallet**: `POST /api/server/bank/withdraw {gid,amount}` — `bankSpend(gid,amount)`
+  + `credit(uid, amount−5%)`. **5% fee is a sink**, **50k FC/day cap per owner** (Mongo `bwd={d,t}`
+  ledger on the user doc, `bankWithdrawnToday`/`recordBankWithdraw`).
+- **Pay all members**: `POST /api/server/bank/distribute {gid,amount}` — pays every registered
+  user (`db.getGuildUserIds(gid)` = users with `gid` in `gids`) `amount` each; checks
+  `bank ≥ amount×N`, `bankSpend(total)` then `credit` each in the background.
+- All built from EXISTING reducers (no Rust redeploy). All owner/admin-gated, amount-validated,
+  capped at `MAX_DELTA` (1e9), `rlBankOps`-throttled, audit-logged. Bank balances re-push via the
+  existing STDB `server_bank` subscription.
 
 ### Permissions (`AdminPanel.PERMS`)
 `balances`, `cases`, `battles`, `users`, `tickets`, `tax`, `servers`. `OWNER_ID`
