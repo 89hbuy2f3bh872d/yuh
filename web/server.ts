@@ -189,6 +189,17 @@ function rl(map: Map<string, number>, key: string, ms: number): boolean {
 }
 const rlMoney = new Map<string, number>();
 const rlShop = new Map<string, number>(); // throttle shop buy/remove per user+server (anti-cycling)
+const rlXfer = new Map<string, number>(); // per-transfer throttle (anti chip-dump spam)
+// Hourly transfer velocity: cap how many sends a user can make per rolling hour.
+const XFER_PER_HOUR = 25;
+const xferLog = new Map<string, number[]>();
+function xferOverLimit(uid: string): boolean {
+  const now = Date.now(), arr = (xferLog.get(uid) || []).filter(t => t > now - 3_600_000);
+  xferLog.set(uid, arr);
+  return arr.length >= XFER_PER_HOUR;
+}
+function xferRecord(uid: string) { const arr = xferLog.get(uid) || []; arr.push(Date.now()); xferLog.set(uid, arr); }
+setInterval(() => { const cut = Date.now() - 3_600_000; for (const [k, arr] of xferLog) { const f = arr.filter(t => t > cut); if (f.length) xferLog.set(k, f); else xferLog.delete(k); } }, 600_000);
 
 // ── per-server tax (winnings cut → server bank) ──────────────────────────────
 // Tax is charged on PROFIT only (winnings above the stake), default 15%, capped
@@ -412,9 +423,16 @@ const app = new Elysia()
     if (!/^\d{17,20}$/.test(toId)) return { error: "Invalid recipient" };
     if (toId === uid) return { error: "Can't send to yourself" };
     if (!Number.isFinite(amount) || amount <= 0) return { error: "Invalid amount" };
+    // Anti-abuse (chip-dumping / bot spam): throttle, floor, per-transfer cap, hourly velocity.
+    if (rl(rlXfer, uid, 2500)) { set.status = 429; return { error: "Slow down between transfers" }; }
+    if (amount < 10) return { error: "Minimum transfer is 10 FC" };
+    if (amount > 50_000_000) return { error: "Max 50,000,000 FC per transfer" };
+    if (xferOverLimit(uid)) { set.status = 429; return { error: "Too many transfers this hour — try again later" }; }
     const me = await db.getUser(uid).catch(() => null);
     try { await stdb.transfer(uid, toId, amount, me?.tag || "Someone"); }
     catch (e: any) { return { error: e?.message === "insufficient" ? "Insufficient balance" : "Transfer failed" }; }
+    xferRecord(uid);
+    if (amount >= 1_000_000) console.log(`[audit] transfer ${uid} → ${toId}: ${amount} FC`);
     return { ok: true, newBal: stdb.getBalance(uid) };
   })
 
@@ -832,13 +850,18 @@ app.get("/api/servers", async ({ request, set }) => {
   const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
   const ids = sel && !gids.includes(sel) ? gids.concat(sel) : gids;
   const guilds = await db.getGuildsByIds(ids).catch(() => []);
-  const servers = guilds.map((g: any) => ({
-    id: g._id, name: g.name || "Server", icon: g.icon || null,
-    owner: g.ownerId === uid,
-    tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
-    holidayUntil: g.shop?.taxHolidayUntil || 0, // selector shows 0% while a holiday is active
-    bank: stdb.getServerBank(g._id),
-  }));
+  const now = Date.now();
+  const servers = guilds.map((g: any) => {
+    const until = g.shop?.taxHolidayUntil || 0;
+    return {
+      id: g._id, name: g.name || "Server", icon: g.icon || null,
+      owner: g.ownerId === uid,
+      tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
+      holiday: until > now,   // server-authoritative — selector shows 0% while active (matches dashboard)
+      holidayUntil: until,    // for the client-side expiry flip
+      bank: stdb.getServerBank(g._id),
+    };
+  });
   return { servers, selected: sel || (servers[0]?.id ?? null), pinned: !!sel };
 });
 app.post("/api/select-server", async ({ request, body, set, cookie }) => {

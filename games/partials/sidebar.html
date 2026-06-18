@@ -295,7 +295,8 @@
   function cur(){ for(var i=0;i<servers.length;i++) if(servers[i].id===selected) return servers[i]; return null; }
   // Expose the active server (id + EFFECTIVE tax%) so money pages can show the cut.
   // During a bought Tax Holiday the effective rate is 0%.
-  function holidayOn(s){ return !!(s && s.holidayUntil && s.holidayUntil > Date.now()); }
+  // Prefer the live timestamp (handles expiry); fall back to the server's holiday flag.
+  function holidayOn(s){ if(!s) return false; if(s.holidayUntil) return s.holidayUntil > Date.now(); return !!s.holiday; }
   var holidayTimer=null;
   function scheduleHolidayFlip(s){ if(holidayTimer){ clearTimeout(holidayTimer); holidayTimer=null; }
     if(holidayOn(s)){ holidayTimer=setTimeout(function(){ render(); publish(); }, Math.min(2147483000, s.holidayUntil-Date.now()+800)); } }

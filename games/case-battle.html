@@ -367,7 +367,13 @@ function leaveArena(){battleGen++;stopBattlePoll();currentBattle=null;openedAt=0
 
 function pollBattle(){
   if(!currentBattle)return;
-  fetch('/api/case-battle/'+currentBattle.id).then(function(r){return r.json()}).then(function(d){
+  var reqId=currentBattle.id;
+  fetch('/api/case-battle/'+reqId).then(function(r){return r.json()}).then(function(d){
+    // Ignore a stale response from a battle we've already left/switched away from
+    // (e.g. the old finished battle's in-flight poll landing AFTER a recreate-follow —
+    // that was flashing "Defeat" over the fresh battle).
+    if(!currentBattle || reqId!==currentBattle.id) return;
+    if(d && d.id && d.id!==currentBattle.id) return;
     if(d.notFound){stopBattlePoll();showList();return;}
     if(d.phase==='opening'&&!openedAt) openedAt = Date.now();
     // Seamless recreate: the instant a rematch exists, follow it — no matter what
