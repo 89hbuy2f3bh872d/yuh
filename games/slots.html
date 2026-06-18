@@ -380,13 +380,18 @@ async function animateSpin(sp, runningBefore, free){
       if(window.SG)SG.sfx('mult');
       await flyMults(sp.mults, sp.globalMult);
     }
-  } else if(free && sp.multApplied>0){
+  } else if(sp.multApplied>0){
+    // Regular bonus (and any non-global spin): every multiplier on the board applies to
+    // THIS win, regardless of placement. Show it landing, then pop the win to the total.
     var fin=sp.steps[sp.steps.length-1].grid, mpos=[];
     for(var i=0;i<fin.length;i++){ if(isMult(fin[i]))mpos.push(i); }
     mpos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('mhit');});
     if(window.SG)SG.sfx('mult');
     stageMsg('×'+sp.multApplied);
-    await sleep(turbo?450:850); stageMsg(''); clearFx();
+    await sleep(turbo?350:650);
+    setWin(runningBefore + sp.total);   // meter jumps to the multiplied win now
+    var wm=$('winMeter'); if(wm){ wm.classList.remove('mult-pop'); void wm.offsetWidth; wm.classList.add('mult-pop'); }
+    await sleep(turbo?260:480); stageMsg(''); clearFx();
   }
 }
 function dimExcept(keep){ var set={}; keep.forEach(function(i){set[i]=1;}); for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.toggle('dim',!set[i]); } }

@@ -153,20 +153,24 @@ function runRound(cfg, bet, buy) {
   while (freeTriggered && freeLeft > 0 && guard++ < 500) {
     freeLeft--;
     const s = runSpin(cfg, bet, true, boost);
+    // Every multiplier symbol on the board counts on a winning spin, regardless of
+    // where it sits (they all survive the tumble to the final grid). Super/Hidden
+    // accrue them into the global multiplier (applied at the end); Regular multiplies
+    // that spin's win immediately.
     const multSum = s.mults.reduce((a, m) => a + m.val, 0);
-    let displayTotal = 0, added = 0;
+    let displayTotal = 0, added = 0, applied = 0;
     if (useGlobal) {
       if (s.baseWin > 0 && multSum > 0) { globalMult += multSum; added = multSum; }
       displayTotal = s.baseWin + s.scatterWin;     // shown pre-global; multiplied at the end
       superSum += displayTotal;
     } else {
-      const applied = (s.baseWin > 0 && multSum > 0) ? multSum : 0;
+      applied = (s.baseWin > 0 && multSum > 0) ? multSum : 0;
       displayTotal = (applied ? s.baseWin * applied : s.baseWin) + s.scatterWin;
       totalWin += displayTotal;
     }
     const rt = retrigFor(s.scatters);
     if (rt) { freeLeft += rt; freeAwarded += rt; }
-    spins.push({ free: true, super: useGlobal, steps: s.steps, baseWin: s.baseWin, mults: s.mults, multAdded: added, globalMult: useGlobal ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(displayTotal), retrigger: rt, freeLeft });
+    spins.push({ free: true, super: useGlobal, steps: s.steps, baseWin: s.baseWin, mults: (useGlobal ? added : applied) > 0 ? s.mults : [], multAdded: added, multApplied: applied, globalMult: useGlobal ? globalMult : 0, scatterWin: s.scatterWin, scatters: s.scatters, total: Math.round(displayTotal), retrigger: rt, freeLeft });
     if (!useGlobal && totalWin > cfg.maxWinX * bet) break;
   }
 

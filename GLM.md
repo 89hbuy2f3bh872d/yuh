@@ -145,6 +145,19 @@ Note: multipliers are intentionally **not** banked on zero-win spins — a multi
 nothing to multiply is discarded (standard cluster-slot rule). Tested banking them
 unconditionally but it pushed base RTP to ~140% and made tuning intractable; reverted.
 
+### Regular-bonus multiplier was applied but invisible (fixed)
+On a winning Regular-bonus spin the server multiplied the win correctly
+(`displayTotal = baseWin * multSum`, paid in `totalWin`) but the spin object only carried
+`multAdded` (set **only** in the Super/Hidden global branch → `0` for Regular) and never
+`multApplied`. The client's per-spin reveal checks `sp.multApplied>0`, so the ×N never
+animated and the win meter just silently jumped — looked like "the multiplier didn't add."
+Fix: server now sends **both** `multAdded` (global accrual) and `multApplied` (per-spin
+multiply), and attaches `mults` only when one applies. Client reveal fires for **any**
+spin with `multApplied>0` (not just `free`) and pops `#winMeter` to `runningBefore+total`.
+All multipliers on the board count regardless of placement — they always survive the
+tumble to the final grid, where `gridMultCells` reads them. Math/RTP unchanged
+(~89.7/87.2/86.9% candy/olympus/bandit); this was purely a reveal/field-plumbing fix.
+
 ### UI/UX notes (post-overhaul)
 - Recessed "glassy" reel window (`.reel-stage`): inner shadows, top sheen, bottom vignette
   so symbols sit behind glass. `overflow:hidden` clips spin-out cells at the bottom edge.
