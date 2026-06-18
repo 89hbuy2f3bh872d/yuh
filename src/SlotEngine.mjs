@@ -34,7 +34,7 @@ const GAMES = {
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.28,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.36,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
     reel: [["ring", 46], ["glass", 40], ["chalice", 34], ["crown", 27], ["blue", 20], ["green", 13], ["red", 8]],
     pays: {

@@ -181,6 +181,7 @@ function unitPx(){ var c=$('cell-0'); if(!c)return 56; var g=parseFloat(getCompu
 
 // Drop cells into place. fall[i] = rows ABOVE final spot the cell starts (0 = no move).
 // delays[i] = ms before that cell starts. Each cell slides straight down (vertical).
+// No opacity fades — cells only translate, so they read as solid objects falling.
 function animateFall(cells, fall, delays, dur){
   var unit=unitPx(), maxd=0, i, c, fr;
   for(i=0;i<cells.length;i++){
@@ -200,29 +201,31 @@ function animateFall(cells, fall, delays, dur){
   }
   return maxd+dur;
 }
-// spin-out: the CURRENT symbols fall DOWN out of frame, one COLUMN at a time,
-// right→left (last column leaves first). Each column's cells drop in lockstep,
-// staggered top→bottom within the column for a cascade feel. Clears the board so
-// the drop-in starts from empty. Returns ms until the last cell is gone.
+// spin-out: tumble the WHOLE board DOWN out of frame, one column at a time — the
+// SAME vertical-drop mechanic a win-tumble uses, so the clear→drop reads seamless.
+// No opacity fade: each cell keeps its symbol and just slides off the bottom.
+// Returns ms until the last cell has left the frame.
 function spinOut(){
-  var W=GAME.W, H=GAME.H, unit=unitPx();
-  var COL=turbo?40:75, ROWG=turbo?20:38, DUR=turbo?220:360;
+  var W=GAME.W, H=GAME.H, unit=unitPx(), n=W*H;
+  var COLG=turbo?16:42, ROWG=turbo?22:56, DUR=turbo?240:380;
   var maxd=0;
-  // column leaves right→left → the leftmost column leaves LAST. Cascade top→bottom.
-  for(var col=W-1; col>=0; col--){
-    var leaveAt=(W-1-col)*COL;
+  for(var col=0; col<W; col++){
+    var leaveAt=col*COLG;                 // columns leave left→right
     for(var row=0; row<H; row++){
       var idx=row*W+col, c=$('cell-'+idx); if(!c||!c.innerHTML.trim())continue;
-      var d=leaveAt+row*ROWG; if(d>maxd)maxd=d;
-      c.style.transition='transform '+DUR+'ms cubic-bezier(.55,0,.85,.4) '+d+'ms, opacity '+DUR+'ms ease '+d+'ms';
-      c.style.transform='translateY('+(unit*2)+'px)';   // fall well below the row
-      c.style.opacity='0';
+      var d=leaveAt+row*ROWG;             // cascade top→bottom within the column
+      if(d>maxd)maxd=d;
+      c.style.transition='none'; c.style.opacity='1'; c.style.transform='translateY(0)';
+      // commit start, then animate downward past the bottom edge
+      void c.offsetWidth;
+      c.style.transition='transform '+DUR+'ms cubic-bezier(.45,.05,.55,.4) '+d+'ms';
+      c.style.transform='translateY('+((H-row+1.5)*unit)+'px)';  // fall clear of the board
     }
   }
   return maxd+DUR;
 }
 // spin entrance: new symbols fall in one ROW at a time from the top, left→right
-// within each row. fall[i]=rows above start; del[i]=delay (row*ROWG + col*COL).
+// within each row. Cells start above the board (out of frame) and drop cleanly.
 function dropGrid(cells){
   var W=GAME.W, COL=turbo?8:20, ROWG=turbo?70:155, f=new Array(cells.length), del=new Array(cells.length);
   for(var i=0;i<cells.length;i++){ var row=(i/W)|0, col=i%W; f[i]=row+2; del[i]=row*ROWG+col*COL; }
