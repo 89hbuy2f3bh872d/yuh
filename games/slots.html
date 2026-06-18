@@ -201,22 +201,20 @@ function animateFall(cells, fall, delays, dur){
   }
   return maxd+dur;
 }
-// spin-out: tumble the WHOLE board DOWN out of frame, one column at a time — the
-// SAME vertical-drop mechanic a win-tumble uses, so the clear→drop reads seamless.
-// No opacity fade: each cell keeps its symbol and just slides off the bottom.
+// spin-out: the WHOLE board tumbles DOWN out of frame, one ROW at a time — the
+// bottom row leaves first, then the row above it, up to the top. Within each row the
+// cells drop together. Same vertical-drop feel as a win-tumble; no opacity fade.
 // Returns ms until the last cell has left the frame.
 function spinOut(){
-  var W=GAME.W, H=GAME.H, unit=unitPx(), n=W*H;
-  var COLG=turbo?16:42, ROWG=turbo?22:56, DUR=turbo?240:380;
+  var W=GAME.W, H=GAME.H, unit=unitPx();
+  var ROWG=turbo?16:42, DUR=turbo?240:380;
   var maxd=0;
-  for(var col=0; col<W; col++){
-    var leaveAt=col*COLG;                 // columns leave left→right
-    for(var row=0; row<H; row++){
+  for(var row=H-1; row>=0; row--){                 // bottom row leaves first, going up
+    var leaveAt=(H-1-row)*ROWG;
+    for(var col=0; col<W; col++){
       var idx=row*W+col, c=$('cell-'+idx); if(!c||!c.innerHTML.trim())continue;
-      var d=leaveAt+row*ROWG;             // cascade top→bottom within the column
-      if(d>maxd)maxd=d;
+      var d=leaveAt; if(d>maxd)maxd=d;
       c.style.transition='none'; c.style.opacity='1'; c.style.transform='translateY(0)';
-      // commit start, then animate downward past the bottom edge
       void c.offsetWidth;
       c.style.transition='transform '+DUR+'ms cubic-bezier(.45,.05,.55,.4) '+d+'ms';
       c.style.transform='translateY('+((H-row+1.5)*unit)+'px)';  // fall clear of the board

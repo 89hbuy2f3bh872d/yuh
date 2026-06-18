@@ -114,9 +114,9 @@ Scatters trigger bonuses; multiplier symbols feed bonuses.
   cells cascade top→bottom (a vertical "reel" fill, not a horizontal row fill).
 - `tumbleFall(next, removed)` — win-tumble: survivors fall into holes, new symbols drop
   from above; vertical gravity, settles bottom→top within each column.
-- `spinOut()` — pre-spin clear: tumbles the **whole board down out of frame**, one column
-  at a time (left→right), cascading top→bottom within each column. **No opacity fade** —
-  cells keep their symbol and just slide off the bottom (matches the win-tumble feel).
+- `spinOut()` — pre-spin clear: tumbles the **whole board down out of frame, one ROW at
+  a time — bottom row first, then the row above, up to the top**. Within a row the cells
+  drop together. **No opacity fade** — cells keep their symbol and slide off the bottom.
   Skipped when the board is empty.
 - `animateSpin` flow: `clearFx()` → `spinOut()` (if content) → `dropGrid(step0)` →
   per-step `win`/`pop`/`tumbleFall` loop → multiplier reveal.
