@@ -149,15 +149,18 @@ function openShop(id){
   });
 }
 function shopItemHtml(s,it){
-  var sh=s.shop||{}, owned='';
-  if(it.id==='featured'&&sh.featured) owned='<span class="shop-owned">Active · '+left(sh.featuredUntil)+'</span>';
-  if(it.id==='tax_holiday'&&sh.taxHoliday) owned='<span class="shop-owned">Active · '+left(sh.taxHolidayUntil)+'</span>';
-  if(it.id==='accent'&&sh.accent) owned='<span class="shop-owned" style="color:'+esc(sh.accent)+'">Set</span>';
+  var sh=s.shop||{}, owned='', active=false, ownAccent=false;
+  if(it.id==='featured'){ active=!!sh.featured; if(active)owned='<span class="shop-owned">Active · '+left(sh.featuredUntil)+'</span>'; }
+  else if(it.id==='tax_holiday'){ active=!!sh.taxHoliday; if(active)owned='<span class="shop-owned">Active · '+left(sh.taxHolidayUntil)+'</span>'; }
+  else if(it.id==='accent'){ ownAccent=!!sh.accent; if(ownAccent)owned='<span class="shop-owned" style="color:'+esc(sh.accent)+'">Owned</span>'; }
   var input = it.id==='accent' ? '<input type="color" class="shop-color" id="shopColor" value="'+(sh.accent||'#2ecc71')+'">' : '';
-  var verb = (it.kind==='duration' && owned) ? 'Extend' : 'Buy';
+  var btn;
+  if(active) btn='<button class="btn btn-secondary btn-sm" disabled>Active</button>';
+  else if(ownAccent) btn='<button class="btn btn-primary btn-sm shop-buy" data-item="'+esc(it.id)+'">Recolor · Free</button>';
+  else btn='<button class="btn btn-primary btn-sm shop-buy" data-item="'+esc(it.id)+'">Buy · '+fmt(it.price)+'</button>';
   return '<div class="shop-it"><div class="shop-ic">'+shopIcon(it.icon)+'</div>'
     + '<div class="shop-info"><div class="shop-name">'+esc(it.label)+' '+owned+'</div><div class="shop-desc">'+esc(it.desc)+'</div></div>'
-    + '<div class="shop-act">'+input+'<button class="btn btn-primary btn-sm shop-buy" data-item="'+esc(it.id)+'">'+verb+' · '+fmt(it.price)+'</button></div></div>';
+    + '<div class="shop-act">'+input+btn+'</div></div>';
 }
 function buyItem(id,itemId,back,btn){
   var body={gid:id,itemId:itemId};

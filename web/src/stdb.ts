@@ -103,7 +103,9 @@ export class Stdb {
   //    result; the `account` subscription keeps getBalance fresh for reads/WS.
   async #call(name: string, args: Record<string, any>): Promise<void> {
     await this.ready();
-    try { await this.conn.reducers[name](args); }
+    const fn = this.conn?.reducers?.[name];
+    if (typeof fn !== "function") throw new Error(`reducer ${name} not deployed (republish + regenerate bindings)`);
+    try { await fn.call(this.conn.reducers, args); }
     catch (e: any) { throw new Error(e?.message || String(e)); }
   }
   async ensureAccount(owner: string) { await this.#call("ensureAccount", { owner }).catch(() => {}); }

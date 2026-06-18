@@ -21,7 +21,7 @@ import { fileURLToPath } from "url";
 import crypto from "node:crypto";
 import { Database } from "../src/Database.mjs";
 import * as Slots from "../src/SlotEngine.mjs";
-import { HouseState, plinko, coinflip, doubleOrNothing, HOUSE_GAMES } from "../src/HouseGames.mjs";
+import { HouseState, plinko, coinflip, doubleOrNothing, HOUSE_GAMES, PLINKO } from "../src/HouseGames.mjs";
 import { CaseBattle } from "../src/CaseBattle.mjs";
 import { AdminPanel } from "../src/AdminPanel.mjs";
 import { Stdb } from "./src/stdb.ts";
@@ -472,7 +472,7 @@ const app = new Elysia()
   })
   .get("/api/house/games", async ({ request, set }) => {
     const uid = await resolveSession(request); if (!uid) { set.status = 401; return { error: "Not logged in" }; }
-    return { games: HOUSE_GAMES };
+    return { games: HOUSE_GAMES, plinko: PLINKO }; // board needs the bucket tables
   })
 
   // ── internal bridge for the Node bot (shared-secret, localhost only) ────────
@@ -884,11 +884,24 @@ app.post("/api/server/bank", async ({ request, body, set }) => {
   const gid = String(b?.gid || "");
   const g = await db.getGuild(gid).catch(() => null);
   if (!g) { set.status = 404; return { error: "Unknown server" }; }
+  const current = stdb.getServerBank(gid);
   let target: number;
   if (typeof b.set === "number" && Number.isFinite(b.set)) target = Math.max(0, Math.floor(b.set));
-  else if (typeof b.delta === "number" && Number.isFinite(b.delta)) target = Math.max(0, stdb.getServerBank(gid) + Math.floor(b.delta));
+  else if (typeof b.delta === "number" && Number.isFinite(b.delta)) target = Math.max(0, current + Math.floor(b.delta));
   else { set.status = 400; return { error: "Provide set or delta" }; }
-  try { await stdb.bankSet(gid, target); } catch { set.status = 400; return { error: "Failed to set bank" }; }
+  const diff = target - current;
+  if (diff === 0) return { ok: true, bank: target };
+  if (Math.abs(diff) > 1_000_000_000) { set.status = 400; return { error: "Adjustment too large — max 1,000,000,000 at once" }; }
+  // Use the already-deployed Phase-2 reducers so bank editing needs no republish:
+  //  • add: credit_win to the admin with gross=tax=diff → admin nets 0, bank += diff
+  //  • remove: bank_spend
+  try {
+    if (diff > 0) await stdb.creditWin(uid, diff, gid, diff);
+    else await stdb.bankSpend(gid, -diff);
+  } catch (e: any) {
+    const m = e?.message || String(e); console.error("[bank/set]", gid, "→", m);
+    set.status = 400; return { error: `Failed to set bank: ${m}` };
+  }
   return { ok: true, bank: target };
 });
 
@@ -905,18 +918,24 @@ app.post("/api/server/shop/buy", async ({ request, body, set }) => {
   // Build the perk patch before spending so a bad request never charges the bank.
   const econ: any = await (db as any).getGuildEconomy(gid).catch(() => ({ shop: {} }));
   const shop: any = econ?.shop || {};
+  const now = Date.now();
   const patch: any = {};
+  let charge = item.price;
   if (item.kind === "duration") {
-    const base = Math.max(Date.now(), Number(shop[item.field]) || 0); // stack onto remaining time
-    patch[item.field] = base + (item as any).durationMs;
+    // Already-active perks can't be re-bought (no spamming the same purchase).
+    if ((Number(shop[item.field]) || 0) > now) { set.status = 400; return { error: `${item.label} is already active.` }; }
+    patch[item.field] = now + (item as any).durationMs;
   } else if (item.kind === "accent") {
     const color = String(b?.color || "");
     if (!HEX_RE.test(color)) { set.status = 400; return { error: "Provide a hex color like #2ecc71" }; }
     patch.accent = color;
+    if (HEX_RE.test(shop.accent || "")) charge = 0; // perk already owned → recolor is free
   }
   // Spend first (authoritative); only apply the perk once the bank is actually charged.
-  try { await stdb.bankSpend(gid, item.price); }
-  catch (e: any) { const m = e?.message || ""; set.status = 400; return { error: m === "insufficient" ? "Not enough in the server bank" : m === "no bank" ? "Server bank is empty" : "Purchase failed" }; }
+  if (charge > 0) {
+    try { await stdb.bankSpend(gid, charge); }
+    catch (e: any) { const m = e?.message || ""; set.status = 400; return { error: m === "insufficient" ? "Not enough in the server bank" : m === "no bank" ? "Server bank is empty" : "Purchase failed" }; }
+  }
   await (db as any).mergeGuildShop(gid, patch).catch(() => {});
   if (item.id === "tax_holiday") taxCache.delete(gid); // holiday must take effect immediately
   const now = Date.now();
