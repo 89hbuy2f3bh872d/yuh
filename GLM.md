@@ -87,23 +87,32 @@ No minting or double-spend is possible there. `lib.rs` consts:
 Cluster-pays tumbling slots. Orthogonal clusters of 5+ identical symbols (no diagonals).
 Scatters trigger bonuses; multiplier symbols feed bonuses.
 
-### Games & RTP
-| id | name | grid | payScale | base RTP (measured, large N) |
-|---|---|---|---|---|
-| `candy` | Candy Cascade | 6×5 | 2.38 | ~87% |
-| `olympus` | Thunder Gods | 6×5 | **2.36** (was 2.28 → 84%) | ~88% |
-| `bandit` | Wild Bandit | 5×5 | 4.05 | ~87% |
+### Games & RTP (tuned for fewer dead spins — see note below)
+| id | name | grid | payScale | reel (common→rare weights) | base RTP (500k) | dead% |
+|---|---|---|---|---|---|---|
+| `candy` | Candy Cascade | 6×5 | 1.13 | 60/52/44/26/16/9/5 | ~88.8% | ~54% |
+| `olympus` | Thunder Gods | 6×5 | 1.10 | 60/52/44/25/16/9/5 | ~87.6% | ~53% |
+| `bandit` | Wild Bandit | 5×5 | 1.96 | 58/50/42/26/16/9/5 | ~86.1% | ~63% |
 
 - Buy-bonus costs are **auto-priced** at load (`priceBuys()` IIFE) for ~87% RTP via a
-  30k-sample Monte Carlo per game/kind. **Buy RTP measured ~85-90%** — correctly priced.
+  30k-sample Monte Carlo per game/kind. **Buy RTP measured ~86-89%** — correctly priced.
 - **There is NO adaptive/progressive/dynamic rigging.** `spin(id, bet, buy)` is pure and
   stateless — a big win does not change future odds. "Win big then get nothing" is just
-  base-rate variance (cluster slots have ~30% hit rate, so ~70% of spins are losses).
+  base-rate variance.
 - RTP has wide measurement variance (±2-3% even at 200k spins) due to the heavy-tailed
-  bonus distribution. Always measure with **N ≥ 200k** before tuning.
+  bonus distribution. Always measure with **N ≥ 500k** before tuning.
 - `payRows(a,b,c,d)` builds the 4-tier cluster-size table `{15+, 10+, 8+, 5+}` × `payScale`.
-  **Do not casually bump the 5-tier (cheapest) pays** — 5-clusters are common and a
-  +50% bump on low symbols blew RTP to 107% in testing. The tables are well-balanced.
+
+### Dead-spin tuning (the key lesson)
+**Dead-spin rate is driven by reel weighting, NOT payout amounts.** Raising payScale/payouts
+makes wins bigger but does NOT reduce dead count (clusters form at the same frequency).
+To cut dead spins you must **concentrate the reel weights toward common symbols** so they
+cluster more readily, then **lower payScale** to keep RTP flat (~88%).
+
+- Pre-tuning: ~69% dead (candy/olympus), ~76% dead (bandit, 5×5 grids cluster less).
+- Post-tuning: ~53% dead (candy/olympus), ~63% dead (bandit). Tiny wins (0 < win < 1× bet)
+  went from ~19% → ~38%, so the board feels alive far more often.
+- A 5×5 grid (bandit) clusters less than 6×5, so it stays ~10pts higher dead-rate — inherent.
 
 ### Client animation model
 - Grid = `W×H` `.cell` divs (`#cell-{i}`, row-major). `.sym` child holds the emoji HTML.
@@ -281,6 +290,10 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
    win-tumble-style fall-down-out-of-frame (no fade), matching the hit cascade feel.
 6. **Slot RTP**: olympus `payScale` 2.28 → 2.36 (84% → ~88%). candy/bandit verified fair.
    Confirmed **no adaptive rigging** — `spin()` is pure/stateless.
+7. **Slot dead-spin reduction**: concentrated reel weights toward common symbols (so they
+   cluster more often) + lowered payScale to keep RTP ~88%. Dead spins dropped ~69%→53%
+   (candy/olympus), ~76%→63% (bandit). Key insight: dead-rate is a reel-weight problem,
+   not a payout problem.
 
 ---
 

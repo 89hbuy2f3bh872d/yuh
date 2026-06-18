@@ -21,9 +21,9 @@ const HIDDEN_BOOST = 1.7; // hidden bonus multiplier-symbol frequency boost
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.38,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.13,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
-    reel: [["blue", 46], ["green", 40], ["purple", 34], ["red", 28], ["apple", 20], ["grape", 13], ["melon", 8]],
+    reel: [["blue", 60], ["green", 52], ["purple", 44], ["red", 26], ["apple", 16], ["grape", 9], ["melon", 5]],
     pays: {
       blue: payRows(0.2, 0.5, 1.0, 2.5), green: payRows(0.25, 0.6, 1.2, 3),
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
@@ -34,9 +34,9 @@ const GAMES = {
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 2.36,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.10,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
-    reel: [["ring", 46], ["glass", 40], ["chalice", 34], ["crown", 27], ["blue", 20], ["green", 13], ["red", 8]],
+    reel: [["ring", 60], ["glass", 52], ["chalice", 44], ["crown", 25], ["blue", 16], ["green", 9], ["red", 5]],
     pays: {
       ring: payRows(0.2, 0.5, 1, 2.5), glass: payRows(0.25, 0.6, 1.2, 3),
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
@@ -47,9 +47,9 @@ const GAMES = {
   },
   bandit: {
     id: "bandit", name: "Wild Bandit", tag: "Cluster pays · heist multipliers", color: "#f59e0b",
-    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 4.05,
+    W: 5, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.96,
     sym: { ten: "🔟", j: "🅹", q: "🆀", k: "🅺", a: "🅰️", gold: "🪙", bandit: "💰" },
-    reel: [["ten", 44], ["j", 40], ["q", 34], ["k", 28], ["a", 21], ["gold", 13], ["bandit", 8]],
+    reel: [["ten", 58], ["j", 50], ["q", 42], ["k", 26], ["a", 16], ["gold", 9], ["bandit", 5]],
     pays: {
       ten: payRows(0.25, 0.6, 1.2, 3), j: payRows(0.3, 0.7, 1.4, 3.5), q: payRows(0.35, 0.9, 1.8, 4.5),
       k: payRows(0.45, 1.1, 2.4, 6), a: payRows(0.6, 1.5, 3.2, 9), gold: payRows(1, 2.6, 6, 18), bandit: payRows(1.8, 5, 11, 32),
