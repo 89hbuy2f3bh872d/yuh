@@ -354,10 +354,10 @@ async function animateSpin(sp, runningBefore, free){
   if(hasContent){ var so=spinOut(); await sleep(so+ (turbo?40:90)); if(window.SG)SG.sfx('spin'); }
   var md=dropGrid(sp.steps[0].grid);
   await sleep(md+60);
-  var spinWin=0;
+  var spinWin=0, lastRendered=0;
   for(var st=0; st<sp.steps.length; st++){
     var step=sp.steps[st];
-    if(!step.wins||!step.wins.length) break;
+    if(!step.wins||!step.wins.length) break;   // final no-win step ends the tumble
     var winPos=[]; step.wins.forEach(function(w){ w.positions.forEach(function(p){winPos.push(p);}); });
     dimExcept(winPos); winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('win');});
     if(window.SG)SG.sfx('win');
@@ -367,8 +367,12 @@ async function animateSpin(sp, runningBefore, free){
     winPos.forEach(function(i){var c=$('cell-'+i);if(c)c.classList.add('pop');});
     await sleep(POP);
     clearFx();
-    if(sp.steps[st+1]){ var removed=new Set(winPos); var md2=tumbleFall(sp.steps[st+1].grid, removed); await sleep(md2+60); }
+    if(sp.steps[st+1]){ var removed=new Set(winPos); var md2=tumbleFall(sp.steps[st+1].grid, removed); await sleep(md2+60); lastRendered=st+1; }
   }
+  // The tumble always ends on a no-win step whose grid holds any surviving multiplier
+  // symbols. The loop above breaks BEFORE rendering it — so draw that final grid now,
+  // otherwise the multiplier symbols are invisible when the reveal flies them to the meter.
+  if(lastRendered < sp.steps.length-1){ renderGrid(sp.steps[sp.steps.length-1].grid); await sleep(turbo?120:260); }
   // multiplier reveal
   if(sp.super){
     // global multiplier: only when this spin HIT and an x landed → fly to the meter

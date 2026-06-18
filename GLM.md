@@ -128,7 +128,22 @@ cluster more readily, then **lower payScale** to keep RTP flat (~88%).
   the bottom cell leaves first, cascading up. **No opacity fade** — cells keep their symbol
   and slide off the bottom. Skipped when the board is empty.
 - `animateSpin` flow: `clearFx()` → `spinOut()` (if content) → `dropGrid(step0)` →
-  per-step `win`/`pop`/`tumbleFall` loop → multiplier reveal.
+  per-step `win`/`pop`/`tumbleFall` loop → **render the final no-win step's grid**
+  (it holds surviving multipliers — see bug note) → multiplier reveal.
+
+### Multiplier-reveal bug (fixed)
+In a Super/Hidden bonus, surviving multiplier symbols (`🪙`/`🍬`/`💵`) live on the
+**final no-win step's grid** (the tumble loop always terminates by pushing a `{wins:[]}`
+step; `mults` are extracted from that grid). The client's win loop `break`s on that
+no-win step **before rendering it**, so the multiplier symbols were never on screen when
+`flyMults` ran → they flew from the wrong position / looked like they "didn't add."
+Fix: after the win loop, render `sp.steps[last].grid` before the reveal
+(`if(lastRendered < steps.length-1) renderGrid(...)`). Server math was correct all along
+(winning spins always bank multipliers); only the visual was broken.
+
+Note: multipliers are intentionally **not** banked on zero-win spins — a multiplier with
+nothing to multiply is discarded (standard cluster-slot rule). Tested banking them
+unconditionally but it pushed base RTP to ~140% and made tuning intractable; reverted.
 
 ### UI/UX notes (post-overhaul)
 - Recessed "glassy" reel window (`.reel-stage`): inner shadows, top sheen, bottom vignette
