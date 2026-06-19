@@ -240,27 +240,44 @@
                 a.classList.toggle("active", a.getAttribute("href") === path);
             });
         }
-        function ensureCss(doc) {
+        // Inject any page-specific <link> stylesheets not already loaded.
+        // Returns a promise that resolves once they've all finished loading (so
+        // the content swap never paints before the CSS is applied — no FOUC).
+        // A 1s timeout fallback guarantees a stalled sheet can't hang the nav.
+        function loadPageCss(doc) {
+            var pending = [];
             doc.querySelectorAll("link[rel=stylesheet]").forEach(function (l) {
                 var href = l.getAttribute("href");
                 var base = href.split("?")[0];
-                if (
-                    ![].some.call(
-                        document.querySelectorAll("link[rel=stylesheet]"),
-                        function (x) {
-                            return (
-                                x.getAttribute("href").split("?")[0] === base
-                            );
-                        },
-                    )
-                ) {
+                var already = [].some.call(
+                    document.querySelectorAll("link[rel=stylesheet]"),
+                    function (x) {
+                        return x.getAttribute("href").split("?")[0] === base;
+                    },
+                );
+                if (!already) {
                     var n = document.createElement("link");
                     n.rel = "stylesheet";
                     n.href = href;
                     document.head.appendChild(n);
+                    pending.push(
+                        new Promise(function (res) {
+                            n.onload = res;
+                            n.onerror = res;
+                        }),
+                    );
                 }
             });
-            // mirror any page-level inline <style> from the fetched head (one managed node)
+            var done = Promise.all(pending);
+            var timeout = new Promise(function (res) {
+                setTimeout(res, 1000);
+            });
+            return Promise.race([done, timeout]);
+        }
+        // Mirror any page-level inline <style> from the fetched head into one
+        // managed <style> node. Applied AT swap time (not before) so it can't
+        // briefly restyle the old page while we wait on external CSS.
+        function applyInlineCss(doc) {
             var styles = "";
             doc.querySelectorAll("head style").forEach(function (s) {
                 styles += s.textContent + "\n";
@@ -273,6 +290,9 @@
             }
             holder.textContent = styles;
         }
+        // Monotonic nav token — so a rapid second click can't let a stale
+        // (older) swap's .then overwrite a newer one.
+        var navSeq = 0;
         function swap(html, url, push) {
             var doc;
             try {
@@ -289,30 +309,40 @@
             }
             clearInts();
             if (window.SG && SG.music) SG.music.stop(); // music is slot-page only
-            ensureCss(doc);
-            cur.innerHTML = nm.innerHTML;
-            // Page scripts live OUTSIDE <main> (end of body) — re-execute them so the
-            // new section initialises. Skip the persistent sidebar/partial scripts
-            // (sound.js, pjax, hex-bg) which already run and are window-guarded.
-            doc.querySelectorAll("body script").forEach(function (s) {
-                var txt = s.textContent || "";
-                if (s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
-                if (!s.src && /__pjax|__bgHex|__notif|__srvSel|__rbW/.test(txt))
-                    return;
-                var n = document.createElement("script");
-                if (s.src) n.src = s.src;
-                else n.textContent = txt;
-                document.body.appendChild(n);
-                n.parentNode.removeChild(n);
+            var my = ++navSeq;
+            // Wait for any newly-injected page CSS to load BEFORE swapping
+            // content. The old section stays visible + styled while we wait;
+            // the new section + its CSS paint together — no unstyled frame.
+            loadPageCss(doc).then(function () {
+                if (my !== navSeq) return; // a newer nav superseded this one
+                applyInlineCss(doc);
+                cur.innerHTML = nm.innerHTML;
+                // Page scripts live OUTSIDE <main> (end of body) — re-execute them so the
+                // new section initialises. Skip the persistent sidebar/partial scripts
+                // (sound.js, pjax, hex-bg) which already run and are window-guarded.
+                doc.querySelectorAll("body script").forEach(function (s) {
+                    var txt = s.textContent || "";
+                    if (s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
+                    if (
+                        !s.src &&
+                        /__pjax|__bgHex|__notif|__srvSel|__rbW/.test(txt)
+                    )
+                        return;
+                    var n = document.createElement("script");
+                    if (s.src) n.src = s.src;
+                    else n.textContent = txt;
+                    document.body.appendChild(n);
+                    n.parentNode.removeChild(n);
+                });
+                document.title = doc.title || document.title;
+                updateActive(new URL(url, location.href).pathname);
+                if (push) {
+                    try {
+                        history.pushState({ pjax: 1 }, "", url);
+                    } catch (e) {}
+                }
+                window.scrollTo(0, 0);
             });
-            document.title = doc.title || document.title;
-            updateActive(new URL(url, location.href).pathname);
-            if (push) {
-                try {
-                    history.pushState({ pjax: 1 }, "", url);
-                } catch (e) {}
-            }
-            window.scrollTo(0, 0);
         }
         function go(url, push) {
             fetch(url, {
