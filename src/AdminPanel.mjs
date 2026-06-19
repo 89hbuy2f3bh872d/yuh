@@ -94,7 +94,7 @@ const PAGES = [
 ];
 
 function shell(body, title) {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/admin.css?v=2"></head><body>${body}</body></html>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/admin.css?v=3"></head><body>${body}</body></html>`;
 }
 
 function deniedPage(uid) {
@@ -493,7 +493,15 @@ function buildPage(data, prefix) {
     if (validIds.indexOf(id) === -1) id = DEFAULT_ID;
     pages.forEach(function(p){
       var active = p.dataset.page === id;
-      p.classList.toggle('page-active', active);
+      var wasActive = p.classList.contains('page-active');
+      if (active && wasActive) return;            // already showing — no-op (avoids reflow flicker)
+      p.classList.remove('page-active');           // remove first so the fade restarts cleanly
+      if (active) {
+        // force reflow so the browser commits the hidden state before re-showing,
+        // guaranteeing the fadeIn animation replays and layout is correct.
+        void p.offsetWidth;
+        p.classList.add('page-active');
+      }
     });
     navButtons.forEach(function(b){
       var active = b.dataset.page === id;
