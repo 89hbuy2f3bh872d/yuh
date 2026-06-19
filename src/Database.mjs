@@ -771,11 +771,15 @@ export class Database {
 
   /** Pull top N users by balance. */
   async getAdminUserStats(limit = 20) {
+    // Balances live in STDB, NOT Mongo (Mongo's `bal` is a stale 1000 starter). We can't
+    // join STDB here (no stdb ref), so return the users sorted by wagered (a real Mongo
+    // stat) and let the caller enrich with live STDB balances. Projects the fields the
+    // admin panel needs; `bal` will be overwritten by the caller from STDB.
     return this._users
       .find({})
-      .sort({ bal: -1 })
+      .sort({ tw: -1 })
       .limit(limit)
-      .project({ _id: 1, bal: 1, tw: 1, tl: 1, gp: 1 })
+      .project({ _id: 1, bal: 1, tw: 1, tl: 1, gp: 1, tag: 1, av: 1 })
       .toArray();
   }
 

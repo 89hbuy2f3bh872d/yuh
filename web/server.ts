@@ -76,7 +76,13 @@ async function getCirculation() {
   for (const [id, units] of investedUnits) { const a = INVEST.assets.get(id); if (a) invested += units * a.price; }
   return { balances: Math.round(balances), banks: Math.round(banks), invested: Math.round(invested), total: Math.round(balances + banks + invested) };
 }
-const admin = new AdminPanel(db, cfg.prefix ?? "&", getCirculation);
+// Batch-fetch live STDB balances for a list of uids (for the admin top-users table).
+async function getBalances(uids) {
+  const out = {};
+  for (const uid of uids) { try { out[uid] = stdb.getBalance(uid); } catch {} }
+  return out;
+}
+const admin = new AdminPanel(db, cfg.prefix ?? "&", getCirculation, getBalances);
 // Background init — NO top-level await anywhere in this module, so PM2's bun fork
 // (which require()s the entry) can load it. Connect Mongo, then load custom tiers.
 db.connect()

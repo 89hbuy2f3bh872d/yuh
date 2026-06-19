@@ -919,10 +919,11 @@ function buildPage(data, prefix) {
 
 export class AdminPanel {
   /** @param {import('./Database.mjs').Database} db */
-  constructor(db, prefix = "&", getCirculation = null) {
+  constructor(db, prefix = "&", getCirculation = null, getBalances = null) {
     this.db = db;
     this.prefix = prefix;
     this.getCirculation = getCirculation;  // async () => { balances, banks, invested, total }
+    this.getBalances = getBalances;        // async (uid[]) => { [uid]: balance }
   }
 
   static OWNER_ID = OWNER_ID;
@@ -979,6 +980,15 @@ export class AdminPanel {
           const circ = await this.getCirculation();
           globals.totalBalance = circ.total || 0;
           globals.circulation = circ;  // { balances, banks, invested, total }
+        } catch {}
+      }
+      // Enrich top users with LIVE STDB balances (Mongo `bal` is a stale 1000 starter).
+      if (this.getBalances) {
+        try {
+          const live = await this.getBalances(topUsers.map(u => u._id));
+          for (const u of topUsers) { if (live[u._id] != null) u.bal = live[u._id]; }
+          // Re-sort by real balance descending
+          topUsers.sort((a, b) => (b.bal ?? 0) - (a.bal ?? 0));
         } catch {}
       }
     }
