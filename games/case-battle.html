@@ -361,8 +361,8 @@ function watchBattle(id){
   showArena();startBattlePoll();
 }
 
-function startBattlePoll(){stopBattlePoll();pollTimer=setInterval(pollBattle,250);pollBattle();}
-function stopBattlePoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+function startBattlePoll(){stopBattlePoll();pollBattle();}  // pollBattle self-schedules adaptively
+function stopBattlePoll(){if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}}
 function leaveArena(){battleGen++;stopBattlePoll();currentBattle=null;openedAt=0;lastData=null;$('resultOverlay').classList.add('hidden');$('jackpotOverlay').classList.add('hidden');$('countdownOverlay').classList.add('hidden');showList();}
 
 function pollBattle(){
@@ -385,7 +385,15 @@ function pollBattle(){
     }
     lastData = d;
     renderArena();
-  }).catch(function(){});
+    // Adaptive reschedule: poll fast during active phases (opening/spinning/countdown),
+    // slow during pending/done. Cuts ~90% of requests during the common waiting/result states.
+    if (currentBattle) {
+      var active = d && (d.phase === 'opening' || d.phase === 'countdown' || d.phase === 'spinning');
+      var done = d && d.phase === 'done';
+      var ms = done ? 0 : active ? 250 : 2500;   // done → stop polling; active → fast; pending → slow
+      if (ms) pollTimer = setTimeout(pollBattle, ms);
+    }
+  }).catch(function(){ if(currentBattle) pollTimer=setTimeout(pollBattle,2000); });  // back off on error
 }
 
 function renderArena(){

@@ -463,34 +463,66 @@ export function buyCost(id, kind) {
 }
 export const SLOT_GAME_IDS = Object.keys(GAMES);
 
-// Auto-price buy bonuses so their RTP ≈ target. Candy/olympus → 95% (2 buys).
-// Bandit direct-entry buys (luck/gold) → 96%; FeatureSpins/Rainbow use fixed spec mults.
-(function priceBuys() {
-  const N = 30000, bet = 20;
+// Auto-price buy bonuses so their RTP ≈ target. Results are cached to a JSON file so the
+// 240k Monte-Carlo sims only run once (not every boot — that blocked startup for ~1s).
+// The cache key includes the pay tables + reels so any tuning change invalidates it.
+import { existsSync as _fsExists, readFileSync as _fsRead, writeFileSync as _fsWrite } from "node:fs";
+import { fileURLToPath as _furl } from "node:url";
+import { dirname as _dir, join as _join } from "node:path";
+const _PRICE_CACHE = _join(_dir(_furl(import.meta.url)), "_pricebuys.cache.json");
+function _priceCacheKey() {
+  // Hash the pay tables + reels + mult/coin configs into a key. Any tuning change → new key.
+  const parts = [];
+  for (const id of SLOT_GAME_IDS) {
+    const g = GAMES[id];
+    parts.push(id, g.payScale, g.maxWinX, g.scatter.chance,
+      g.mult ? JSON.stringify(g.mult.table) : "",
+      g.coins ? JSON.stringify(g.coins) : "",
+      g.rainbow ? g.rainbow.chance : "",
+      JSON.stringify(g.pays), JSON.stringify(g.reel));
+  }
+  return parts.join("|");
+}
+function _priceBuys() {
+  const key = _priceCacheKey();
+  try {
+    const cached = JSON.parse(_fsRead(_PRICE_CACHE, "utf8"));
+    if (cached && cached.key === key) { applyPrices(cached.prices); return; }
+  } catch {}
+  // Cache miss → run the sims.
+  const N = 30000, bet = 20, prices = {};
   for (const id of SLOT_GAME_IDS) {
     const cfg = GAMES[id];
+    prices[id] = {};
     if (cfg.engine === "bandit") {
       const TARGET = 0.96;
-      // Direct-entry buys (luck/gold) are full bonus rounds → price by full-round EV.
-      // FeatureSpins/Rainbow are SINGLE base spins → price by single-spin EV (their
-      // mult × bet buys ONE spin, not a round). All auto-priced to ~96% RTP.
       for (const kind of ["luck", "gold", "feature", "rainbow"]) {
-        let sum = 0;
-        for (let i = 0; i < N; i++) sum += runBanditRound(cfg, bet, kind).totalWin;
-        const avgX = (sum / N) / bet;
-        const cost = Math.max(3, Math.round(avgX / TARGET));
-        const entry = cfg.buys.find(b => b.id === kind);
-        if (entry) entry.mult = cost;
+        let sum = 0; for (let i = 0; i < N; i++) sum += runBanditRound(cfg, bet, kind).totalWin;
+        prices[id][kind] = Math.max(3, Math.round(((sum / N) / bet) / TARGET));
       }
     } else {
       const TARGET = 0.96;
       for (const kind of ["regular", "super"]) {
-        let sum = 0;
-        for (let i = 0; i < N; i++) sum += runRound(cfg, bet, kind).totalWin;
-        const avgX = (sum / N) / bet;
-        const cost = Math.max(5, Math.round(avgX / TARGET));
-        if (kind === "super") cfg.buySuper = cost; else cfg.buyRegular = cost;
+        let sum = 0; for (let i = 0; i < N; i++) sum += runRound(cfg, bet, kind).totalWin;
+        prices[id][kind] = Math.max(5, Math.round(((sum / N) / bet) / TARGET));
       }
     }
   }
-})();
+  try { _fsWrite(_PRICE_CACHE, JSON.stringify({ key, prices })); } catch {}
+  applyPrices(prices);
+}
+function applyPrices(prices) {
+  for (const id of SLOT_GAME_IDS) {
+    const cfg = GAMES[id], p = prices[id]; if (!p) continue;
+    if (cfg.engine === "bandit") {
+      for (const kind of ["luck", "gold", "feature", "rainbow"]) {
+        const entry = cfg.buys.find(b => b.id === kind);
+        if (entry && p[kind]) entry.mult = p[kind];
+      }
+    } else {
+      if (p.regular) cfg.buyRegular = p.regular;
+      if (p.super) cfg.buySuper = p.super;
+    }
+  }
+}
+_priceBuys();

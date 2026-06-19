@@ -480,10 +480,28 @@ export class Database {
     const u = await this._users.findOne({ _id: uid.trim() }, { projection: { bwd: 1 } }).catch(() => null);
     return (u?.bwd && u.bwd.d === day) ? (Number(u.bwd.t) || 0) : 0;
   }
-  async recordBankWithdraw(uid, day, amount) {
-    if (!this._users || !isValidUserId(uid)) return;
-    const cur = await this.bankWithdrawnToday(uid, day);
-    await this._users.updateOne({ _id: uid.trim() }, { $set: { bwd: { d: day, t: cur + Math.floor(amount) } } }, { upsert: true }).catch(() => {});
+  /** Atomically attempt a bank-withdraw ledger increment, respecting the daily cap.
+   *  Returns true if it fit under the cap (and was recorded), false if it would exceed.
+   *  Race-free: the conditional filter `bwd.t + amount <= cap` is evaluated atomically by
+   *  Mongo, so two concurrent withdraws can't both pass the cap check. */
+  async tryRecordBankWithdraw(uid, day, amount, cap) {
+    if (!this._users || !isValidUserId(uid)) return false;
+    const amt = Math.floor(Number(amount) || 0); if (!(amt > 0)) return false;
+    // Case A: same day, current total + amt must be ≤ cap → $inc t.
+    const a = await this._users.updateOne(
+      { _id: uid.trim(), "bwd.d": day, $expr: { $lte: [{ $add: [{ $ifNull: ["$bwd.t", 0] }, amt] }, cap] } },
+      { $inc: { "bwd.t": amt } }
+    ).catch(() => null);
+    if (a && a.modifiedCount > 0) return true;
+    // Case B: no ledger yet today (or stale day) → set fresh {d, t: amt} if amt ≤ cap.
+    if (amt <= cap) {
+      const b = await this._users.updateOne(
+        { _id: uid.trim(), $or: [{ bwd: { $exists: false } }, { "bwd.d": { $ne: day } }] },
+        { $set: { bwd: { d: day, t: amt } } }
+      ).catch(() => null);
+      return !!(b && b.modifiedCount > 0);
+    }
+    return false;
   }
 
   // ─── Pending slot win (persisted so an uncollected win survives a web restart) ──
@@ -546,6 +564,30 @@ export class Database {
   }
   async getHoldings(uid) { if (!this._holdings) return {}; const d = await this._holdings.findOne({ _id: String(uid) }).catch(() => null); return (d && d.h) || {}; }
   async setHoldings(uid, h) { if (!this._holdings) return; await this._holdings.updateOne({ _id: String(uid) }, { $set: { h } }, { upsert: true }).catch(() => {}); }
+  // Atomically ADD units + cost to a holding (buy). Race-free via $inc.
+  async addHolding(uid, assetId, units, cost) {
+    if (!this._holdings) return;
+    const u = Number(units) || 0, c = Math.round(Number(cost) || 0);
+    await this._holdings.updateOne({ _id: String(uid) }, { $inc: { [`h.${assetId}.u`]: u, [`h.${assetId}.c`]: c } }, { upsert: true }).catch(() => {});
+  }
+  // Atomically DEDUCT units guarded by having enough. Returns realized cost or null on
+  // insufficient funds / lost race. The conditional filter prevents double-selling: two
+  // concurrent sells can't both pass the `u >= sellU` guard.
+  async removeHolding(uid, assetId, units) {
+    if (!this._holdings) return null;
+    const sellU = Number(units); if (!(sellU > 0)) return null;
+    const doc = await this._holdings.findOne({ _id: String(uid) }).catch(() => null);
+    const cur = doc?.h?.[assetId];
+    if (!cur || !(cur.u >= sellU)) return null;
+    const costPortion = Math.round((cur.c || 0) * (sellU / cur.u));
+    const res = await this._holdings.updateOne(
+      { _id: String(uid), [`h.${assetId}.u`]: { $gte: sellU } },
+      { $inc: { [`h.${assetId}.u`]: -sellU, [`h.${assetId}.c`]: -costPortion } }
+    ).catch(() => null);
+    if (!res || res.modifiedCount === 0) return null;
+    if (cur.u - sellU <= 1e-6) await this._holdings.updateOne({ _id: String(uid) }, { $unset: { [`h.${assetId}`]: "" } }).catch(() => {});
+    return { soldUnits: sellU, costPortion };
+  }
   /** Assets + the user's portfolio (bot path → web engine). */
   async investMe(uid) {
     if (this._bridge?.investMe) return this._bridge.investMe(uid);
@@ -640,20 +682,22 @@ export class Database {
     const r = await this._rakeback.findOne({ _id: uid + "@" + gid }).catch(() => null);
     return { accrued: r?.accrued || 0, wagered: r?.wagered || 0, claimed: r?.claimed || 0 };
   }
-  /** Atomically claim (read + zero) the pending rakeback. Returns the FC amount claimed. */
+  /** Atomically claim (read + zero) the pending rakeback. Returns the FC amount claimed.
+   *  Uses findOneAndUpdate with a pipeline so the read-and-zero is a single atomic op —
+   *  two concurrent claims can't both read the same accrued balance. */
   async claimRakeback(uid, gid) {
     if (!this._rakeback || !gid || !isValidUserId(uid)) return 0;
-    // Read the pending amount, then move it into claimed + zero accrued. Single-tab
-    // claim (user-initiated, rate-limited) so the read-then-write race is negligible.
-    const r = await this._rakeback.findOne({ _id: uid + "@" + gid }).catch(() => null);
-    const amt = Math.max(0, Math.floor(r?.accrued || 0));
-    if (amt > 0) {
-      await this._rakeback.updateOne(
-        { _id: uid + "@" + gid },
-        { $inc: { claimed: amt }, $set: { accrued: 0, updatedAt: Date.now() } }
-      ).catch(() => {});
-    }
-    return amt;
+    // Pipeline: snapshot the current accrued into `claimAmt`, zero it, add to `claimed`.
+    // findOneAndUpdate with a pipeline is atomic — no TOCTOU window.
+    const r = await this._rakeback.findOneAndUpdate(
+      { _id: uid + "@" + gid },
+      [
+        { $set: { claimAmt: { $ifNull: ["$accrued", 0] } } },
+        { $set: { accrued: 0, claimed: { $add: [{ $ifNull: ["$claimed", 0] }, "$claimAmt"] }, updatedAt: Date.now() } },
+      ],
+      { upsert: true, returnDocument: "after" }
+    ).catch(() => null);
+    return Math.max(0, Math.floor(r?.claimAmt || 0));
   }
   /** Owner config: set a guild's rakeback percentage (0–20). */
   async setGuildRakebackPct(gid, pct) {

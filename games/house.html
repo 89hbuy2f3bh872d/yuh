@@ -199,10 +199,12 @@ function pkInit(){
   var balls=(PK&&PK.balls)||[];
   PK={cv:cv,ctx:ctx,w:w,h:h,cx:w/2,gx:gx,ry:ry,topY:topY,bottomPegY:bottomPegY,bucketY:bucketY,
       table:PLINKO[GAME._risk||'med'],balls:balls,flash:{},pegHits:{},raf:PK&&PK.raf,last:0,lastActivity:0};
+  PK.pegList=pkBuildPegs(PK);   // cache the peg array once (was recomputed every frame)
   if(!PK.raf) pkDraw(); else {}
   pkDraw();
 }
-function pkPegs(P){ var a=[]; for(var r=0;r<ROWS;r++){ var n=r+3; for(var j=0;j<n;j++){ a.push({x:P.cx+(j-(n-1)/2)*P.gx, y:P.topY+r*P.ry}); } } return a; }
+function pkBuildPegs(P){ var a=[]; for(var r=0;r<ROWS;r++){ var n=r+3; for(var j=0;j<n;j++){ a.push({x:P.cx+(j-(n-1)/2)*P.gx, y:P.topY+r*P.ry}); } } return a; }
+function pkPegs(P){ return P.pegList || (P.pegList=pkBuildPegs(P)); }
 function pkDraw(){
   var P=PK; if(!P)return; var ctx=P.ctx, now=performance.now(); ctx.clearRect(0,0,P.w,P.h);
   // pegs — glow when recently hit by a ball

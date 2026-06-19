@@ -96,8 +96,15 @@ export class CaseBattle {
     setInterval(() => {
       const cut = Date.now() - 90 * 1000;
       for (const [id, b] of this.active) {
-        if (b.phase === "done" && b.resolvedAt < cut) this.active.delete(id);
-        else if (b.phase === "pending" && b.createdAt < cut) this.active.delete(id);
+        if (b.phase === "done" && b.resolvedAt < cut) {
+          this.active.delete(id);
+        } else if (b.phase === "pending" && b.createdAt < cut) {
+          // Expired before anyone joined — refund the creator their entry cost (it was
+          // deducted at create time). Without this, FC silently leaves circulation.
+          const creator = b.players && b.players[0];
+          if (creator && creator.cost > 0) this._bal.credit(creator.uid, creator.cost).catch(() => {});
+          this.active.delete(id);
+        }
       }
     }, 90_000);
   }

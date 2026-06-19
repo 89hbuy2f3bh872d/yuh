@@ -183,6 +183,18 @@ async function serverEditAuth(request: Request, gid: string): Promise<string | {
   if (g.ownerId !== uid && !(await canManageServers(uid))) return { status: 403, error: "Only the server owner can do that" };
   return uid;
 }
+// In-memory cache of raw page HTML (files don't change between deploys). Avoids a
+// synchronous readFileSync + asset-versioning regex scan on every pjax navigation.
+const pageCache = new Map<string, string>();
+function getPageHtml(fp: string): string {
+  let html = pageCache.get(fp);
+  if (html === undefined) {
+    html = readFileSync(fp, "utf8").replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
+    pageCache.set(fp, html);
+  }
+  return html;
+}
+
 async function renderPage(request: Request, set: any, file: string, active: string, extra: Record<string, string> = {}) {
   const uid = await resolveSession(request);
   if (!uid) { return redir(set, "/login"); }
@@ -196,11 +208,11 @@ async function renderPage(request: Request, set: any, file: string, active: stri
   const showAdmin = await admin.canSeePanel(uid).catch(() => OWNERS.includes(uid)); // owner OR a perm with a panel tab
   let showServers = await ownsAnyServer(uid, Array.isArray(user?.gids) ? user!.gids : []).catch(() => false);
   if (!showServers) showServers = await canManageServers(uid); // server-managers see it too
-  let html = readFileSync(fp, "utf8")
+  // Cached raw HTML (asset versioning already baked in) + per-user substitutions.
+  let html = getPageHtml(fp)
     .replace("__SIDEBAR__", buildSidebar({ active, tag, avatar, bal, showAdmin, showServers }))
     .replace(/__BALANCE__/g, String(bal)).replace(/__TAG__/g, esc(tag)).replace(/__AVATAR__/g, esc(avatar)).replace(/__UID__/g, esc(uid));
   for (const [k, v] of Object.entries(extra)) html = html.split(k).join(v);
-  html = html.replace(/(\/assets\/[^"'?\s]+\.(?:css|js))(["'])/g, `$1?v=${ASSET_VER}$2`);
   set.headers["content-type"] = "text/html; charset=utf-8";
   // Pages carry per-user data AND inline <script> — never let the browser/Cloudflare serve a
   // stale copy, or client-side fixes silently never reach the user after a deploy.
@@ -307,11 +319,15 @@ async function requireServer(request: Request, uid: string): Promise<{ gid: stri
   if (!gid) return null;
   // The `srv` cookie is client-controlled — verify the guild is real AND that the
   // user actually belongs to it, so tax/stats can't be routed to an arbitrary bank.
-  const g = await db.getGuild(gid).catch(() => null);
+  const [g, user] = await Promise.all([
+    db.getGuild(gid).catch(() => null),
+    db.getUser(uid).catch(() => null),
+  ]);
   if (!g) return null;
-  const user = await db.getUser(uid).catch(() => null);
+  // Membership check: the user MUST be in gids. Previously an empty gids array skipped
+  // the check (letting accounts with no guilds gamble in any server tax-free). Now it fails.
   const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
-  if (gids.length && !gids.includes(gid)) return null; // not a member of the selected server
+  if (!gids.includes(gid)) return null;
   return { gid, taxBps: await guildTax(gid) };
 }
 
@@ -503,31 +519,30 @@ async function investBuy(uid: string, assetId: string, spendFC: number) {
   // more per unit, which makes "buy then immediately sell" reliably lose the spread.
   const execPrice = a.price * investSlippage(a, "buy", spendFC);
   const units = r6(net / execPrice);
-  const h: any = await db.getHoldings(uid).catch(() => ({}));
-  const cur = h[assetId] || { u: 0, c: 0 };
-  cur.u = r6(cur.u + units); cur.c = Math.round(cur.c + spendFC); h[assetId] = cur;
-  await db.setHoldings(uid, h);
+  // Atomic add (race-free $inc) — no read-then-write window for concurrent buys.
+  await (db as any).addHolding?.(uid, assetId, units, spendFC).catch(() => {});
   a.supply = r6((a.supply || 0) + units); investNudge(a, "buy", spendFC);
   return { ok: true, units, price: a.price, execPrice: Math.round(execPrice * 100) / 100, fee, spent: spendFC, bal: stdb.getBalance(uid) };
 }
 async function investSell(uid: string, assetId: string, unitsArg: number | "all") {
   const a = INVEST.assets.get(assetId); if (!a) return { error: "Unknown asset" };
-  const h: any = await db.getHoldings(uid).catch(() => ({}));
+  if (unitsArg !== "all") { const n = Number(unitsArg); if (!(n > 0)) return { error: "Invalid amount" }; }
+  // Read holdings only to resolve "all" → exact units; the actual deduction is atomic.
+  const h: any = await (db as any).getHoldings?.(uid).catch(() => ({})) ?? {};
   const cur = h[assetId];
-  if (!cur || cur.u <= 0) return { error: "You don't hold any of that" };
-  let sellU = unitsArg === "all" ? cur.u : Math.min(cur.u, Number(unitsArg));
+  if (!cur || !(cur.u > 0)) return { error: "You don't hold any of that" };
+  const sellU = unitsArg === "all" ? cur.u : Math.min(cur.u, Number(unitsArg));
   if (!(sellU > 0)) return { error: "Invalid amount" };
-  // slippage: big sells execute at a WORSE (lower) effective price — the trader receives
-  // less per unit. Combined with the buy slippage, round-tripping is net-negative.
+  // slippage: big sells execute at a WORSE (lower) effective price.
   const execPrice = a.price * investSlippage(a, "sell", sellU * a.price);
   const gross = sellU * execPrice, fee = Math.floor(gross * INVEST_FEE), payout = Math.max(0, Math.floor(gross - fee));
-  const costPortion = Math.round(cur.c * (sellU / cur.u));
-  cur.u = r6(cur.u - sellU); cur.c = Math.max(0, cur.c - costPortion);
-  if (cur.u <= 1e-6) delete h[assetId]; else h[assetId] = cur;
-  await db.setHoldings(uid, h);
+  // ATOMIC deduction: guarded by `u >= sellU`. Returns null if the race was lost (another
+  // concurrent sell already took the units). This makes double-selling impossible.
+  const res = await (db as any).removeHolding?.(uid, assetId, sellU).catch(() => null);
+  if (!res) return { error: "Insufficient holdings (they may have just been sold)" };
   if (payout > 0) await stdb.credit(uid, payout).catch(() => {});
-  a.supply = r6(Math.max(0, (a.supply || 0) - sellU)); investNudge(a, "sell", gross);
-  return { ok: true, units: r6(sellU), price: a.price, execPrice: Math.round(execPrice * 100) / 100, payout, pnl: payout - costPortion, bal: stdb.getBalance(uid) };
+  a.supply = r6(Math.max(0, (a.supply || 0) - res.soldUnits)); investNudge(a, "sell", gross);
+  return { ok: true, units: r6(res.soldUnits), price: a.price, execPrice: Math.round(execPrice * 100) / 100, payout, pnl: payout - res.costPortion, bal: stdb.getBalance(uid) };
 }
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
@@ -935,9 +950,12 @@ const app = new Elysia()
       // secret AND that the connection originates from loopback — so even if the secret
       // leaks, the mint-capable endpoints aren't reachable from the internet.
       if (!INTERNAL_SECRET || request.headers.get("x-internal") !== INTERNAL_SECRET) { set.status = 403; return { error: "forbidden" }; }
-      const ip = (server as any)?.requestIP?.(request)?.address || "";
-      if (ip && ip !== "127.0.0.1" && ip !== "::1" && ip !== "::ffff:127.0.0.1") { set.status = 403; return { error: "forbidden" }; }
-      // Reject if the request also carries Cloudflare/proxy hop headers (came from outside).
+      // FAIL-CLOSED: require a confirmed loopback peer IP. If requestIP is unavailable
+      // (empty/undefined), reject — never let an unknown origin through.
+      const ip = (server as any)?.requestIP?.(request)?.address;
+      const isLoopback = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+      if (!isLoopback) { set.status = 403; return { error: "forbidden" }; }
+      // Reject if the request carries Cloudflare/proxy hop headers (came from outside).
       if (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")) { set.status = 403; return { error: "forbidden" }; }
     })
     .get("/balance/:uid", ({ params }) => ({ bal: stdb.getBalance(params.uid) }))
@@ -1128,6 +1146,16 @@ app.post("/api/admin/users/:id/perms", ({ request, params, body, set }) => admin
   if (!(await admin.can(uid, "users"))) { set.status = 403; return { error: "Missing permission" }; }
   const target = (params as any).id; if (target === (AdminPanel as any).OWNER_ID) return { error: "Owner permissions can't be changed" };
   const perm = String((body as any).perm ?? ""); if (!(AdminPanel as any).PERM_IDS.includes(perm)) return { error: "Unknown permission" };
+  // Privilege escalation guard: a non-owner admin may only grant permissions they THEMSELVES
+  // hold. This stops a "users"-only admin from self-granting `balances`/`servers`/etc.
+  const myPerms = new Set(await db.getPerms(uid).catch(() => []));
+  const isOwner = uid === (AdminPanel as any).OWNER_ID;
+  if (!isOwner && !myPerms.has(perm)) { set.status = 403; return { error: "You can only grant permissions you hold" }; }
+  // Prevent targeting another admin you don't outrank (can't strip perms from someone equal/higher).
+  if (target !== uid && !isOwner) {
+    const tPerms = await db.getPerms(target).catch(() => []);
+    if (tPerms.includes("servers") || tPerms.includes("balances")) { set.status = 403; return { error: "Can't modify another privileged admin" }; }
+  }
   let next = (await db.getPerms(target)).filter((x: string) => (AdminPanel as any).PERM_IDS.includes(x));
   if ((body as any).grant) { if (!next.includes(perm)) next.push(perm); } else next = next.filter((x: string) => x !== perm);
   await db.setPerms(target, next); return { ok: true, perms: next };
@@ -1464,12 +1492,23 @@ app.post("/api/server/bank/withdraw", async ({ request, body, set }) => {
   const day = new Date().toISOString().slice(0, 10);
   const used = await (db as any).bankWithdrawnToday(uid, day);
   if (used + amount > WITHDRAW_DAY_CAP) { set.status = 400; return { error: `Daily withdraw cap is ${WITHDRAW_DAY_CAP.toLocaleString()} FC — used ${used.toLocaleString()} today` }; }
+  // ATOMIC cap check: tryRecordBankWithdraw evaluates `t + amount <= cap` inside Mongo, so
+  // two concurrent withdraws can't both pass. Do this BEFORE the bank spend so a failed
+  // cap-check doesn't move money.
+  const ok = await (db as any).tryRecordBankWithdraw(uid, day, amount, WITHDRAW_DAY_CAP);
+  if (!ok) { set.status = 400; return { error: `Daily withdraw cap is ${WITHDRAW_DAY_CAP.toLocaleString()} FC` }; }
   const before = stdb.getServerBank(gid);
-  if (before < amount) { set.status = 400; return { error: "Bank doesn't have that much" }; }
+  if (before < amount) {
+    // refund the ledger entry — the bank can't cover it
+    await (db as any).tryRecordBankWithdraw(uid, day, -amount, WITHDRAW_DAY_CAP).catch(() => {});
+    set.status = 400; return { error: "Bank doesn't have that much" };
+  }
   const fee = Math.floor(amount * WITHDRAW_FEE_BPS / 10000), net = amount - fee;
   try { await stdb.bankSpend(gid, amount); await stdb.credit(uid, net); }
-  catch (e: any) { set.status = 400; return { error: "Withdraw failed: " + (e?.message || e) }; }
-  await (db as any).recordBankWithdraw(uid, day, amount);
+  catch (e: any) {
+    await (db as any).tryRecordBankWithdraw(uid, day, -amount, WITHDRAW_DAY_CAP).catch(() => {});
+    set.status = 400; return { error: "Withdraw failed: " + (e?.message || e) };
+  }
   stdb.addNotification(uid, "bank", net, g.name || "Server", `withdrew ${net.toLocaleString()} FC from ${g.name || "server"} bank (5% fee)`).catch(() => {});
   console.log(`[audit] bank-withdraw by ${uid} from ${gid}: gross ${amount} fee ${fee} net ${net}`);
   return { ok: true, withdrawn: amount, fee, net, bank: before - amount, balance: stdb.getBalance(uid), remainingToday: Math.max(0, WITHDRAW_DAY_CAP - used - amount) };
