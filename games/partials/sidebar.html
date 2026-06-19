@@ -402,85 +402,123 @@
             nodes = [],
             mouse = { x: -9999, y: -9999, active: false },
             raf = 0,
-            running = true;
-        var LINK = 132,
-            MR = 150,
-            ACCENT = [34, 197, 94];
+            running = true,
+            fitT = 0;
+        // Brand green + a brighter tint for nearer/cursor-lit nodes.
+        var G = [34, 197, 94],
+            GB = [134, 239, 172];
+        var LINK = 142,
+            MR = 175;
 
-        function size() {
+        // Pre-render a soft green radial glow sprite once. Drawing it per node
+        // via drawImage + additive ('lighter') blending is far cheaper than
+        // per-frame radial gradients and yields a smooth luminous dot with no
+        // hard stroke outline — clusters brighten naturally.
+        var SPR = 64,
+            glow = document.createElement("canvas");
+        glow.width = glow.height = SPR;
+        (function () {
+            var g = glow
+                .getContext("2d")
+                .createRadialGradient(
+                    SPR / 2,
+                    SPR / 2,
+                    0,
+                    SPR / 2,
+                    SPR / 2,
+                    SPR / 2,
+                );
+            g.addColorStop(0, "rgba(190,255,210,1)");
+            g.addColorStop(0.28, "rgba(74,222,128,0.55)");
+            g.addColorStop(0.65, "rgba(34,197,94,0.12)");
+            g.addColorStop(1, "rgba(34,197,94,0)");
+            glow.getContext("2d").fillStyle = g;
+            glow.getContext("2d").fillRect(0, 0, SPR, SPR);
+        })();
+
+        function rgba(c, a) {
+            return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
+        }
+        // depth z (0=far .. 1=near) drives size, opacity, speed — parallax.
+        function mkNode() {
+            var z = Math.random();
+            return {
+                x: Math.random() * W,
+                y: Math.random() * H,
+                vx: (Math.random() - 0.5) * (0.06 + z * 0.2),
+                vy: (Math.random() - 0.5) * (0.06 + z * 0.2),
+                z: z,
+                r: 1.3 + z * 2.4, // base radius (px)
+                pulse: Math.random() * Math.PI * 2, // gentle breathing phase
+                ps: 0.5 + Math.random() * 0.8, // pulse speed
+            };
+        }
+        function targetCount() {
+            return Math.round(Math.min(78, Math.max(20, (W * H) / 27000)));
+        }
+        // Update the bitmap to match the viewport. Called on EVERY resize
+        // event so the canvas never stretches (a stretched bitmap is what
+        // smeared the dots into visible strokes while dragging the window).
+        function resizeCanvas() {
             DPR = Math.min(window.devicePixelRatio || 1, 1.5);
             W = window.innerWidth;
             H = window.innerHeight;
-            cv.width = W * DPR;
-            cv.height = H * DPR;
+            cv.width = Math.round(W * DPR);
+            cv.height = Math.round(H * DPR);
             cv.style.width = W + "px";
             cv.style.height = H + "px";
             ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-            var target = Math.round(
-                Math.min(90, Math.max(28, (W * H) / 22000)),
-            );
-            nodes = [];
-            for (var i = 0; i < target; i++) {
-                nodes.push({
-                    x: Math.random() * W,
-                    y: Math.random() * H,
-                    vx: (Math.random() - 0.5) * 0.22,
-                    vy: (Math.random() - 0.5) * 0.22,
-                    r: 5 + Math.random() * 4,
-                    a: Math.random() * Math.PI,
-                });
+        }
+        // Adjust the node count to the new viewport and wrap any that are now
+        // off-screen. PRESERVES existing nodes — no random regen flash.
+        function fitNodes() {
+            if (!nodes.length) {
+                for (var i = 0; i < targetCount(); i++) nodes.push(mkNode());
+                return;
+            }
+            var want = targetCount();
+            while (nodes.length < want) nodes.push(mkNode());
+            if (nodes.length > want) nodes.length = want;
+            for (var j = 0; j < nodes.length; j++) {
+                var n = nodes[j];
+                if (n.x > W + 30) n.x = W - 30;
+                else if (n.x < -30) n.x = 30;
+                if (n.y > H + 30) n.y = H - 30;
+                else if (n.y < -30) n.y = 30;
             }
         }
-
-        function hex(x, y, r, rot, fill, stroke) {
-            ctx.beginPath();
-            for (var k = 0; k < 6; k++) {
-                var ang = rot + (k * Math.PI) / 3,
-                    px = x + Math.cos(ang) * r,
-                    py = y + Math.sin(ang) * r;
-                if (k === 0) ctx.moveTo(px, py);
-                else ctx.lineTo(px, py);
-            }
-            ctx.closePath();
-            if (fill) {
-                ctx.fillStyle = fill;
-                ctx.fill();
-            }
-            if (stroke) {
-                ctx.strokeStyle = stroke;
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
+        function size() {
+            resizeCanvas();
+            fitNodes();
         }
 
-        function frame() {
-            raf = 0;
-            if (!running) return;
-            ctx.clearRect(0, 0, W, H);
+        function draw() {
             var i, j, n, m, dx, dy, d2, d;
-            // move
+            ctx.clearRect(0, 0, W, H);
+            // move + cursor repel (nearer nodes react more — parallax)
             for (i = 0; i < nodes.length; i++) {
                 n = nodes[i];
                 n.x += n.vx;
                 n.y += n.vy;
-                n.a += 0.004;
-                if (n.x < -20) n.x = W + 20;
-                else if (n.x > W + 20) n.x = -20;
-                if (n.y < -20) n.y = H + 20;
-                else if (n.y > H + 20) n.y = -20;
+                n.pulse += n.ps * 0.02;
+                if (n.x < -30) n.x = W + 30;
+                else if (n.x > W + 30) n.x = -30;
+                if (n.y < -30) n.y = H + 30;
+                else if (n.y > H + 30) n.y = -30;
                 if (mouse.active) {
                     dx = n.x - mouse.x;
                     dy = n.y - mouse.y;
                     d2 = dx * dx + dy * dy;
                     if (d2 < MR * MR && d2 > 0.01) {
                         d = Math.sqrt(d2);
-                        var f = ((MR - d) / MR) * 1.4;
+                        var f = ((MR - d) / MR) * (0.5 + n.z * 1.1);
                         n.x += (dx / d) * f;
                         n.y += (dy / d) * f;
                     }
                 }
             }
-            // links
+            // links — soft, round caps, alpha by distance + nearer node depth
+            ctx.lineCap = "round";
             for (i = 0; i < nodes.length; i++) {
                 n = nodes[i];
                 for (j = i + 1; j < nodes.length; j++) {
@@ -489,57 +527,42 @@
                     dy = n.y - m.y;
                     d2 = dx * dx + dy * dy;
                     if (d2 < LINK * LINK) {
-                        var al = (1 - Math.sqrt(d2) / LINK) * 0.2;
-                        ctx.strokeStyle =
-                            "rgba(" +
-                            ACCENT[0] +
-                            "," +
-                            ACCENT[1] +
-                            "," +
-                            ACCENT[2] +
-                            "," +
-                            al.toFixed(3) +
-                            ")";
-                        ctx.lineWidth = 1;
+                        d = Math.sqrt(d2);
+                        var zd = Math.max(n.z, m.z);
+                        var al = (1 - d / LINK) * (0.05 + zd * 0.16);
+                        ctx.strokeStyle = rgba(G, al);
+                        ctx.lineWidth = 0.5 + zd * 0.5;
                         ctx.beginPath();
                         ctx.moveTo(n.x, n.y);
                         ctx.lineTo(m.x, m.y);
                         ctx.stroke();
                     }
                 }
-                // cursor-proximity glow
+            }
+            // nodes — soft additive glow, no hard stroke
+            ctx.globalCompositeOperation = "lighter";
+            for (i = 0; i < nodes.length; i++) {
+                n = nodes[i];
                 var near = 0;
                 if (mouse.active) {
                     dx = n.x - mouse.x;
                     dy = n.y - mouse.y;
                     near = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / MR);
                 }
-                var base = 0.18 + near * 0.5;
-                hex(
-                    n.x,
-                    n.y,
-                    n.r,
-                    n.a,
-                    "rgba(" +
-                        ACCENT[0] +
-                        "," +
-                        ACCENT[1] +
-                        "," +
-                        ACCENT[2] +
-                        "," +
-                        (0.05 + near * 0.18).toFixed(3) +
-                        ")",
-                    "rgba(" +
-                        ACCENT[0] +
-                        "," +
-                        ACCENT[1] +
-                        "," +
-                        ACCENT[2] +
-                        "," +
-                        base.toFixed(3) +
-                        ")",
-                );
+                var pulse = 0.85 + Math.sin(n.pulse) * 0.15;
+                var r = n.r * pulse * (1 + near * 0.8);
+                var a = Math.min(1, 0.2 + n.z * 0.4 + near * 0.55);
+                var s = r * 6;
+                ctx.globalAlpha = a;
+                ctx.drawImage(glow, n.x - s / 2, n.y - s / 2, s, s);
             }
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = "source-over";
+        }
+        function frame() {
+            raf = 0;
+            if (!running) return;
+            draw();
             raf = requestAnimationFrame(frame);
         }
         function kick() {
@@ -562,8 +585,12 @@
             },
             { passive: true },
         );
+        // Resize: sync the bitmap immediately (no stretch), but debounce the
+        // node-count adjustment so a drag doesn't thrash the field.
         window.addEventListener("resize", function () {
-            size();
+            resizeCanvas();
+            if (fitT) clearTimeout(fitT);
+            fitT = setTimeout(fitNodes, 140);
             kick();
         });
         document.addEventListener("visibilitychange", function () {
@@ -577,7 +604,7 @@
 
         size();
         if (prefersReduced) {
-            frame(); /* one static paint */
+            draw(); /* one static paint, no animation loop */
         } else kick();
     })();
 </script>

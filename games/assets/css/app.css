@@ -69,6 +69,14 @@ body {
     z-index: 0;
     pointer-events: none;
     display: block;
+    /* Vignette so the particle network fades into the corners instead of
+       running off a hard edge. Painted behind the transparent canvas bitmap. */
+    background: radial-gradient(
+        125% 125% at 50% 38%,
+        rgba(9, 9, 11, 0) 42%,
+        rgba(6, 10, 8, 0.5) 78%,
+        rgba(3, 6, 4, 0.88) 100%
+    );
 }
 .app {
     position: relative;
