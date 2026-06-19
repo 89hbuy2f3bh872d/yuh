@@ -66,7 +66,18 @@ const cb = new CaseBattle({
     guildTax(gid).then(taxBps => accrueRakeback(uid, gid, cost, taxBps)).catch(() => {});
   },
 });
-const admin = new AdminPanel(db, cfg.prefix ?? "&");
+// Real circulation = STDB balances + server banks + invested holdings value. Mongo's
+// `bal` is a stale starter, so the admin panel must read from STDB + the holdings agg.
+async function getCirculation() {
+  let balances = 0, banks = 0;
+  try { balances = stdb.totalSupply(); } catch {}
+  // totalSupply already includes banks; split them for the breakdown if available
+  const investedUnits = await (db as any).totalHoldingUnits?.().catch(() => new Map()) ?? new Map();
+  let invested = 0;
+  for (const [id, units] of investedUnits) { const a = INVEST.assets.get(id); if (a) invested += units * a.price; }
+  return { balances, banks, invested, total: balances + invested };
+}
+const admin = new AdminPanel(db, cfg.prefix ?? "&", getCirculation);
 // Background init — NO top-level await anywhere in this module, so PM2's bun fork
 // (which require()s the entry) can load it. Connect Mongo, then load custom tiers.
 db.connect()

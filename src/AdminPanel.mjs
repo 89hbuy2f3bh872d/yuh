@@ -159,7 +159,9 @@ function buildPage(data, prefix) {
     {
       label: "FC in Circulation",
       value: fmt(globals.totalBalance),
-      sub: "sum of all balances",
+      sub: globals.circulation
+        ? `${fmt(globals.circulation.balances)} liquid · ${fmt(globals.circulation.banks)} banks · ${fmt(globals.circulation.invested)} invested`
+        : "balances + banks + invested",
       color: "var(--gold)",
     },
     {
@@ -917,9 +919,10 @@ function buildPage(data, prefix) {
 
 export class AdminPanel {
   /** @param {import('./Database.mjs').Database} db */
-  constructor(db, prefix = "&") {
+  constructor(db, prefix = "&", getCirculation = null) {
     this.db = db;
     this.prefix = prefix;
+    this.getCirculation = getCirculation;  // async () => { balances, banks, invested, total }
   }
 
   static OWNER_ID = OWNER_ID;
@@ -969,6 +972,15 @@ export class AdminPanel {
         this.db.getDailyStats(14),
         this.db.getAdminUserStats(20),
       ]);
+      // Override the stale Mongo `totalBalance` with the REAL circulation from STDB +
+      // invested holdings (Mongo's `bal` is a never-updated starter balance).
+      if (this.getCirculation) {
+        try {
+          const circ = await this.getCirculation();
+          globals.totalBalance = circ.total || 0;
+          globals.circulation = circ;  // { balances, banks, invested, total }
+        } catch {}
+      }
     }
     return buildPage({
       globals, commands, guilds, daily, topUsers,
