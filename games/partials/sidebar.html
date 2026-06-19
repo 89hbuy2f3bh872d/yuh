@@ -17,6 +17,18 @@
     <div class="srv-menu hidden" id="srvMenu"></div>
   </div>
 
+  <!-- Rakeback (per selected server) -->
+  <div class="rb-widget" id="rbWidget">
+    <div class="rb-head">
+      <span class="rb-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18M7 3v18M17 3v18"/></svg></span>
+      <div class="rb-head-txt"><span class="rb-title">Rakeback</span><span class="rb-sub" id="rbSub">Earn cash back on every bet</span></div>
+    </div>
+    <div class="rb-body">
+      <div class="rb-amt"><b id="rbAmt">0</b><small>FC pending</small></div>
+      <button class="rb-claim" id="rbClaim" disabled>Select server</button>
+    </div>
+  </div>
+
   <span class="sb-section">Games</span>
   <a href="/lobby" class="sb-item __ACTIVE_lobby__">
     <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -122,7 +134,7 @@
     doc.querySelectorAll('body script').forEach(function(s){
       var txt=s.textContent||'';
       if(s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
-      if(!s.src && /__pjax|__bgHex|__notif|__srvSel/.test(txt)) return;
+      if(!s.src && /__pjax|__bgHex|__notif|__srvSel|__rbW/.test(txt)) return;
       var n=document.createElement('script');
       if(s.src)n.src=s.src; else n.textContent=txt;
       document.body.appendChild(n);
@@ -416,5 +428,57 @@
     }catch(e){}
     return p;
   };
+})();
+</script>
+<script>
+/* Rakeback widget — per selected server. Lives in the sidebar so it persists
+   across pjax. Reloads when the server changes (sg:server) or a balance WS push
+   arrives (sg:ws balance). Mirrors the old lobby tile behaviour. */
+(function(){
+  if(window.__rbW)return; window.__rbW=1;
+  function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
+  function els(){
+    return {
+      w: document.getElementById('rbWidget'),
+      amt: document.getElementById('rbAmt'),
+      sub: document.getElementById('rbSub'),
+      btn: document.getElementById('rbClaim')
+    };
+  }
+  function loadRakeback(){
+    fetch('/api/rakeback',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){
+      var e=els(); if(!d||!e.w){return;}
+      if(d.needServer){
+        if(e.amt)e.amt.textContent='0';
+        if(e.sub)e.sub.textContent='Select a server to earn rakeback';
+        if(e.btn){e.btn.disabled=true;e.btn.textContent='Select server';}
+        e.w.classList.add('rb-nosrv');
+        return;
+      }
+      e.w.classList.remove('rb-nosrv');
+      if(e.amt)e.amt.textContent=fmt(d.accrued||0);
+      if(e.sub)e.sub.textContent=(d.pct||0)+'% rakeback · accrues on every bet'+(d.taxBps===0?' (tax holiday — paused)':'');
+      if(e.btn){e.btn.disabled=!(d.accrued>0);e.btn.textContent='Claim';}
+    }).catch(function(){});
+  }
+  function bind(){
+    var e=els(); if(!e.btn||e.btn.__rbBound)return; e.btn.__rbBound=1;
+    e.btn.onclick=function(){
+      if(e.btn.disabled)return; e.btn.disabled=true; e.btn.textContent='…';
+      fetch('/api/rakeback/claim',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
+        if(d&&d.ok&&d.claimed>0){ if(e.amt)e.amt.textContent='0'; if(e.sub)e.sub.textContent='+'+fmt(d.claimed)+' FC claimed!'; }
+        else if(e.btn){e.btn.textContent='Claim';e.btn.disabled=false;}
+        setTimeout(loadRakeback,1200);
+      }).catch(function(){ if(e.btn){e.btn.textContent='Claim';e.btn.disabled=false;} });
+    };
+  }
+  // initial + reload on server change / balance push
+  loadRakeback(); bind();
+  window.addEventListener('sg:server', loadRakeback);
+  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(d&&d.type==='balance'){ loadRakeback(); bind(); } });
+  // re-bind after pjax swaps in case the button was replaced (sidebar persists,
+  // but be defensive): observe the widget subtree.
+  var mo=new MutationObserver(function(){ bind(); });
+  var w=document.getElementById('rbWidget'); if(w)mo.observe(w,{childList:true,subtree:true,attributes:true});
 })();
 </script>

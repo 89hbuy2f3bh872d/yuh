@@ -75,55 +75,9 @@ __SIDEBAR__
         <div class="tile-desc">Trade NFTs and the FluxCoin index. Prices move on demand &amp; the market.</div>
       </div>
     </a>
-
-    <div class="tile rakeback-tile" id="rbTile">
-      <div class="tile-art rb-art">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18M7 3v18M17 3v18"/></svg>
-        <div class="glow"></div>
-      </div>
-      <div class="tile-body">
-        <div class="tile-name">Rakeback</div>
-        <div class="tile-desc" id="rbDesc">Earn cash back on every bet.</div>
-        <div class="rb-row">
-          <div class="rb-amount"><b id="rbAmt">0</b><small>FC pending</small></div>
-          <button class="rb-claim" id="rbClaim" disabled>Claim</button>
-        </div>
-      </div>
-    </div>
   </div>
 </main>
 </div>
 
-<script>
-(function(){
-  function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
-  var rbEl=document.getElementById('rbAmt'), rbDesc=document.getElementById('rbDesc'), rbBtn=document.getElementById('rbClaim');
-  function loadRakeback(){
-    fetch('/api/rakeback',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){
-      if(!d){return;}
-      if(d.needServer){
-        if(rbDesc)rbDesc.textContent='Select a server to earn rakeback.';
-        if(rbEl)rbEl.textContent='0';
-        if(rbBtn){rbBtn.disabled=true;rbBtn.textContent='Select server';}
-        return;
-      }
-      if(rbEl)rbEl.textContent=fmt(d.accrued||0);
-      if(rbDesc)rbDesc.textContent=(d.pct||0)+'% rakeback · accrues on every bet'+(d.taxBps===0?' (tax holiday — paused)':'');
-      if(rbBtn){rbBtn.disabled=!(d.accrued>0);rbBtn.textContent='Claim';}
-    }).catch(function(){});
-  }
-  if(rbBtn)rbBtn.onclick=function(){
-    if(rbBtn.disabled)return; rbBtn.disabled=true; rbBtn.textContent='…';
-    fetch('/api/rakeback/claim',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
-      if(d&&d.ok&&d.claimed>0){ if(rbEl)rbEl.textContent='0'; if(rbDesc)rbDesc.textContent='+'+fmt(d.claimed)+' FC claimed!'; }
-      else if(rbBtn){rbBtn.textContent='Claim';rbBtn.disabled=false;}
-      setTimeout(loadRakeback,1200);
-    }).catch(function(){ if(rbBtn){rbBtn.textContent='Claim';rbBtn.disabled=false;} });
-  };
-  loadRakeback();
-  // refresh the pending amount when returning to the lobby (pjax re-runs this script)
-  window.addEventListener('sg:ws',function(e){ var d=e.detail; if(d&&d.type==='balance')loadRakeback(); });
-})();
-</script>
 </body>
 </html>

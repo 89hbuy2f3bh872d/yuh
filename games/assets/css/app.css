@@ -222,17 +222,23 @@ input,select,textarea{font:inherit;color:inherit}
 .badge-soon{color:var(--text3);background:var(--surface2);border:1px solid var(--border)}
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
 
-/* Rakeback rewards tile */
-.rakeback-tile{--gc:#f59e0b}
-.rakeback-tile .rb-art .icon{color:var(--gold)}
-.rb-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.7rem}
-.rb-amount{display:flex;flex-direction:column;line-height:1.1}
-.rb-amount b{font-size:1.25rem;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
-.rb-amount small{font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
-.rb-claim{padding:.45rem 1rem;border-radius:9px;border:none;background:linear-gradient(180deg,#fbbf24,#f59e0b);color:#1a1000;font-size:.74rem;font-weight:800;cursor:pointer;transition:transform .1s,filter .15s,opacity .15s}
+/* Rakeback widget (sidebar, under the selected-server picker) */
+.rb-widget{margin:0 0 .6rem;padding:.55rem .6rem .6rem;border:1px solid var(--border);border-radius:10px;background:linear-gradient(180deg, color-mix(in srgb, #f59e0b 9%, var(--surface)), var(--surface));}
+.rb-widget.rb-nosrv{background:var(--surface)}
+.rb-head{display:flex;align-items:center;gap:.5rem}
+.rb-ico{display:grid;place-items:center;width:26px;height:26px;flex-shrink:0;border-radius:7px;background:color-mix(in srgb,#f59e0b 22%,transparent);color:var(--gold)}
+.rb-ico .icon{width:15px;height:15px}
+.rb-head-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.rb-title{font-size:.78rem;font-weight:800;color:var(--text);letter-spacing:-.01em}
+.rb-sub{font-size:.6rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rb-body{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.55rem}
+.rb-amt{display:flex;flex-direction:column;line-height:1.05}
+.rb-amt b{font-size:1.18rem;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
+.rb-amt small{font-size:.56rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:.1rem}
+.rb-claim{padding:.42rem .9rem;border-radius:8px;border:none;background:linear-gradient(180deg,#fbbf24,#f59e0b);color:#1a1000;font-size:.72rem;font-weight:800;cursor:pointer;transition:transform .1s,filter .15s,opacity .15s;flex-shrink:0}
 .rb-claim:hover:not(:disabled){filter:brightness(1.08)}
 .rb-claim:active:not(:disabled){transform:scale(.96)}
-.rb-claim:disabled{opacity:.4;cursor:default;background:var(--surface2);color:var(--text3)}
+.rb-claim:disabled{opacity:.45;cursor:default;background:var(--surface2);color:var(--text3)}
 
 /* ── Form controls ────────────────────────────────────────────────────── */
 .input{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);padding:.55rem .75rem;font-size:.84rem;outline:none;transition:border-color .15s;width:100%}
