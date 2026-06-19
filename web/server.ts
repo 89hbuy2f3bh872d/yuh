@@ -1069,7 +1069,10 @@ const app = new Elysia()
 
   // ── static assets ──────────────────────────────────────────────────────────
   .get("/assets/*", ({ params, set, request }) => serveStatic(join(GAMES_DIR, "assets", (params as any)["*"]), set))
-  .get("/public/*", ({ params, set }) => serveStatic(join(ROOT, "public", (params as any)["*"]), set));
+  .get("/public/*", ({ params, set }) => serveStatic(join(ROOT, "public", (params as any)["*"]), set))
+  // Silence source-map 404s from external libraries (e.g. credentials-library.js.map
+  // requested by the Fluxer OAuth script). Returns 204 No Content for any .map request.
+  .get("/*.map", ({ set }) => { set.status = 204; return ""; });
 
 function serveStatic(path: string, set: any) {
   if (!existsSync(path)) { set.status = 404; return "Not found"; }

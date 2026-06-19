@@ -234,6 +234,24 @@ function showArena(){stopListPoll();showView('view-arena');}
 function refreshBal(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined)navBal.textContent=fmt(d.bal)}).catch(function(){});}
 refreshBal(); /* balance kept live via WS */
 
+// While the user is in an active case battle (joined, not just spectating), suppress the
+// live balance display — the entry cost was deducted but the user shouldn't SEE their
+// balance drop until the battle resolves and payouts are credited. The sidebar's sg:ws
+// handler runs before this listener, so we re-set the displayed value to the pre-join
+// balance on each push while battleActive is true.
+var battleActive = false;       // true between join and result resolution
+var preJoinBal = null;          // balance snapshot before joining a battle
+window.addEventListener('sg:ws', function(e){
+  var d = e.detail;
+  if(!d || d.type !== 'balance') return;
+  if(battleActive && preJoinBal != null){
+    // Force the displayed balance back to the pre-join snapshot (the deduction is real in
+    // STDB, but we hide it visually until the battle pays out).
+    if(window.setBal) window.setBal(preJoinBal);
+    if(navBal) navBal.textContent = fmt(preJoinBal);
+  }
+});
+
 fetch('/api/case-battle/tiers').then(function(r){return r.json()}).then(function(d){
   TIERS=d.tiers||[];
   TIERS.forEach(function(t){tierMap[t.id]=t});
@@ -279,6 +297,9 @@ function escapeHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {'
 function createBattle(){
   var cases=[];TIERS.forEach(function(t){var q=caseQty[t.id]||0;for(var i=0;i<q;i++)cases.push({tier:t.id,cost:t.entry})});
   if(!cases.length){alert('Pick at least one case.');return;}
+  // Snapshot the balance before the entry cost is deducted, so we can hide the drop until
+  // the battle resolves.
+  preJoinBal = window.bal != null ? window.bal : null;
   fetch('/api/case-battle/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     cases:cases,mode:mode,maxPlayers:playerCount,
     speed:battleSettings.speed?'fast':'normal',
@@ -286,6 +307,7 @@ function createBattle(){
   })})
   .then(function(r){return r.json()}).then(function(d){
     if(d.error){alert(d.error);return;}
+    battleActive = true;
     currentBattle={id:d.battleId,gen:++battleGen};openedAt=0;showArena();startBattlePoll();
   }).catch(function(e){console.error(e)});
 }
@@ -349,9 +371,11 @@ function loadBattles(){
 }
 
 function joinBattle(id){
+  preJoinBal = window.bal != null ? window.bal : null;
   fetch('/api/case-battle/'+id+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
     .then(function(r){return r.json()}).then(function(d){
       if(d.error){alert(d.error);return;}
+      battleActive = true;
       currentBattle={id:d.battleId,gen:++battleGen};openedAt=0;showArena();startBattlePoll();
     }).catch(function(e){console.error(e)});
 }
@@ -363,7 +387,7 @@ function watchBattle(id){
 
 function startBattlePoll(){stopBattlePoll();pollBattle();}  // pollBattle self-schedules adaptively
 function stopBattlePoll(){if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}}
-function leaveArena(){battleGen++;stopBattlePoll();currentBattle=null;openedAt=0;lastData=null;$('resultOverlay').classList.add('hidden');$('jackpotOverlay').classList.add('hidden');$('countdownOverlay').classList.add('hidden');showList();}
+function leaveArena(){battleGen++;stopBattlePoll();battleActive=false;preJoinBal=null;currentBattle=null;openedAt=0;lastData=null;$('resultOverlay').classList.add('hidden');$('jackpotOverlay').classList.add('hidden');$('countdownOverlay').classList.add('hidden');showList();refreshBal();}
 
 function pollBattle(){
   if(!currentBattle)return;
@@ -788,6 +812,8 @@ function showResult() {
   var ri = $('recreateInfo'); if (ri) { ri.classList.add('hidden'); ri.textContent = ''; }
 
   $('resultOverlay').classList.remove('hidden');
+  // Battle is done — stop suppressing the balance display and show the real (post-payout) value.
+  battleActive = false; preJoinBal = null;
   refreshBal();
 }
 
@@ -815,6 +841,7 @@ function followRecreate(newId){
   $('jackpotOverlay').classList.add('hidden');
   $('countdownOverlay').classList.add('hidden');
   stopBattlePoll();
+  battleActive = true;  // recreate deducts again — keep suppressing until this battle resolves
   currentBattle={id:newId,gen:++battleGen};
   openedAt=0;lastData=null;
   showArena();startBattlePoll();

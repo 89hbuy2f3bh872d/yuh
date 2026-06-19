@@ -76,7 +76,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .logout-btn:hover{color:var(--red);border-color:var(--red);background:rgba(239,68,68,.08)}
 
 /* ── Main content ─────────────────────────────────────────────────────── */
-.main{flex:1;width:100%;margin:0 auto;padding:2rem 1.6rem 3rem;max-width:1400px;overflow-x:hidden}
+.main{flex:1;width:100%;max-width:1400px;margin:0 auto;align-self:center;padding:2rem 1.6rem 3rem;overflow-x:hidden;box-sizing:border-box}
 
 /* ── Pages ────────────────────────────────────────────────────────────── */
 .page{display:none}
