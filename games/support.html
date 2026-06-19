@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Support — SirGreen Casino</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="/assets/css/settings.css">
+</head>
+<body>
+<div class="app">
+__SIDEBAR__
+<main class="main">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M4.93 4.93l4.24 4.24"/><path d="M19.07 4.93l-4.24 4.24"/><path d="M15.76 15.76l4.24 4.24"/><path d="M4.93 19.07l4.24-4.24"/></svg> Support</h1>
+      <div class="page-sub">Open a ticket and an admin will reply here.</div>
+    </div>
+  </div>
+
+  <div class="set-wrap">
+    <div class="set-card">
+      <h2>New ticket</h2>
+      <div class="sub">Describe your issue and we'll get back to you.</div>
+      <div class="field"><label>Subject</label><input id="tkSubject" maxlength="120" placeholder="Brief summary"></div>
+      <div class="field"><label>Message</label><textarea id="tkBody" maxlength="2000" placeholder="Describe your issue…"></textarea></div>
+      <button class="btn btn-primary" onclick="submitTicket()">Submit ticket</button>
+    </div>
+
+    <div class="set-card">
+      <h2>Your tickets</h2>
+      <div id="tkList" style="margin-top:.6rem"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+// ── Tickets — one initial fetch, then live over the WebSocket (no polling) ───
+var tickets=[];
+function renderTickets(){
+  var el=$('tkList');
+  var openSet={}, repVals={};
+  el.querySelectorAll('.tk.open-thread').forEach(function(x){ if(x.dataset.id)openSet[x.dataset.id]=1; });
+  el.querySelectorAll('.tk-reply input').forEach(function(i){ if(i.value)repVals[i.id]=i.value; });
+  if(!tickets.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
+  el.innerHTML='';
+  tickets.forEach(function(t){
+    var msgs=(t.messages||[]).map(function(m){
+      return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
+    }).join('');
+    var reply = t.status==='closed' ? '' :
+      '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'" onkeydown="if(event.key===&quot;Enter&quot;)reply(\''+t._id+'\')"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
+    var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
+    div.innerHTML=
+      '<div class="tk-head">'+
+        '<div class="tk-subj" onclick="this.parentNode.parentNode.classList.toggle(\'open-thread\')">'+esc(t.subject)+'</div>'+
+        '<span class="tk-status '+t.status+'">'+t.status+'</span>'+
+        '<button class="tk-del" title="Delete ticket" onclick="delTicket(\''+t._id+'\')">✕</button>'+
+      '</div>'+
+      '<div class="tk-thread">'+msgs+reply+'</div>';
+    el.appendChild(div);
+  });
+  Object.keys(repVals).forEach(function(id){ var i=$(id); if(i)i.value=repVals[id]; });
+}
+function upsertTicket(t){ if(!t||!t._id)return; var i=tickets.findIndex(function(x){return x._id===t._id;}); if(i>=0)tickets[i]=t; else tickets.unshift(t); renderTickets(); }
+function removeTicket(id){ tickets=tickets.filter(function(x){return x._id!==id;}); renderTickets(); }
+function loadTickets(){ fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){ tickets=d.tickets||[]; renderTickets(); }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; }); }
+function submitTicket(){
+  var subject=$('tkSubject').value.trim(), body=$('tkBody').value.trim();
+  if(!subject||!body){ alert('Subject and message required.'); return; }
+  fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:subject,body:body})})
+    .then(function(r){return r.json()}).then(function(d){ if(d.error){alert(d.error);return;} $('tkSubject').value=''; $('tkBody').value=''; if(d.ticket)upsertTicket(d.ticket); })
+    .catch(function(){alert('Network error');});
+}
+function reply(id){
+  var inp=$('rep-'+id); var body=inp.value.trim(); if(!body)return; inp.value='';
+  fetch('/api/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
+    .then(function(r){return r.json()}).catch(function(){}); // the WS push updates the thread
+}
+function delTicket(id){
+  if(!confirm('Delete this ticket permanently?'))return;
+  fetch('/api/tickets/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){ if(d&&d.error){alert(d.error);return;} removeTicket(id); }).catch(function(){});
+}
+loadTickets(); // one initial fetch; everything after is pushed over the WebSocket
+// Register the WS handler ONCE (pjax re-runs this script on every nav into Support).
+if(!window.__tkWs){ window.__tkWs=1;
+  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='ticket')return; if(d.action==='delete')removeTicket(d.id); else if(d.ticket)upsertTicket(d.ticket); });
+}
+
+(function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
+</script>
+</body>
+</html>

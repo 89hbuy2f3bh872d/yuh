@@ -1,118 +1,137 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Settings — SirGreen Casino</title>
-<link rel="stylesheet" href="/assets/css/app.css">
-<link rel="stylesheet" href="/assets/css/settings.css">
-</head>
-<body>
-<div class="app">
-__SIDEBAR__
-<main class="main">
-  <div class="page-head">
-    <div>
-      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Settings</h1>
-      <div class="page-sub">Audio, sound effects, and support.</div>
-    </div>
-  </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Settings — SirGreen Casino</title>
+        <link rel="stylesheet" href="/assets/css/app.css" />
+        <link rel="stylesheet" href="/assets/css/settings.css" />
+    </head>
+    <body>
+        <div class="app">
+            __SIDEBAR__
+            <main class="main">
+                <div class="page-head">
+                    <div>
+                        <h1 class="page-title">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="3" />
+                                <path
+                                    d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+                                />
+                            </svg>
+                            Settings
+                        </h1>
+                        <div class="page-sub">Audio and sound effects.</div>
+                    </div>
+                </div>
 
-  <div class="set-wrap">
-    <div class="set-card">
-      <h2>Audio</h2>
-      <div class="sub">Volumes save automatically and apply across the whole casino.</div>
-      <div class="row"><label>Music</label><input id="musicVol" type="range" min="0" max="100"><span class="val" id="musicVal">0</span></div>
-      <div class="row"><label>Sound FX</label><input id="sfxVol" type="range" min="0" max="100"><span class="val" id="sfxVal">0</span></div>
-      <div class="muterow">
-        <button class="btn btn-secondary btn-sm" id="muteBtn" onclick="toggleMute()">Mute all</button>
-        <button class="btn btn-ghost btn-sm" onclick="window.SG&&SG.test()">Test sound</button>
-      </div>
-    </div>
+                <div class="set-wrap">
+                    <div class="set-card">
+                        <h2>Audio</h2>
+                        <div class="sub">
+                            Volumes save automatically and apply across the
+                            whole casino.
+                        </div>
+                        <div class="row">
+                            <label>Music</label
+                            ><input
+                                id="musicVol"
+                                type="range"
+                                min="0"
+                                max="100"
+                            /><span class="val" id="musicVal">0</span>
+                        </div>
+                        <div class="row">
+                            <label>Sound FX</label
+                            ><input
+                                id="sfxVol"
+                                type="range"
+                                min="0"
+                                max="100"
+                            /><span class="val" id="sfxVal">0</span>
+                        </div>
+                        <div class="muterow">
+                            <button
+                                class="btn btn-secondary btn-sm"
+                                id="muteBtn"
+                                onclick="toggleMute()"
+                            >
+                                Mute all
+                            </button>
+                            <button
+                                class="btn btn-ghost btn-sm"
+                                onclick="window.SG && SG.test()"
+                            >
+                                Test sound
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
 
-    <div class="set-card">
-      <h2>Support</h2>
-      <div class="sub">Open a ticket — an admin will reply here.</div>
-      <div class="field"><label>Subject</label><input id="tkSubject" maxlength="120" placeholder="Brief summary"></div>
-      <div class="field"><label>Message</label><textarea id="tkBody" maxlength="2000" placeholder="Describe your issue…"></textarea></div>
-      <button class="btn btn-primary" onclick="submitTicket()">Submit ticket</button>
-      <div style="margin-top:1.2rem;font-size:.8rem;font-weight:700;color:var(--text2)">Your tickets</div>
-      <div id="tkList" style="margin-top:.6rem"><div class="empty">Loading…</div></div>
-    </div>
-  </div>
-</main>
-</div>
+        <script>
+            function $(id) {
+                return document.getElementById(id);
+            }
+            function esc(s) {
+                return String(s == null ? "" : s).replace(
+                    /[&<>"']/g,
+                    function (c) {
+                        return {
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                            "'": "&#39;",
+                        }[c];
+                    },
+                );
+            }
 
-<script>
-function $(id){return document.getElementById(id);}
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+            // ── Audio settings ──────────────────────────────────────────────────────
+            function initAudio() {
+                var s = window.SG
+                    ? SG.get()
+                    : { music: 35, sfx: 65, muted: false };
+                $("musicVol").value = s.music;
+                $("musicVal").textContent = s.music;
+                $("sfxVol").value = s.sfx;
+                $("sfxVal").textContent = s.sfx;
+                $("muteBtn").textContent = s.muted ? "Unmute all" : "Mute all";
+            }
+            $("musicVol").addEventListener("input", function () {
+                $("musicVal").textContent = this.value;
+                if (window.SG) SG.setMusic(+this.value);
+            });
+            $("sfxVol").addEventListener("input", function () {
+                $("sfxVal").textContent = this.value;
+                if (window.SG) SG.setSfx(+this.value);
+            });
+            $("sfxVol").addEventListener("change", function () {
+                if (window.SG) SG.sfx("pop");
+            });
+            function toggleMute() {
+                if (!window.SG) return;
+                var m = !SG.get().muted;
+                SG.setMuted(m);
+                $("muteBtn").textContent = m ? "Unmute all" : "Mute all";
+            }
+            initAudio();
 
-// ── Audio settings ──────────────────────────────────────────────────────
-function initAudio(){
-  var s = window.SG ? SG.get() : {music:35,sfx:65,muted:false};
-  $('musicVol').value=s.music; $('musicVal').textContent=s.music;
-  $('sfxVol').value=s.sfx; $('sfxVal').textContent=s.sfx;
-  $('muteBtn').textContent = s.muted ? 'Unmute all' : 'Mute all';
-}
-$('musicVol').addEventListener('input',function(){ $('musicVal').textContent=this.value; if(window.SG)SG.setMusic(+this.value); });
-$('sfxVol').addEventListener('input',function(){ $('sfxVal').textContent=this.value; if(window.SG)SG.setSfx(+this.value); });
-$('sfxVol').addEventListener('change',function(){ if(window.SG)SG.sfx('pop'); });
-function toggleMute(){ if(!window.SG)return; var m=!SG.get().muted; SG.setMuted(m); $('muteBtn').textContent=m?'Unmute all':'Mute all'; }
-initAudio();
-
-// ── Tickets — one initial fetch, then live over the WebSocket (no polling) ───
-var tickets=[];
-function renderTickets(){
-  var el=$('tkList');
-  var openSet={}, repVals={};
-  el.querySelectorAll('.tk.open-thread').forEach(function(x){ if(x.dataset.id)openSet[x.dataset.id]=1; });
-  el.querySelectorAll('.tk-reply input').forEach(function(i){ if(i.value)repVals[i.id]=i.value; });
-  if(!tickets.length){ el.innerHTML='<div class="empty">No tickets yet.</div>'; return; }
-  el.innerHTML='';
-  tickets.forEach(function(t){
-    var msgs=(t.messages||[]).map(function(m){
-      return '<div class="msg '+(m.from==='admin'?'admin':'user')+'"><div class="who">'+(m.from==='admin'?'Support':'You')+'</div>'+esc(m.body)+'</div>';
-    }).join('');
-    var reply = t.status==='closed' ? '' :
-      '<div class="tk-reply"><input placeholder="Reply…" id="rep-'+t._id+'" onkeydown="if(event.key===&quot;Enter&quot;)reply(\''+t._id+'\')"><button class="btn btn-secondary btn-sm" onclick="reply(\''+t._id+'\')">Send</button></div>';
-    var div=document.createElement('div'); div.className='tk'+(openSet[t._id]?' open-thread':''); div.dataset.id=t._id;
-    div.innerHTML=
-      '<div class="tk-head">'+
-        '<div class="tk-subj" onclick="this.parentNode.parentNode.classList.toggle(\'open-thread\')">'+esc(t.subject)+'</div>'+
-        '<span class="tk-status '+t.status+'">'+t.status+'</span>'+
-        '<button class="tk-del" title="Delete ticket" onclick="delTicket(\''+t._id+'\')">✕</button>'+
-      '</div>'+
-      '<div class="tk-thread">'+msgs+reply+'</div>';
-    el.appendChild(div);
-  });
-  Object.keys(repVals).forEach(function(id){ var i=$(id); if(i)i.value=repVals[id]; });
-}
-function upsertTicket(t){ if(!t||!t._id)return; var i=tickets.findIndex(function(x){return x._id===t._id;}); if(i>=0)tickets[i]=t; else tickets.unshift(t); renderTickets(); }
-function removeTicket(id){ tickets=tickets.filter(function(x){return x._id!==id;}); renderTickets(); }
-function loadTickets(){ fetch('/api/tickets').then(function(r){return r.json()}).then(function(d){ tickets=d.tickets||[]; renderTickets(); }).catch(function(){ $('tkList').innerHTML='<div class="empty">Failed to load.</div>'; }); }
-function submitTicket(){
-  var subject=$('tkSubject').value.trim(), body=$('tkBody').value.trim();
-  if(!subject||!body){ alert('Subject and message required.'); return; }
-  fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:subject,body:body})})
-    .then(function(r){return r.json()}).then(function(d){ if(d.error){alert(d.error);return;} $('tkSubject').value=''; $('tkBody').value=''; if(d.ticket)upsertTicket(d.ticket); })
-    .catch(function(){alert('Network error');});
-}
-function reply(id){
-  var inp=$('rep-'+id); var body=inp.value.trim(); if(!body)return; inp.value='';
-  fetch('/api/tickets/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:body})})
-    .then(function(r){return r.json()}).catch(function(){}); // the WS push updates the thread
-}
-function delTicket(id){
-  if(!confirm('Delete this ticket permanently?'))return;
-  fetch('/api/tickets/'+id,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){ if(d&&d.error){alert(d.error);return;} removeTicket(id); }).catch(function(){});
-}
-loadTickets(); // one initial fetch; everything after is pushed over the WebSocket
-// Register the WS handler ONCE (pjax re-runs this script on every nav into Settings).
-if(!window.__tkWs){ window.__tkWs=1;
-  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d||d.type!=='ticket')return; if(d.action==='delete')removeTicket(d.id); else if(d.ticket)upsertTicket(d.ticket); });
-}
-
-(function rb(){fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){var e=$('sbBal');if(e&&d&&d.bal!==undefined)e.textContent=Number(d.bal).toLocaleString()}).catch(function(){});})();
-</script>
-</body>
+            (function rb() {
+                fetch("/api/balance")
+                    .then(function (r) {
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(function (d) {
+                        var e = $("sbBal");
+                        if (e && d && d.bal !== undefined)
+                            e.textContent = Number(d.bal).toLocaleString();
+                    })
+                    .catch(function () {});
+            })();
+        </script>
+    </body>
 </html>
