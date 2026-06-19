@@ -200,6 +200,7 @@ function buildGrid(){
 function symHtml(s){
   if(s==='SC'||s===GAME.scatter.id) return '<span class="sglow sc"></span>'+(GAME.scatter.emoji||'⭐');
   if(s==='RB') return '<span class="sglow rb"></span>'+(GAME.rainbow||'🌈');
+  if(s==='WILD') return '<span class="sglow wild"></span>'+(GAME.wild||'🃏');   // Wild Bandit substitute
   if(isMult(s)) return '<span class="sglow mu"></span>'+(GAME.mult?GAME.mult.emoji:'🪙')+'<span class="mbadge">×'+multVal(s)+'</span>';
   return GAME.sym[s]||'❔';
 }
@@ -280,28 +281,34 @@ function paintGold(indices){
   for(var i=0;i<GAME.W*GAME.H;i++){ var c=$('cell-'+i); if(c)c.classList.remove('gold'); }
   if(indices&&indices.length){ indices.forEach(function(i){ var c=$('cell-'+i); if(c)c.classList.add('gold'); }); }
 }
-// Wild Bandit: animate coin reveals flying from gold cells to the win meter.
-// reveals: [{pos, tier, val}] — each pops a coin chip colored by tier, flies to #winMeter.
-function revealCoins(reveals){
+// Wild Bandit: a Rainbow activated the Golden Squares. Pop each revealed symbol (Coin /
+// Clover / Collector) on its cell; if a Collector paid, sweep everything to the win meter.
+// rev = { events:[{pos,type,tier?,val?,mult?}], collected, sum, collectors }.
+function revealReveal(rev){
   return new Promise(function(resolve){
-    if(!reveals||!reveals.length){ resolve(); return; }
-    var meter=$('winMeter'); var mr=meter?meter.getBoundingClientRect():{left:innerWidth/2,top:innerHeight/2};
-    var tierEmoji={bronze:'🥉',silver:'🥈',gold:'🥇'};
-    reveals.forEach(function(r,i){
-      var cell=$('cell-'+r.pos); var cr=cell?cell.getBoundingClientRect():mr;
-      var chip=document.createElement('div'); chip.className='coin-fly '+r.tier;
-      chip.innerHTML='<span class="cf-ic">'+(tierEmoji[r.tier]||'🪙')+'</span><span class="cf-v">'+r.val+'×</span>';
-      chip.style.left=cr.left+cr.width/2+'px'; chip.style.top=cr.top+cr.height/2+'px';
-      document.body.appendChild(chip);
-      if(cell)cell.classList.add('activated');
-      setTimeout(function(){
-        chip.style.transform='translate('+(mr.left+mr.width/2-(cr.left+cr.width/2))+'px,'+(mr.top+mr.height/2-(cr.top+cr.height/2))+'px) scale(.4)';
-        chip.style.opacity='0';
-      }, 60 + i*(turbo?40:110));
-      setTimeout(function(){ if(chip.parentNode)chip.parentNode.removeChild(chip); }, 700 + i*(turbo?40:110));
+    var events=(rev&&rev.events)||[]; if(!events.length){ resolve(); return; }
+    var tierEmoji={bronze:'🥉',silver:'🥈',gold:'🥇'}, chips=[];
+    events.forEach(function(e){
+      var cell=$('cell-'+e.pos); if(!cell)return; cell.classList.add('activated');
+      var chip=document.createElement('div');
+      if(e.type==='collector'){ chip.className='coin-fly collector'; chip.innerHTML='<span class="cf-ic">💰</span><span class="cf-v">COLLECT</span>'; }
+      else if(e.type==='clover'){ chip.className='coin-fly clover'; chip.innerHTML='<span class="cf-ic">🍀</span><span class="cf-v">×'+e.mult+'</span>'; }
+      else { chip.className='coin-fly '+(e.tier||'bronze'); chip.innerHTML='<span class="cf-ic">'+(tierEmoji[e.tier]||'🪙')+'</span><span class="cf-v">'+e.val+'×</span>'; }
+      var cr=cell.getBoundingClientRect();
+      chip.style.left=(cr.left+cr.width/2)+'px'; chip.style.top=(cr.top+cr.height/2)+'px';
+      document.body.appendChild(chip); chips.push(chip);
     });
-    if(window.SG)SG.sfx('coin');
-    setTimeout(resolve, 700 + reveals.length*(turbo?40:110));
+    if(window.SG)SG.sfx(rev.collectors>0?'mult':'coin');
+    var hold=turbo?420:820;
+    setTimeout(function(){
+      if(rev.collected>0){ // a Collector banked the haul → fly all chips to the win meter
+        var meter=$('winMeter'), mr=meter?meter.getBoundingClientRect():{left:innerWidth/2,top:60,width:0,height:0};
+        chips.forEach(function(chip){ var r=chip.getBoundingClientRect();
+          chip.style.transform='translate('+(mr.left+mr.width/2-(r.left+r.width/2))+'px,'+(mr.top+mr.height/2-(r.top+r.height/2))+'px) scale(.4)'; chip.style.opacity='0'; });
+        if(window.SG)SG.sfx('coin');
+      } else { chips.forEach(function(chip){ chip.style.opacity='0'; }); }
+      setTimeout(function(){ chips.forEach(function(c){ if(c.parentNode)c.parentNode.removeChild(c); }); resolve(); }, turbo?260:600);
+    }, hold);
   });
 }
 
@@ -457,8 +464,8 @@ async function animateSpin(sp, runningBefore, free){
   // Wild Bandit: paint persistent Golden Squares, then if a Rainbow landed this spin,
   // animate the coin reveals (fly each gold cell's coin to the win meter).
   if(GAME.engine==='bandit'){
-    if(sp.gold&&sp.gold.length) paintGold(sp.gold);
-    if(sp.reveal&&sp.reveal.length){ try{ await revealCoins(sp.reveal); }catch(e){ console.error('revealCoins',e); } }
+    paintGold(sp.gold||[]);   // Golden Squares are fixed cells — painted by index, never move
+    if(sp.reveal&&sp.reveal.events&&sp.reveal.events.length){ try{ await revealReveal(sp.reveal); }catch(e){ console.error('revealReveal',e); } }
     if(sp.total>0){ setWin(runningBefore + sp.total); var bwm=$('winMeter'); if(bwm){ bwm.classList.remove('mult-pop'); void bwm.offsetWidth; bwm.classList.add('mult-pop'); } }
   }
   // multiplier reveal
@@ -574,9 +581,9 @@ function showInfo(){
   $('infoTitle').textContent=GAME.name+' — Paytable';
   var note;
   if(GAME.engine==='bandit'){
-    note='Win when <b>'+GAME.minCluster+'+ identical symbols connect</b> horizontally or vertically (no diagonals). Wins tumble — winners vanish, new symbols fall in.<br>'
-      +'<b>Winning cells become Golden Squares.</b> A '+GAME.rainbow+' lands to reveal their coin values (Bronze / Silver / Gold).<br>'
-      +'<b>'+GAME.scatter.emoji+' cameras:</b> 3 = <b>Luck of the Bandit</b> (8 spins), 4 = <b>All That Glitters Is Gold</b> (12 spins), 5 = <b>Treasure at the End of the Rainbow</b> (12 spins, guaranteed '+GAME.rainbow+' each spin).';
+    note='Win when <b>'+GAME.minCluster+'+ matching symbols land ANYWHERE</b> — the <b>'+(GAME.wild||'🃏')+' Wild</b> substitutes for any symbol. <b>Super Cascade:</b> every matching symbol is removed and new ones drop in.<br>'
+      +'<b>Winning cells become Golden Squares</b> (fixed). A '+GAME.rainbow+' activates them — each reveals a <b>Coin</b> (Bronze / Silver / Gold), a <b>🍀 Clover</b> (×2–10 to adjacent coins) or a rare <b>💰 Collector</b> (doubles the haul).<br>'
+      +'<b>'+GAME.scatter.emoji+' cameras:</b> 3 = <b>Luck of the Bandit</b> (8 spins), 4 = <b>All That Glitters Is Gold</b> (12 spins, gold persists), 5 = <b>Treasure at the End of the Rainbow</b> (12 spins, '+GAME.rainbow+' every spin). Max win <b>10,000×</b>.';
   } else {
     note='Win when <b>'+GAME.minCluster+'+ identical symbols connect</b> horizontally or vertically (no diagonals). Wins tumble — winners vanish, new symbols fall in.<br><b>'+GAME.scatter.emoji+' scatters:</b> 3 = Regular bonus (per-spin multipliers), 4 = Super bonus (global multiplier), 5 = <b>Hidden bonus</b> (overpowered, can\'t be bought). In Super/Hidden, every '+GAME.mult.emoji+' on a winning spin feeds the <b>global multiplier</b>, applied to the whole bonus at the end.';
   }

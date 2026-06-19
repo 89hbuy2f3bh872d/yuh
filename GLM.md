@@ -95,36 +95,38 @@ and Golden Square (bandit). The client is **engine-keyed** (`GAME.engine`), neve
 ### Games & RTP
 | id | name | grid | engine | base RTP | bonus model |
 |---|---|---|---|---|---|
-| `candy` | Candy Cascade | 6×5 | multiplier | ~87% | Regular per-spin / Super global mult |
-| `olympus` | Thunder Gods | 6×5 | multiplier | ~86% | Regular per-spin / Super global mult |
-| `bandit` | Wild Bandit | **6×5** | **bandit** | **~82%** | **Golden Squares + Rainbow + 3 tiers** |
+| `candy` | Candy Cascade | 6×5 | multiplier | **~96%** | Regular per-spin / Super global mult |
+| `olympus` | Thunder Gods | 6×5 | multiplier | **~96%** | Regular per-spin / Super global mult |
+| `bandit` | Wild Bandit | **6×5** | **bandit** | **~96.3–96.4%** | **scatter-pays + Golden Squares + Collectors, 3 tiers** |
 
-Candy/olympus: `payScale`-tuned, reels concentrated for ~37% dead spins.
-Bandit: 6×5, max win **10000×**, base RTP ~82% (bonus potential pushes blended toward 96%).
+Candy/olympus: `payScale` 1.07 / 1.055 (raised to real-casino ~96% RTP); reels concentrated for
+~37% dead spins. Bandit: own engine, max win **10000×** (possible in base + bonus).
 
-### Wild Bandit — Golden Square model (`engine: "bandit"`)
-- **Camera scatter** `SC` (📷) triggers free spins: 3→`luck` (8), 4→`gold` (12), 5→`rainbow` (12).
-- **Rainbow symbol** `RB` (🌈) lands on the grid; when present on the final settled grid it
-  **activates** stored Golden Squares → each reveals a coin (Bronze/Silver/Gold band).
-- **Golden Squares**: winning cells become gold (persist visually). A Rainbow reveals coins
-  for gold squares added **since the last reveal** (`revealedSet` bounds the payout — a square
-  pays once per time it's won, not every Rainbow). Persistence per tier:
-  - `luck`: gold squares clear after a Rainbow reveals them (consumed).
-  - `gold`: squares stay gold + revealed for the whole feature (won't re-pay unless re-won).
-  - `rainbow`: guaranteed Rainbow every spin; squares persist throughout.
-- **Coin bands** (per-reveal EV ~0.08× to keep RTP sane): Bronze 0.02–0.12× (w1000),
-  Silver 0.5–2× (w40), Gold 5–50× (w1.5). A Rainbow FeatureSpin boosts coins ×3.
-- **Retriggers**: 2 cams +2, 3 cams +4 spins.
-- **4 paid entries** (`cfg.buys`, all auto-priced to ~96%): FeatureSpins (5× scatter odds),
-  Rainbow Spins (forced RB + 3× coins), Luck direct, Gold direct. FeatureSpins/Rainbow are
-  **single base spins** (priced by single-spin EV, not full-round).
-- `runBanditRound` emits the standard envelope `{spins, totalWin, freeTriggered, freeAwarded,
-  mode, superMult:1, ...}` plus per-spin `gold[]`, `reveal[{pos,tier,val}]`, `rainbow`, `coinWin`.
-  `spin()`/`buyCost()`/`listGames()` dispatch on `cfg.engine === "bandit"`.
-
-(payScale ~doubled vs the dead-spin pass because the progressive-global change — below — cut
-bonus payouts ~4×, so payScale was raised to restore overall ~87% RTP. Mult tables also
-compressed: `chance .17/.17/.19`, table `[[2,52],[3,34],[5,11],[10,3],[25,.9]]`.)
+### Wild Bandit = "Le Bandit" engine (`engine: "bandit"`) — full rebuild 2026
+**Scatter-pays, NOT clusters.** 5+ of a symbol ANYWHERE wins (`banditEval` counts each symbol;
+the **Wild** 🃏 counts toward every symbol). Super Cascade removes ALL of every winning symbol
+(+ wilds); refill drops in. Per-symbol minimum counts (lows pay only at 10/12+, premiums at 5+)
+keep PAYING wins occasional so the cascade terminates. `payScale 0.285`, `cascCap 6`.
+- **Golden Squares** = winning cells → fixed `goldSet` positions (they **never move** — client
+  paints `.cell.gold` by index). `revealedSet` = gold already paid (each pays ONCE per
+  accumulation → bounds RTP).
+- **Rainbow** (per-grid roll: base 1.6%, bonus 30%, or forced) **activates** the not-yet-revealed
+  gold → `resolveReveal`: each reveals a **Coin** (bronze/silver/gold band, value skewed low via
+  `r²`), a **Clover** (×2–10 to 8-adjacent coins), or a rare **Collector** (`pCollector .05` →
+  doubles the whole haul). `payX = sum × (collector?2:1)`, capped (`baseCap 40` in base, `cap
+  10000` in bonus — base cap keeps base RTP stable, big wins live in the bonus).
+- **Modes** (camera scatter 📷 `chance .0065`): 3→`luck` (8 spins, gold consumed on activation),
+  4→`gold` (12, gold persists), 5→`rainbow` (12, 🌈 every spin, no bronze). Retrig 2cams+2/3cams+4.
+- **4 paid buys** (auto-priced to ~96%): feature (5× cam odds), rainbow (forced 🌈), luck, gold.
+- **RTP tuning lesson:** scatter-pays with few symbols → cascades NEVER terminate (every grid
+  wins) → runaway (measured 12,808% before tuning). Fixes that worked: per-symbol min counts +
+  `revealedSet` pay-once + `baseCap` (kills the heavy base tail) + low base-rainbow rate + low
+  `scatter.chance` (the 3-cam trigger EV is a big chunk of base RTP). The coin RTP is heavy-
+  tailed — tune by component (cluster vs coin vs bonus-trigger), not by total. Buys auto-price
+  so only BASE needs nailing.
+- `runBanditRound` envelope adds per-spin `gold[]`, `reveal{events:[{pos,type,tier?,val?,mult?}],
+  collected,sum,collectors}`, `rainbow`, `coinWin`. Client `revealReveal()` pops coin/clover/
+  collector chips on the cells, sweeps to `#winMeter` when a Collector pays.
 
 ### Super/Hidden bonus was too swingy to ever profit → PROGRESSIVE global (key fix)
 Symptom: buying Super "never profits" (owner hit 3 busts). Measured: only **27% profit, 45%

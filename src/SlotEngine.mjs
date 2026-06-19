@@ -21,7 +21,7 @@ const HIDDEN_BOOST = 1.7; // hidden bonus multiplier-symbol frequency boost
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.08,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.07,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
     reel: [["blue", 90], ["green", 68], ["purple", 50], ["red", 26], ["apple", 14], ["grape", 8], ["melon", 4]],
     pays: {
@@ -34,7 +34,7 @@ const GAMES = {
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.08,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.055,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
     reel: [["ring", 90], ["glass", 68], ["chalice", 50], ["crown", 26], ["blue", 14], ["green", 8], ["red", 4]],
     pays: {
@@ -45,31 +45,44 @@ const GAMES = {
     scatter: { id: "SC", emoji: "⚡", chance: 0.017, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
     mult: { emoji: "🪙", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3.5], [25, 1.0]] },
   },
+  // Wild Bandit ("Le Bandit"-style): 6×5, scatter-pays (5+ matching ANYWHERE), Wild
+  // substitutes, Super Cascade (all matching removed), Golden Squares (fixed cells that a
+  // Rainbow activates → reveal Coins / Clovers / Collectors). Max 10,000×. RTP ≈ 96.3-96.4%.
+  // Has its OWN engine path (banditEval/banditCascade/runBanditSpin/runBanditRound).
   bandit: {
-    id: "bandit", name: "Wild Bandit", tag: "Cluster pays · Golden Squares & Rainbow", color: "#f59e0b",
+    id: "bandit", name: "Wild Bandit", tag: "Le Bandit · Golden Squares, Rainbows & Collectors", color: "#f59e0b",
     engine: "bandit",
-    W: 6, H: 5, minCluster: 5, maxWinX: 10000, payScale: 1.05,
-    sym: { clover: "🍀", coin: "🪙", gem: "💎", key: "🗝️", sack: "💰", crown: "👑", raccoon: "🦝" },
-    reel: [["clover", 100], ["coin", 74], ["gem", 50], ["key", 28], ["sack", 15], ["crown", 7], ["raccoon", 3]],
+    W: 6, H: 5, minMatch: 5, maxWinX: 10000, payScale: 0.285, cascCap: 6,
+    sym: { ten: "🔟", jack: "🅙", queen: "🆀", king: "🅚", ace: "🅐", gem: "💎", ring: "💍", bandit: "🦝" }, // low→high
+    wild: { id: "WILD", emoji: "🃏" },
+    // lows common but pay only at high counts; premiums rare but pay at 5+. Keeps PAYING wins
+    // occasional so the cascade terminates (only paying wins cascade). All pays ×payScale.
+    reel: [["ten", 16], ["jack", 15], ["queen", 13], ["king", 11], ["ace", 9], ["gem", 6], ["ring", 4], ["bandit", 2.5], ["WILD", 3]],
     pays: {
-      clover: payRows(0.2, 0.5, 1, 2.5), coin: payRows(0.25, 0.6, 1.2, 3), gem: payRows(0.3, 0.8, 1.6, 4),
-      key: payRows(0.45, 1.1, 2.4, 6), sack: payRows(0.7, 1.8, 4, 11), crown: payRows(1.2, 3, 7, 20), raccoon: payRows(2.5, 6, 14, 40),
+      ten:    [[12, 1],   [10, 0.4]],
+      jack:   [[12, 1.5], [10, 0.5]],
+      queen:  [[12, 2],   [10, 0.7], [8, 0.3]],
+      king:   [[12, 3],   [10, 1.2], [8, 0.5]],
+      ace:    [[12, 5],   [10, 2],   [8, 0.8]],
+      gem:    [[12, 12],  [10, 6],   [8, 3],   [5, 0.8]],
+      ring:   [[12, 40],  [10, 20],  [8, 10],  [5, 2.5]],
+      bandit: [[15, 200], [12, 90],  [10, 45], [8, 22], [5, 6]],
     },
-    // Camera scatter triggers free spins: 3 → Luck, 4 → All That Glitters Is Gold, 5 → Treasure (Rainbow)
-    scatter: { id: "SC", emoji: "📷", chance: 0.0145, payX: { 3: 1, 4: 3, 5: 10, 6: 50 } },
-    // Rainbow symbol lands on the grid and activates stored Golden Squares (reveals coins)
-    rainbow: { id: "RB", emoji: "🌈", chance: 0.013 },
-    // Coin reveal bands (value in bet-multiples) when a Rainbow activates a Golden Square.
-    // Tuned for ~95% base RTP with real big-hit potential (gold tier 8-80×). The revealedSet
-    // bound (a square pays once per win) + slippage prevent the buy-sell exploit.
-    coins: [
-      { tier: "bronze", w: 1000, lo: 0.03, hi: 0.15 },
-      { tier: "silver", w: 30, lo: 0.8, hi: 2 },
-      { tier: "gold", w: 1.5, lo: 8, hi: 80 },
-    ],
-    // Free-spin tiers by camera count
+    // Camera scatter triggers free spins: 3 → Luck, 4 → All That Glitters, 5 → Treasure
+    scatter: { id: "SC", emoji: "📷", chance: 0.0065, payX: { 3: 1, 4: 3, 5: 10, 6: 50 } },
+    // Rainbow lands (per-grid roll) and ACTIVATES the Golden Squares. Rare in base, common in bonus.
+    rainbow: { id: "RB", emoji: "🌈", baseChance: 0.016, bonusChance: 0.30 },
+    // Golden-square reveal: mostly a Coin, sometimes a Clover (×adjacent), rarely a Collector
+    // (×2). Coin bands are bet-multiples (value skewed LOW via r²). Gold is very rare. The big
+    // spec bands (.2-4 / 5-20 / 25-500) are scaled to hold RTP; gold still reaches ~125×.
+    reveal: {
+      pCollector: 0.05, pClover: 0.12,
+      coin: [ { tier: "bronze", w: 100, lo: 0.05, hi: 1 }, { tier: "silver", w: 3, lo: 1.25, hi: 5 }, { tier: "gold", w: 0.12, lo: 6.25, hi: 125 } ],
+      clover: [[2, 55], [3, 28], [5, 12], [10, 5]],   // adjacent-coin multiplier (×2–×10)
+      cap: 10000,                                      // per-reveal cap in bonus (= maxWinX)
+      baseCap: 40,                                     // tighter cap in BASE so base RTP is stable
+    },
     tiers: { 3: { mode: "luck", spins: 8 }, 4: { mode: "gold", spins: 12 }, 5: { mode: "rainbow", spins: 12 } },
-    // Paid feature entries (mult = cost in stake multiples)
     buys: [
       { id: "feature", label: "FeatureSpins", top: "Bonus Hunt", mult: 3 },
       { id: "rainbow", label: "Rainbow Spins", top: "Guaranteed 🌈", mult: 50 },
@@ -171,62 +184,113 @@ function runSpin(cfg, bet, allowMult, boost) {
   return { steps, baseWin, mults, scatters, scatterWin };
 }
 
-// ── Wild Bandit: Golden Squares + Rainbow reveal ──────────────────────────
-// Roll one coin reveal for a Golden Square: pick a tier by weight, then a value
-// uniformly within that tier's [lo,hi] band (in bet-multiples).
-function rollCoin(cfg) {
-  const coins = cfg.coins, t = coins.reduce((a, c) => a + c.w, 0);
-  let r = rnd() * t, band = coins[0];
-  for (const c of coins) { r -= c.w; if (r <= 0) { band = c; break; } }
-  const val = band.lo + rnd() * (band.hi - band.lo);
+// ── Wild Bandit ("Le Bandit") engine ──────────────────────────────────────
+// Scatter-pays: 5+ of a symbol ANYWHERE wins (Wild counts toward every symbol). Super
+// Cascade removes ALL of every winning symbol (+ wilds). Winning cells become Golden
+// Squares (fixed positions, never move). A Rainbow ACTIVATES the Golden Squares, revealing
+// Coins / Clovers / Collectors.
+function banditCell(cfg, allowScatter) {
+  if (allowScatter && rnd() < cfg.scatter.chance) return cfg.scatter.id;
+  return wpick(cfg.reel); // reel includes the Wild
+}
+function banditGrid(cfg) { const n = cfg.W * cfg.H, g = new Array(n); for (let i = 0; i < n; i++) g[i] = banditCell(cfg, true); return g; }
+function banditPay(cfg, sym, count) { const t = cfg.pays[sym], sc = cfg.payScale || 1; for (let i = 0; i < t.length; i++) if (count >= t[i][0]) return t[i][1] * sc; return 0; }
+function banditEval(cfg, grid, bet) {
+  const wildId = cfg.wild.id, counts = {}, posOf = {}, wildPos = [];
+  for (let i = 0; i < grid.length; i++) {
+    const s = grid[i];
+    if (s === wildId) { wildPos.push(i); continue; }
+    if (!cfg.pays[s]) continue; // scatter / nothing
+    counts[s] = (counts[s] || 0) + 1; (posOf[s] || (posOf[s] = [])).push(i);
+  }
+  const wins = []; let anyWin = false;
+  for (const s in counts) {
+    const total = counts[s] + wildPos.length;
+    if (total >= cfg.minMatch) {
+      const x = banditPay(cfg, s, total);
+      if (x > 0) { anyWin = true; wins.push({ sym: s, emoji: cfg.sym[s], count: total, positions: posOf[s].slice(), win: Math.round(x * bet) }); }
+    }
+  }
+  if (anyWin && wildPos.length) wins.push({ sym: wildId, emoji: cfg.wild.emoji, count: wildPos.length, positions: wildPos, win: 0, wild: true });
+  return wins;
+}
+function banditCascade(cfg, grid, rem) {
+  const W = cfg.W, H = cfg.H;
+  for (let col = 0; col < W; col++) {
+    const keep = [];
+    for (let row = H - 1; row >= 0; row--) { const idx = row * W + col; if (!rem.has(idx)) keep.push(grid[idx]); }
+    while (keep.length < H) keep.push(banditCell(cfg, false)); // no scatter on refills
+    for (let row = H - 1, k = 0; row >= 0; row--, k++) grid[row * W + col] = keep[k];
+  }
+}
+// One coin value (bet-multiple). Value within a band is skewed LOW (r² product) so the big
+// spec bands hold RTP. Rainbow mode drops Bronze entirely.
+function rollCoinVal(cfg, noBronze) {
+  const bands = cfg.reveal.coin.filter(c => !(noBronze && c.tier === "bronze"));
+  let t = 0; for (const c of bands) t += c.w; let r = rnd() * t, band = bands[bands.length - 1];
+  for (const c of bands) { r -= c.w; if (r <= 0) { band = c; break; } }
+  const val = band.lo + (band.hi - band.lo) * (rnd() * rnd());
   return { tier: band.tier, val: Math.round(val * 100) / 100 };
 }
-// One bandit spin: generate grid, cascade, mark winners as Golden Squares, and if a
-// Rainbow landed, reveal coins from the gold squares added SINCE the last reveal.
-// goldSet: all gold positions (persistent, for display). revealedSet: positions already
-// paid out (so a Rainbow only pays NEW gold). mode drives persistence semantics.
-function runBanditSpin(cfg, bet, goldSet, revealedSet, mode, forceRainbow, coinMult) {
-  coinMult = coinMult || 1;
-  const allowMult = true; // enables Rainbow spawns via genCell
-  let cur = genGrid(cfg, allowMult, 1);
-  if (forceRainbow && findRainbow(cfg, cur) < 0) {
-    // guaranteed-Rainbow tier: drop one onto a random non-scatter cell if none spawned
-    let idx = -1, tries = 0;
-    do { idx = (rnd() * (cfg.W * cfg.H)) | 0; tries++; } while ((cur[idx] === cfg.scatter.id || isMul(cur[idx])) && tries < 20);
-    if (idx >= 0) cur[idx] = cfg.rainbow.id;
+// Resolve a Rainbow activation over `activate` gold positions: each reveals a Coin / Clover
+// / Collector; clovers ×adjacent coins; each Collector collects the whole coin-sum again
+// (rare → big). Returns {events, collected(FC), sum(bet-mult), collectors}.
+function resolveReveal(cfg, bet, activate, mode) {
+  const W = cfg.W, H = cfg.H, rv = cfg.reveal, noBronze = mode === "rainbow", cells = {};
+  for (const pos of activate) {
+    const r = rnd();
+    if (r < rv.pCollector) cells[pos] = { type: "collector" };
+    else if (r < rv.pCollector + rv.pClover) cells[pos] = { type: "clover", mult: rollMult(rv.clover) };
+    else { const c = rollCoinVal(cfg, noBronze); cells[pos] = { type: "coin", tier: c.tier, val: c.val }; }
   }
+  for (const p in cells) { // clovers ×adjacent coin values (8-neighbour)
+    const cell = cells[p]; if (cell.type !== "clover") continue;
+    const pos = +p, r = (pos / W) | 0, col = pos % W;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue; const nr = r + dr, nc = col + dc; if (nr < 0 || nr >= H || nc < 0 || nc >= W) continue;
+      const nb = cells[nr * W + nc]; if (nb && nb.type === "coin") nb.val = Math.round(nb.val * cell.mult * 100) / 100;
+    }
+  }
+  let sum = 0, collectors = 0;
+  for (const p in cells) { const c = cells[p]; if (c.type === "coin") sum += c.val; else if (c.type === "collector") collectors++; }
+  let payX = sum * (collectors > 0 ? 2 : 1);              // a Collector (rare) doubles the haul
+  const cap = mode === "base" ? (rv.baseCap || rv.cap) : rv.cap;
+  if (payX > cap) payX = cap;
+  const events = Object.keys(cells).map(p => Object.assign({ pos: +p }, cells[p]));
+  return { events, collected: Math.round(payX * bet), sum: Math.round(payX * 100) / 100, collectors };
+}
+// One bandit spin. goldSet = Golden Squares (fixed cells). revealedSet = gold already paid
+// (so each square pays ONCE per accumulation — bounds RTP). A Rainbow activates the
+// not-yet-revealed gold. base/luck consume all gold on activation; gold/rainbow keep it (new
+// winners accrue and pay on later Rainbows).
+function runBanditSpin(cfg, bet, goldSet, revealedSet, mode, forceRainbow, rainbowChance) {
+  let cur = banditGrid(cfg);
   const scatters = countScatter(cfg, cur);
-  const rainbowAt = findRainbow(cfg, cur);
+  const rainbow = forceRainbow || rnd() < (rainbowChance || 0);
   const steps = [];
   let baseWin = 0, guard = 0;
-  while (guard++ < 40) {
-    const wins = evaluate(cfg, cur, bet);
+  while (guard++ < (cfg.cascCap || 40)) {
+    const wins = banditEval(cfg, cur, bet);
     if (!wins.length) { steps.push({ grid: cur.slice(), wins: [], stepWin: 0 }); break; }
     let stepWin = 0; const rem = new Set();
-    for (const w of wins) { stepWin += w.win; for (const p of w.positions) { rem.add(p); goldSet.add(p); } } // winners → Golden Squares
+    for (const w of wins) { stepWin += w.win; for (const p of w.positions) { rem.add(p); goldSet.add(p); } } // winners → fixed Golden Squares
     baseWin += stepWin;
     steps.push({ grid: cur.slice(), wins, stepWin });
-    const next = cur.slice(); collapse(cfg, next, rem, allowMult, 1); cur = next;
+    const next = cur.slice(); banditCascade(cfg, next, rem); cur = next;
   }
-  // Rainbow resolution: a Rainbow reveals coins for gold squares that haven't been
-  // revealed yet (added since the last Rainbow). This bounds the payout — a square pays
-  // once per time it becomes gold, not every Rainbow. 'luck' clears all gold after a
-  // reveal (squares consumed); 'gold'/'rainbow' keep them gold but mark them revealed.
-  let reveal = [], coinWin = 0, rainbowLanded = rainbowAt >= 0;
-  if (rainbowLanded) {
-    for (const pos of goldSet) {
-      if (revealedSet.has(pos)) continue;     // already paid this round
-      const c = rollCoin(cfg); coinWin += c.val * coinMult; reveal.push({ pos, tier: c.tier, val: Math.round(c.val * coinMult * 100) / 100 });
-      revealedSet.add(pos);
+  let reveal = null, coinWin = 0;
+  if (rainbow) {
+    const act = [...goldSet].filter(p => !revealedSet.has(p));
+    if (act.length) {
+      reveal = resolveReveal(cfg, bet, act, mode);
+      coinWin = reveal.collected;
+      act.forEach(p => revealedSet.add(p));
+      if (mode === "base" || mode === "luck") { goldSet.clear(); revealedSet.clear(); } // consumed
     }
-    coinWin = Math.round(coinWin * bet);
-    if (mode === "luck") { goldSet.clear(); revealedSet.clear(); }   // consumed
-    // 'gold'/'rainbow': squares stay gold + revealed (won't re-pay unless re-won)
   }
-  let scatterWin = 0;
-  const sc = scatters >= 6 ? 6 : scatters;
+  let scatterWin = 0; const sc = scatters >= 6 ? 6 : scatters;
   if (cfg.scatter.payX && cfg.scatter.payX[sc]) scatterWin = Math.round(cfg.scatter.payX[sc] * bet);
-  return { steps, baseWin, scatters, scatterWin, rainbow: rainbowLanded, reveal, coinWin, gold: [...goldSet] };
+  return { steps, baseWin, scatters, scatterWin, rainbow: !!(rainbow && (reveal || goldSet.size)), reveal, coinWin, gold: [...goldSet] };
 }
 
 function modeForScatters(n) { if (n >= TRIG.hidden) return "hidden"; if (n === TRIG.super) return "super"; if (n >= TRIG.regular) return "regular"; return null; }
@@ -301,50 +365,50 @@ function tierForCameras(n) {
 // the real slot; we keep it simple — +4 spins, no tier change — for tractable math).
 function banditRetrig(n) { if (n >= 3) return 4; if (n === 2) return 2; return 0; }
 
+function banditSpinOut(s, free, triggered, rt) {
+  return { free: !!free, super: false, steps: s.steps, baseWin: s.baseWin, scatterWin: s.scatterWin, scatters: s.scatters,
+    rainbow: s.rainbow, reveal: s.reveal, gold: s.gold, coinWin: s.coinWin,
+    total: Math.round(s.baseWin + s.coinWin + s.scatterWin), triggered: !!triggered, retrigger: rt || 0,
+    mults: [], multAdded: 0, multApplied: 0, globalMult: 0 };
+}
+function modeSpins(cfg, mode) { for (const k in cfg.tiers) if (cfg.tiers[k].mode === mode) return cfg.tiers[k].spins; return 8; }
 function runBanditRound(cfg, bet, buy) {
   const spins = [];
   let totalWin = 0, mode = "base", freeLeft = 0, freeAwarded = 0, freeTriggered = false;
-  const goldSet = new Set();        // persistent Golden Square positions across the bonus
-  const revealedSet = new Set();    // positions already paid out by a Rainbow (bounds payout)
   let featureSpin = false, rainbowSpin = false;
+  if (buy === "luck") mode = "luck";
+  else if (buy === "gold") mode = "gold";
+  else if (buy === "rainbow") { mode = "base"; rainbowSpin = true; }   // forced Rainbow each base spin
+  else if (buy === "feature") { mode = "base"; featureSpin = true; }   // Bonus Hunt: boosted camera odds
 
-  // Resolve paid entries
-  if (buy === "luck") { mode = "luck"; }
-  else if (buy === "gold") { mode = "gold"; }
-  else if (buy === "rainbow") { mode = "base"; rainbowSpin = true; }   // Rainbow FeatureSpins: base play, forced RB each spin
-  else if (buy === "feature") { mode = "base"; featureSpin = true; }   // Bonus Hunt: base play with boosted scatter chance
-
-  // BASE spin (skipped only on direct-entry buys luck/gold)
+  // BASE spin (skipped on direct-entry luck/gold buys). Gold squares are per-spin in base.
   if (mode === "base") {
-    const prevChance = cfg.scatter.chance;
-    if (featureSpin) cfg.scatter.chance = prevChance * 5; // 5× bonus odds
-    const s = runBanditSpin(cfg, bet, goldSet, revealedSet, "base", rainbowSpin, rainbowSpin ? 3 : 1);
-    cfg.scatter.chance = prevChance;
+    const gold = new Set(), revealed = new Set();
+    const prevSc = cfg.scatter.chance;
+    if (featureSpin) cfg.scatter.chance = prevSc * 5;
+    const rbChance = rainbowSpin ? 1 : cfg.rainbow.baseChance;
+    const s = runBanditSpin(cfg, bet, gold, revealed, "base", rainbowSpin, rbChance);
+    cfg.scatter.chance = prevSc;
     totalWin += s.baseWin + s.coinWin + s.scatterWin;
     const tier = tierForCameras(s.scatters);
-    spins.push({ free: false, super: false, steps: s.steps, baseWin: s.baseWin, scatterWin: s.scatterWin, scatters: s.scatters,
-      rainbow: s.rainbow, reveal: s.reveal, gold: s.gold, coinWin: s.coinWin,
-      total: s.baseWin + s.coinWin + s.scatterWin, triggered: !!tier, retrigger: 0, mults: [], multAdded: 0, multApplied: 0, globalMult: 0 });
-    if (tier) { mode = tier.mode; }
+    spins.push(banditSpinOut(s, false, !!tier, 0));
+    if (tier) mode = tier.mode;
   }
 
-  if (mode !== "base") { freeTriggered = true; freeLeft = cfg.tiers[cfg.tiers[5].mode === mode ? 5 : cfg.tiers[4].mode === mode ? 4 : 3].spins; freeAwarded = freeLeft; }
+  if (mode !== "base") { freeTriggered = true; const t = modeSpins(cfg, mode); freeLeft = t; freeAwarded = t; }
   const forceRainbow = mode === "rainbow";
-
+  const gold = new Set(), revealed = new Set(); // persist across the whole bonus (fixed cells)
   let guard = 0;
-  while (freeTriggered && freeLeft > 0 && guard++ < 500) {
+  while (freeTriggered && freeLeft > 0 && guard++ < 600) {
     freeLeft--;
-    const s = runBanditSpin(cfg, bet, goldSet, revealedSet, mode, forceRainbow);
-    const spinTotal = s.baseWin + s.coinWin + s.scatterWin;
-    totalWin += spinTotal;
+    const rbChance = mode === "rainbow" ? 1 : cfg.rainbow.bonusChance;
+    const s = runBanditSpin(cfg, bet, gold, revealed, mode, forceRainbow, rbChance);
+    totalWin += s.baseWin + s.coinWin + s.scatterWin;
     const rt = banditRetrig(s.scatters);
     if (rt) { freeLeft += rt; freeAwarded += rt; }
-    spins.push({ free: true, super: false, steps: s.steps, baseWin: s.baseWin, scatterWin: s.scatterWin, scatters: s.scatters,
-      rainbow: s.rainbow, reveal: s.reveal, gold: s.gold, coinWin: s.coinWin,
-      total: Math.round(spinTotal), retrigger: rt, mults: [], multAdded: 0, multApplied: 0, globalMult: 0 });
+    spins.push(banditSpinOut(s, true, false, rt));
     if (totalWin > cfg.maxWinX * bet) break;
   }
-
   if (totalWin > cfg.maxWinX * bet) totalWin = cfg.maxWinX * bet;
   return { spins, totalWin: Math.round(totalWin), freeTriggered, freeAwarded, mode, superMult: 1, superPre: 0, globalFinal: 1 };
 }
@@ -354,15 +418,17 @@ export function listGames() {
     const sc = g.payScale || 1, pays = {};
     for (const k of Object.keys(g.pays)) pays[k] = g.pays[k].map(t => [t[0], Math.round(t[1] * sc * 100) / 100]);
     const out = {
-      id: g.id, name: g.name, tag: g.tag, color: g.color, W: g.W, H: g.H, minCluster: g.minCluster,
+      id: g.id, name: g.name, tag: g.tag, color: g.color, W: g.W, H: g.H, minCluster: g.minCluster || g.minMatch,
       sym: g.sym, pays,
       buy: { regular: g.buyRegular, super: g.buySuper },
     };
     if (g.engine === "bandit") {
-      // Golden-Square model: camera scatter tiers + Rainbow + multi-buy
+      // Le Bandit: scatter-pays + Wild, camera tiers, Rainbow activates Golden Squares
       out.engine = "bandit";
       out.scatter = { emoji: g.scatter.emoji, tiers: g.tiers };
       out.rainbow = g.rainbow.emoji;
+      out.wild = g.wild.emoji;
+      out.coins = g.reveal.coin.map(c => ({ tier: c.tier, lo: c.lo, hi: c.hi }));
       out.buys = g.buys.map(b => ({ id: b.id, label: b.label, top: b.top, mult: b.mult }));
     } else {
       out.scatter = { emoji: g.scatter.emoji, regular: TRIG.regular, super: TRIG.super, hidden: TRIG.hidden, spins: SPINS };
@@ -411,7 +477,7 @@ export const SLOT_GAME_IDS = Object.keys(GAMES);
         if (entry) entry.mult = cost;
       }
     } else {
-      const TARGET = 0.95;
+      const TARGET = 0.96;
       for (const kind of ["regular", "super"]) {
         let sum = 0;
         for (let i = 0; i < N; i++) sum += runRound(cfg, bet, kind).totalWin;

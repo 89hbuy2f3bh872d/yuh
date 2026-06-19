@@ -41,7 +41,7 @@ Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (
 | `commands/*.mjs` | Chat commands (`&web`, `&work`, games, etc.). |
 | `src/HouseGames.mjs` | Server-authoritative house games (Plinko/Coinflip/Double/Mines/HiLo/Chicken Road). Exports `PLINKO` tables + `CHICKEN` cfg. Stateful games keep per-uid state here; `~3%` edge (`EDGE=0.97`). |
 | `src/CardGames.mjs` | Server-authoritative card games (Blackjack stateful, **Video Poker** stateful deal→hold→draw, Baccarat stateless). Crypto-shuffled. `/cards` tab, `/api/cards/*`. RTP ~99.5%/98.4%/98.9%. |
-| `src/SlotEngine.mjs` | Cluster-pays slots (RTP ≈ 87%). Bonuses: Regular (per-spin mult), Super/Hidden (**progressive global** mult — climbs per winning spin, paid per spin; low variance). Reels concentrated for ~37–40% dead spins. Buy costs auto-priced at load. |
+| `src/SlotEngine.mjs` | Slots (**RTP ≈ 96%**, real-casino). Candy/Olympus = cluster-pays tumbling; Super/Hidden bonus = **progressive global** mult. **Wild Bandit = its OWN "Le Bandit" engine** (`engine:"bandit"`): scatter-pays 5+ anywhere, Wild substitutes, Super Cascade, **Golden Squares** (fixed cells), a **Rainbow** activates them → reveal **Coins / Clovers (×adj) / Collectors (rare, ×2)**; 3 free-spin modes (luck/gold/rainbow); 10,000× max. Buy costs auto-priced at load. |
 | `src/CaseBattle.mjs` | Case-battle engine. |
 | `src/AdminPanel.mjs` | Admin panel HTML + permission model (`PERMS`, `can`, `isAdmin`, `canSeePanel`, `OWNER_ID`). |
 | `games/*.html` | Page templates (lobby, slots, house, leaderboard, servers, settings, misc, notifications, admin). Each has scoped `<style>` + inline `<script>`. |
@@ -141,7 +141,7 @@ Helpers in `server.ts`: `broadcastTicket`, `broadcastServerPlay`, `broadcastServ
 - **Icons: Lucide first** (inline SVG). Emoji only for playful content (🎉 holiday, ✨ featured).
 - **Escape user-controlled strings** before HTML (`esc()` server-side, page-local `esc()` client-side). Validate hex colors (`safeHex`/`HEX_RE`), user IDs (`/^\d{17,20}$/`), guild IDs, amounts. Reject, don't sanitize, where it touches a query/SQL.
 - **No global music** — per-slot themes only; mutable.
-- Slots RTP ≈ 87%. DB wipe is owner-only with multiple confirmations.
+- Slots RTP ≈ **96%** (real-casino; raised from 87%). Wild Bandit ≈ 96.3–96.4%. DB wipe is owner-only with multiple confirmations.
 - **Slots pay-on-collect is loss-proof.** Win held in `pendingSlots` Map, credited on `/api/slots/collect` (auto, at animation end — no button). Backstops so a win is NEVER lost: next spin auto-collects the previous; a 120s in-memory sweep; AND the pending win is persisted to Mongo (`psl` on user doc, set on spin / `$unset` on collect) so `recoverPendingSlots()` (after `stdb.ready()`) pays leftovers after a web restart.
 - `/internal/*` is **loopback-only + shared-secret** — bot use only; rejects requests carrying `cf-connecting-ip`/`x-forwarded-for`.
 
