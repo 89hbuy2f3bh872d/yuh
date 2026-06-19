@@ -94,7 +94,7 @@ const PAGES = [
 ];
 
 function shell(body, title) {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="stylesheet" href="/assets/css/admin.css"></head><body>${body}</body></html>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/admin.css"></head><body>${body}</body></html>`;
 }
 
 function deniedPage(uid) {
@@ -105,6 +105,7 @@ function deniedPage(uid) {
     <div class="denied-title">Access Denied</div>
     <div class="denied-msg">This admin panel is restricted to authorised personnel only.<br>Your identity has been logged.</div>
     <div class="denied-id">${esc(uid ?? "not logged in")}</div>
+    <a href="/" class="btn btn-ghost" style="margin-top:1rem">← Back to site</a>
   </div>
 </div>`,
     "Access Denied",
@@ -118,7 +119,7 @@ function loginRequiredPage(loginUrl) {
     <div class="denied-icon">🎰</div>
     <div class="denied-title" style="color:var(--accent)">Admin Login</div>
     <div class="denied-msg">You must be logged in with an authorised Fluxer account to access the admin panel.</div>
-    <a href="${esc(loginUrl)}" class="btn btn-primary" style="margin-top:.3rem">🔑 Login with Fluxer</a>
+    <a href="${esc(loginUrl)}" class="btn btn-primary" style="margin-top:.4rem">🔑 Login with Fluxer</a>
   </div>
 </div>`,
     "Admin — Login",
@@ -126,9 +127,9 @@ function loginRequiredPage(loginUrl) {
 }
 
 function pageHeader({ eyebrow, title, sub, color }) {
-  return `<div class="page-header">
-    <div>
-      <div class="page-eyebrow" style="--pc:${color}">${esc(eyebrow)}</div>
+  return `<div class="page-header" style="--pc:${color}">
+    <div class="ph-left">
+      <div class="page-eyebrow">${esc(eyebrow)}</div>
       <div class="page-title">${esc(title)}</div>
       <div class="page-sub">${sub}</div>
     </div>
@@ -889,20 +890,20 @@ function buildPage(data, prefix) {
 </script>`;
 
   return shell(
-    `<div class="layout">
-  <aside class="sidebar">
-    <div class="logo">
-      <span class="logo-icon">🎰</span>
-      <div><div class="logo-text">SirGreen</div><div class="logo-sub">Admin Panel</div></div>
+    `<div class="app">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo">
+        <span class="logo-icon">🎰</span>
+        <div><div class="logo-text">SirGreen</div><div class="logo-sub">Admin</div></div>
+      </div>
+      <nav class="nav" role="tablist">${navHtml}</nav>
+      <div class="topbar-end">
+        <span class="ts" title="Data refreshed at this time">↻ ${esc(refreshedAt)}</span>
+        <a href="/logout" class="logout-btn" title="Logout">⏏</a>
+      </div>
     </div>
-    <span class="nav-section">Sections</span>
-    ${navHtml}
-    <div style="flex:1"></div>
-    <div class="sidebar-foot">
-      <a href="/logout">⏏ Logout</a>
-      <span class="ts">Refreshed ${esc(refreshedAt)}</span>
-    </div>
-  </aside>
+  </header>
   <main class="main">${pagesHtml}</main>
 </div>${script}`,
     "Admin Panel — SirGreen Casino",

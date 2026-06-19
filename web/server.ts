@@ -1166,8 +1166,12 @@ app.delete("/api/admin/battles/:id", ({ request, params, set }) => adminApi(requ
   for (const p of b.players) { if (!p.bot) await stdb.credit(p.uid, p.cost).catch(() => {}); cb.userBattle.delete(p.uid); }
   cb.active.delete((params as any).id); return { ok: true };
 }));
-app.get("/api/admin/tickets", ({ request, set }) => adminApi(request, set, async () => ({ tickets: await db.listTickets({}).catch(() => []) })));
+app.get("/api/admin/tickets", ({ request, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "tickets"))) { set.status = 403; return { error: "Missing permission" }; }
+  return { tickets: await db.listTickets({}).catch(() => []) };
+}));
 app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "tickets"))) { set.status = 403; return { error: "Missing permission" }; }
   const id = (params as any).id;
   const msg = String((body as any).body || "").trim().slice(0, 2000); if (!msg) return { error: "Message required" };
   const t = await db.getTicket(id).catch(() => null);
@@ -1177,7 +1181,8 @@ app.post("/api/admin/tickets/:id/reply", ({ request, params, body, set }) => adm
   if (t?.uid) broadcastTicket(t.uid, { type: "ticket", action: "reply", ticket: upd || t }); // live thread update
   return { ok: true };
 }));
-app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async () => {
+app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "tickets"))) { set.status = 403; return { error: "Missing permission" }; }
   const a = (params as any).action, id = (params as any).id; if (a !== "close" && a !== "open") { set.status = 404; return { error: "?" }; }
   await db.setTicketStatus(id, a === "close" ? "closed" : "open").catch(() => {});
   const upd = await db.getTicket(id).catch(() => null);
@@ -1189,7 +1194,8 @@ app.post("/api/admin/tickets/:id/:action", ({ request, params, set }) => adminAp
   }
   return { ok: true };
 }));
-app.delete("/api/admin/tickets/:id", ({ request, params, set }) => adminApi(request, set, async () => {
+app.delete("/api/admin/tickets/:id", ({ request, params, set }) => adminApi(request, set, async (uid) => {
+  if (!(await admin.can(uid, "tickets"))) { set.status = 403; return { error: "Missing permission" }; }
   const id = (params as any).id; const t = await db.getTicket(id).catch(() => null);
   await db.deleteTicket(id).catch(() => {});
   if (t?.uid) broadcastTicket(t.uid, { type: "ticket", action: "delete", id });
