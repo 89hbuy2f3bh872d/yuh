@@ -54,11 +54,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .logo-text{font-size:.95rem;font-weight:800;color:var(--text-bright);letter-spacing:-.02em;line-height:1}
 .logo-sub{font-size:.56rem;color:var(--accent);letter-spacing:.16em;text-transform:uppercase;font-weight:700;margin-top:.18rem}
 
-/* horizontal pill nav — NEVER wraps, scrolls horizontally if overflowing */
-.nav{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:.15rem;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;padding:.55rem 0}
+/* horizontal pill nav — NEVER wraps, scrolls horizontally if overflowing.
+   Forced with !important because button UA styles + the panel's iframe context
+   can otherwise let items stack vertically. */
+.nav{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center;gap:.15rem;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none;padding:.55rem 0}
 .nav::-webkit-scrollbar{display:none}
 .nav-item{
-  position:relative;display:inline-flex;align-items:center;gap:.4rem;flex:none;
+  display:inline-flex!important;flex:0 0 auto!important;
+  position:relative;align-items:center;gap:.4rem;
   padding:.45rem .8rem;border-radius:8px;font-size:.77rem;font-weight:600;color:var(--text-dim);
   white-space:nowrap;transition:color 150ms ease,background 150ms ease;
 }
