@@ -1011,12 +1011,16 @@ textarea {
     }
 }
 
-/* Rakeback widget (sidebar, under the selected-server picker) */
+/* Rakeback widget (sidebar, under the selected-server picker) — single row,
+   sized to match the .srv-btn picker above it. */
 .rb-widget {
-    margin: 0 0 0.6rem;
-    padding: 0.55rem 0.6rem 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem;
+    padding: 0.45rem 0.55rem;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 9px;
     background: linear-gradient(
         180deg,
         color-mix(in srgb, #f59e0b 9%, var(--surface)),
@@ -1025,11 +1029,6 @@ textarea {
 }
 .rb-widget.rb-nosrv {
     background: var(--surface);
-}
-.rb-head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
 }
 .rb-ico {
     display: grid;
@@ -1045,39 +1044,29 @@ textarea {
     width: 15px;
     height: 15px;
 }
-.rb-head-txt {
+.rb-info {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    line-height: 1.2;
-    min-width: 0;
+    line-height: 1.15;
 }
-.rb-title {
-    font-size: 0.78rem;
-    font-weight: 800;
-    color: var(--text);
-    letter-spacing: -0.01em;
-}
-.rb-sub {
-    font-size: 0.6rem;
+.rb-label {
+    font-size: 0.52rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
     color: var(--text3);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.rb-body {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    margin-top: 0.55rem;
+    font-weight: 700;
 }
 .rb-amt {
     display: flex;
-    flex-direction: column;
-    line-height: 1.05;
+    align-items: baseline;
+    gap: 0.2rem;
+    line-height: 1.15;
+    white-space: nowrap;
 }
 .rb-amt b {
-    font-size: 1.18rem;
+    font-size: 0.8rem;
     font-weight: 800;
     color: var(--gold);
     font-variant-numeric: tabular-nums;
@@ -1087,15 +1076,14 @@ textarea {
     color: var(--text3);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-top: 0.1rem;
 }
 .rb-claim {
-    padding: 0.42rem 0.9rem;
-    border-radius: 8px;
+    padding: 0.35rem 0.7rem;
+    border-radius: 7px;
     border: none;
     background: linear-gradient(180deg, #fbbf24, #f59e0b);
     color: #1a1000;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 800;
     cursor: pointer;
     transition:
@@ -1285,19 +1273,10 @@ textarea {
         min-width: 0;
         padding: 0.4rem 0.5rem;
     }
-    .rb-head {
-        display: none;
-    }
-    .rb-body {
-        display: flex;
-        flex-direction: column;
+    .rb-info {
         align-items: center;
-        margin: 0;
-        gap: 0.25rem;
     }
     .rb-amt {
-        display: flex;
-        flex-direction: column;
         align-items: center;
         line-height: 1;
     }

@@ -1,486 +1,1252 @@
 <aside class="sidebar">
-  <a href="/lobby" class="sb-brand">
-    <span class="sb-mark"><span class="sb-mark-ring"></span><span class="sb-mark-g">G</span></span>
-    <div>
-      <div class="sb-brand-txt"><span class="sb-tw">Sir<b>Green</b></span></div>
-      <div class="sb-brand-sub">Casino</div>
-    </div>
-  </a>
-
-  <!-- Selected-server picker -->
-  <div class="srv-wrap" id="srvWrap">
-    <button class="srv-btn" id="srvBtn" type="button" onclick="sgToggleSrv(event)">
-      <span class="srv-av" id="srvAv">?</span>
-      <span class="srv-info"><span class="srv-label">Selected Server</span><span class="srv-name" id="srvName">—</span></span>
-      <svg class="icon srv-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
-    </button>
-    <div class="srv-menu hidden" id="srvMenu"></div>
-  </div>
-
-  <!-- Rakeback (per selected server) -->
-  <div class="rb-widget" id="rbWidget">
-    <div class="rb-head">
-      <span class="rb-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18M7 3v18M17 3v18"/></svg></span>
-      <div class="rb-head-txt"><span class="rb-title">Rakeback</span><span class="rb-sub" id="rbSub">Earn cash back on every bet</span></div>
-    </div>
-    <div class="rb-body">
-      <div class="rb-amt"><b id="rbAmt">0</b><small>FC pending</small></div>
-      <button class="rb-claim" id="rbClaim" disabled>Select server</button>
-    </div>
-  </div>
-
-  <div class="sb-nav">
-  <span class="sb-section">Games</span>
-  <a href="/lobby" class="sb-item __ACTIVE_lobby__">
-    <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-    <span>Lobby</span>
-  </a>
-  <a href="/case-battle" class="sb-item __ACTIVE_case-battle__">
-    <svg class="icon" viewBox="0 0 24 24"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>
-    <span>Case Battle</span>  </a>
-  <a href="/slots" class="sb-item __ACTIVE_slots__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
-    <span>Slots</span>  </a>
-  <a href="/house" class="sb-item __ACTIVE_house__">
-    <svg class="icon" viewBox="0 0 24 24"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg>
-    <span>House Games</span>  </a>
-  <a href="/cards" class="sb-item __ACTIVE_cards__">
-    <svg class="icon" viewBox="0 0 24 24"><rect width="14" height="18" x="5" y="3" rx="2"/><path d="M9.5 8 12 6l2.5 2M9.5 16 12 18l2.5-2"/></svg>
-    <span>Card Games</span>  </a>
-  <a href="/invest" class="sb-item __ACTIVE_invest__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-    <span>Invest</span>  </a>
-
-  <span class="sb-section">Misc</span>
-  <a href="/leaderboard" class="sb-item __ACTIVE_leaderboard__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-    <span>Leaderboard</span>
-  </a>
-  <a href="/misc" class="sb-item __ACTIVE_misc__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-    <span>Send Money</span>
-  </a>
-  __ADMIN_NAV__
-
-  <span class="sb-section">Account</span>
-  <a href="/notifications" class="sb-item __ACTIVE_notifications__">
-    <svg class="icon" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-    <span>Notifications</span>
-    <span class="sb-badge sb-notif-badge hidden" id="sbNotifBadge">0</span>
-  </a>
-  <a href="/settings" class="sb-item __ACTIVE_settings__">
-    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-    <span>Settings</span>
-  </a>
-  __SERVERS_NAV__
-
-  <div class="sb-spacer"></div>
-
-  <div class="sb-foot">
-    <div class="sb-user">
-      <img class="sb-avatar" src="__AVATAR__" alt="" onerror="this.style.visibility='hidden'">
-      <div class="sb-user-info">
-        <div class="sb-user-tag">__TAG__</div>
-        <div class="sb-user-bal"><b id="sbBal">__BALANCE__</b> FC</div>
-      </div>
-    </div>
-    <a href="https://web.canary.fluxer.app/oauth2/authorize?client_id=1514719637881749504&scope=bot&permissions=4503599895874561" target="_blank" rel="noopener" class="sb-signout sb-addbot">
-      <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="10" x="3" y="11" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
-      <span>Add Bot</span>
+    <a href="/lobby" class="sb-brand">
+        <span class="sb-mark"
+            ><span class="sb-mark-ring"></span
+            ><span class="sb-mark-g">G</span></span
+        >
+        <div>
+            <div class="sb-brand-txt">
+                <span class="sb-tw">Sir<b>Green</b></span>
+            </div>
+            <div class="sb-brand-sub">Casino</div>
+        </div>
     </a>
-    <a href="/logout" class="sb-signout">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-      <span>Sign out</span>
-    </a>
-  </div>
-  </div>
+
+    <!-- Selected-server picker -->
+    <div class="srv-wrap" id="srvWrap">
+        <button
+            class="srv-btn"
+            id="srvBtn"
+            type="button"
+            onclick="sgToggleSrv(event)"
+        >
+            <span class="srv-av" id="srvAv">?</span>
+            <span class="srv-info"
+                ><span class="srv-label">Selected Server</span
+                ><span class="srv-name" id="srvName">—</span></span
+            >
+            <svg class="icon srv-chev" viewBox="0 0 24 24">
+                <path d="m6 9 6 6 6-6" />
+            </svg>
+        </button>
+        <div class="srv-menu hidden" id="srvMenu"></div>
+    </div>
+
+    <!-- Rakeback (per selected server) -->
+    <div class="rb-widget" id="rbWidget">
+        <span class="rb-ico"
+            ><svg class="icon" viewBox="0 0 24 24">
+                <path d="M3 6h18M3 12h18M3 18h18M7 3v18M17 3v18" /></svg
+        ></span>
+        <div class="rb-info">
+            <span class="rb-label">Rakeback</span
+            ><span class="rb-amt"><b id="rbAmt">0</b><small>FC</small></span>
+        </div>
+        <button class="rb-claim" id="rbClaim" disabled>Select server</button>
+    </div>
+
+    <div class="sb-nav">
+        <span class="sb-section">Games</span>
+        <a href="/lobby" class="sb-item __ACTIVE_lobby__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span>Lobby</span>
+        </a>
+        <a href="/case-battle" class="sb-item __ACTIVE_case-battle__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+                <line x1="13" x2="19" y1="19" y2="13" />
+                <line x1="16" x2="20" y1="16" y2="20" />
+                <line x1="19" x2="21" y1="21" y2="19" />
+                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+                <line x1="5" x2="9" y1="14" y2="18" />
+                <line x1="7" x2="4" y1="17" y2="20" />
+                <line x1="3" x2="5" y1="19" y2="21" />
+            </svg>
+            <span>Case Battle</span>
+        </a>
+        <a href="/slots" class="sb-item __ACTIVE_slots__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M6 3h12l4 6-10 13L2 9Z" />
+                <path d="M11 3 8 9l4 13 4-13-3-6" />
+                <path d="M2 9h20" />
+            </svg>
+            <span>Slots</span>
+        </a>
+        <a href="/house" class="sb-item __ACTIVE_house__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
+                <path
+                    d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"
+                />
+                <path d="M6 18h.01" />
+                <path d="M10 14h.01" />
+                <path d="M15 6h.01" />
+                <path d="M18 9h.01" />
+            </svg>
+            <span>House Games</span>
+        </a>
+        <a href="/cards" class="sb-item __ACTIVE_cards__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <rect width="14" height="18" x="5" y="3" rx="2" />
+                <path d="M9.5 8 12 6l2.5 2M9.5 16 12 18l2.5-2" />
+            </svg>
+            <span>Card Games</span>
+        </a>
+        <a href="/invest" class="sb-item __ACTIVE_invest__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M3 3v18h18" />
+                <path d="m19 9-5 5-4-4-3 3" />
+            </svg>
+            <span>Invest</span>
+        </a>
+
+        <span class="sb-section">Misc</span>
+        <a href="/leaderboard" class="sb-item __ACTIVE_leaderboard__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                <path d="M4 22h16" />
+                <path
+                    d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"
+                />
+                <path
+                    d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"
+                />
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+            </svg>
+            <span>Leaderboard</span>
+        </a>
+        <a href="/misc" class="sb-item __ACTIVE_misc__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+            </svg>
+            <span>Send Money</span>
+        </a>
+        __ADMIN_NAV__
+
+        <span class="sb-section">Account</span>
+        <a href="/notifications" class="sb-item __ACTIVE_notifications__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+            </svg>
+            <span>Notifications</span>
+            <span class="sb-badge sb-notif-badge hidden" id="sbNotifBadge"
+                >0</span
+            >
+        </a>
+        <a href="/settings" class="sb-item __ACTIVE_settings__">
+            <svg class="icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path
+                    d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+                />
+            </svg>
+            <span>Settings</span>
+        </a>
+        __SERVERS_NAV__
+
+        <div class="sb-spacer"></div>
+
+        <div class="sb-foot">
+            <div class="sb-user">
+                <img
+                    class="sb-avatar"
+                    src="__AVATAR__"
+                    alt=""
+                    onerror="this.style.visibility = 'hidden'"
+                />
+                <div class="sb-user-info">
+                    <div class="sb-user-tag">__TAG__</div>
+                    <div class="sb-user-bal">
+                        <b id="sbBal">__BALANCE__</b> FC
+                    </div>
+                </div>
+            </div>
+            <a
+                href="https://web.canary.fluxer.app/oauth2/authorize?client_id=1514719637881749504&scope=bot&permissions=4503599895874561"
+                target="_blank"
+                rel="noopener"
+                class="sb-signout sb-addbot"
+            >
+                <svg class="icon" viewBox="0 0 24 24">
+                    <rect width="18" height="10" x="3" y="11" rx="2" />
+                    <circle cx="12" cy="5" r="2" />
+                    <path d="M12 7v4M8 16h.01M16 16h.01" />
+                </svg>
+                <span>Add Bot</span>
+            </a>
+            <a href="/logout" class="sb-signout">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path
+                        d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
+                    />
+                </svg>
+                <span>Sign out</span>
+            </a>
+        </div>
+    </div>
 </aside>
 <script src="/assets/js/sound.js"></script>
 <script>
-/* Smooth in-app navigation (pjax): swap <main> instead of full reload.
+    /* Smooth in-app navigation (pjax): swap <main> instead of full reload.
    Tracks intervals so leaving a page tears down its timers (no leaks). */
-(function(){
-  if(window.__pjax)return; window.__pjax=1;
-  var _si=window.setInterval, ints=[];
-  window.__rawSetInterval=function(f,t){ return _si.call(window,f,t); }; // pjax-exempt: outlives page swaps (WS fallback poll)
-  window.setInterval=function(f,t){ var id=_si.call(window,f,t); ints.push(id); return id; };
-  function clearInts(){ ints.forEach(function(i){ try{clearInterval(i);}catch(e){} }); ints=[]; }
-  function internal(href){ return href && href[0]==='/' && href!=='/admin/panel' && !/^\/(logout|login|oauth|assets)/.test(href); }
-  function updateActive(path){
-    document.querySelectorAll('.sb-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('href')===path); });
-  }
-  function ensureCss(doc){
-    doc.querySelectorAll('link[rel=stylesheet]').forEach(function(l){
-      var href=l.getAttribute('href'); var base=href.split('?')[0];
-      if(![].some.call(document.querySelectorAll('link[rel=stylesheet]'),function(x){return x.getAttribute('href').split('?')[0]===base;})){
-        var n=document.createElement('link'); n.rel='stylesheet'; n.href=href; document.head.appendChild(n);
-      }
-    });
-    // mirror any page-level inline <style> from the fetched head (one managed node)
-    var styles=''; doc.querySelectorAll('head style').forEach(function(s){ styles+=s.textContent+'\n'; });
-    var holder=document.getElementById('pjax-style');
-    if(!holder){ holder=document.createElement('style'); holder.id='pjax-style'; document.head.appendChild(holder); }
-    holder.textContent=styles;
-  }
-  function swap(html,url,push){
-    var doc; try{ doc=new DOMParser().parseFromString(html,'text/html'); }catch(e){ location.href=url; return; }
-    var nm=doc.querySelector('main.main'), cur=document.querySelector('main.main');
-    if(!nm||!cur){ location.href=url; return; }
-    clearInts();
-    if(window.SG&&SG.music)SG.music.stop(); // music is slot-page only
-    ensureCss(doc);
-    cur.innerHTML=nm.innerHTML;
-    // Page scripts live OUTSIDE <main> (end of body) — re-execute them so the
-    // new section initialises. Skip the persistent sidebar/partial scripts
-    // (sound.js, pjax, hex-bg) which already run and are window-guarded.
-    doc.querySelectorAll('body script').forEach(function(s){
-      var txt=s.textContent||'';
-      if(s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
-      if(!s.src && /__pjax|__bgHex|__notif|__srvSel|__rbW/.test(txt)) return;
-      var n=document.createElement('script');
-      if(s.src)n.src=s.src; else n.textContent=txt;
-      document.body.appendChild(n);
-      n.parentNode.removeChild(n);
-    });
-    document.title=doc.title||document.title;
-    updateActive(new URL(url,location.href).pathname);
-    if(push){ try{ history.pushState({pjax:1},'',url); }catch(e){} }
-    window.scrollTo(0,0);
-  }
-  function go(url,push){
-    fetch(url,{headers:{'X-Pjax':'1'},credentials:'same-origin'})
-      .then(function(r){ if(r.redirected){ location.href=r.url; throw 0; } return r.text(); })
-      .then(function(h){ swap(h,url,push); })
-      .catch(function(){ if(arguments[0]!==0) location.href=url; });
-  }
-  document.addEventListener('click',function(e){
-    if(e.metaKey||e.ctrlKey||e.shiftKey||e.button)return;
-    var a=e.target.closest&&e.target.closest('a'); if(!a)return;
-    if(a.target==='_blank')return;
-    var href=a.getAttribute('href'); if(!internal(href))return;
-    e.preventDefault();
-    if(new URL(href,location.href).pathname===location.pathname)return;
-    go(href,true);
-  });
-  window.addEventListener('popstate',function(){ go(location.pathname,false); });
-})();
-</script>
-<script>
-/* Floating hexagon network background. Nodes drift + connect; cursor repels nearby
-   nodes. Canvas = own compositor layer, so it never repaints page content. */
-(function(){
-  if(window.__bgHex)return; window.__bgHex=1;
-  var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var cv=document.createElement('canvas'); cv.id='bgHex';
-  (document.body||document.documentElement).insertBefore(cv,(document.body||document.documentElement).firstChild);
-  var ctx=cv.getContext('2d',{alpha:true});
-  var W=0,H=0,DPR=1,nodes=[],mouse={x:-9999,y:-9999,active:false},raf=0,running=true;
-  var LINK=132, MR=150, ACCENT=[34,197,94];
-
-  function size(){
-    DPR=Math.min(window.devicePixelRatio||1,1.5);
-    W=window.innerWidth; H=window.innerHeight;
-    cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px';
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-    var target=Math.round(Math.min(90,Math.max(28,(W*H)/22000)));
-    nodes=[];
-    for(var i=0;i<target;i++){
-      nodes.push({x:Math.random()*W,y:Math.random()*H,
-        vx:(Math.random()-0.5)*0.22,vy:(Math.random()-0.5)*0.22,
-        r:5+Math.random()*4,a:Math.random()*Math.PI});
-    }
-  }
-
-  function hex(x,y,r,rot,fill,stroke){
-    ctx.beginPath();
-    for(var k=0;k<6;k++){
-      var ang=rot+k*Math.PI/3, px=x+Math.cos(ang)*r, py=y+Math.sin(ang)*r;
-      if(k===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
-    }
-    ctx.closePath();
-    if(fill){ctx.fillStyle=fill;ctx.fill();}
-    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}
-  }
-
-  function frame(){
-    raf=0; if(!running)return;
-    ctx.clearRect(0,0,W,H);
-    var i,j,n,m,dx,dy,d2,d;
-    // move
-    for(i=0;i<nodes.length;i++){
-      n=nodes[i];
-      n.x+=n.vx; n.y+=n.vy; n.a+=0.004;
-      if(n.x<-20)n.x=W+20; else if(n.x>W+20)n.x=-20;
-      if(n.y<-20)n.y=H+20; else if(n.y>H+20)n.y=-20;
-      if(mouse.active){
-        dx=n.x-mouse.x; dy=n.y-mouse.y; d2=dx*dx+dy*dy;
-        if(d2<MR*MR && d2>0.01){ d=Math.sqrt(d2); var f=(MR-d)/MR*1.4; n.x+=dx/d*f; n.y+=dy/d*f; }
-      }
-    }
-    // links
-    for(i=0;i<nodes.length;i++){
-      n=nodes[i];
-      for(j=i+1;j<nodes.length;j++){
-        m=nodes[j]; dx=n.x-m.x; dy=n.y-m.y; d2=dx*dx+dy*dy;
-        if(d2<LINK*LINK){
-          var al=(1-Math.sqrt(d2)/LINK)*0.20;
-          ctx.strokeStyle='rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+al.toFixed(3)+')';
-          ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(n.x,n.y); ctx.lineTo(m.x,m.y); ctx.stroke();
+    (function () {
+        if (window.__pjax) return;
+        window.__pjax = 1;
+        var _si = window.setInterval,
+            ints = [];
+        window.__rawSetInterval = function (f, t) {
+            return _si.call(window, f, t);
+        }; // pjax-exempt: outlives page swaps (WS fallback poll)
+        window.setInterval = function (f, t) {
+            var id = _si.call(window, f, t);
+            ints.push(id);
+            return id;
+        };
+        function clearInts() {
+            ints.forEach(function (i) {
+                try {
+                    clearInterval(i);
+                } catch (e) {}
+            });
+            ints = [];
         }
-      }
-      // cursor-proximity glow
-      var near=0;
-      if(mouse.active){ dx=n.x-mouse.x; dy=n.y-mouse.y; near=Math.max(0,1-Math.sqrt(dx*dx+dy*dy)/MR); }
-      var base=0.18+near*0.5;
-      hex(n.x,n.y,n.r,n.a,'rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+(0.05+near*0.18).toFixed(3)+')',
-        'rgba('+ACCENT[0]+','+ACCENT[1]+','+ACCENT[2]+','+base.toFixed(3)+')');
-    }
-    raf=requestAnimationFrame(frame);
-  }
-  function kick(){ if(!raf&&running)raf=requestAnimationFrame(frame); }
-
-  window.addEventListener('pointermove',function(e){ mouse.x=e.clientX; mouse.y=e.clientY; mouse.active=true; },{passive:true});
-  window.addEventListener('pointerleave',function(){ mouse.active=false; },{passive:true});
-  window.addEventListener('resize',function(){ size(); kick(); });
-  document.addEventListener('visibilitychange',function(){
-    running=!document.hidden; if(running)kick(); else if(raf){cancelAnimationFrame(raf);raf=0;}
-  });
-
-  size();
-  if(prefersReduced){ frame(); /* one static paint */ }
-  else kick();
-})();
+        function internal(href) {
+            return (
+                href &&
+                href[0] === "/" &&
+                href !== "/admin/panel" &&
+                !/^\/(logout|login|oauth|assets)/.test(href)
+            );
+        }
+        function updateActive(path) {
+            document.querySelectorAll(".sb-item").forEach(function (a) {
+                a.classList.toggle("active", a.getAttribute("href") === path);
+            });
+        }
+        function ensureCss(doc) {
+            doc.querySelectorAll("link[rel=stylesheet]").forEach(function (l) {
+                var href = l.getAttribute("href");
+                var base = href.split("?")[0];
+                if (
+                    ![].some.call(
+                        document.querySelectorAll("link[rel=stylesheet]"),
+                        function (x) {
+                            return (
+                                x.getAttribute("href").split("?")[0] === base
+                            );
+                        },
+                    )
+                ) {
+                    var n = document.createElement("link");
+                    n.rel = "stylesheet";
+                    n.href = href;
+                    document.head.appendChild(n);
+                }
+            });
+            // mirror any page-level inline <style> from the fetched head (one managed node)
+            var styles = "";
+            doc.querySelectorAll("head style").forEach(function (s) {
+                styles += s.textContent + "\n";
+            });
+            var holder = document.getElementById("pjax-style");
+            if (!holder) {
+                holder = document.createElement("style");
+                holder.id = "pjax-style";
+                document.head.appendChild(holder);
+            }
+            holder.textContent = styles;
+        }
+        function swap(html, url, push) {
+            var doc;
+            try {
+                doc = new DOMParser().parseFromString(html, "text/html");
+            } catch (e) {
+                location.href = url;
+                return;
+            }
+            var nm = doc.querySelector("main.main"),
+                cur = document.querySelector("main.main");
+            if (!nm || !cur) {
+                location.href = url;
+                return;
+            }
+            clearInts();
+            if (window.SG && SG.music) SG.music.stop(); // music is slot-page only
+            ensureCss(doc);
+            cur.innerHTML = nm.innerHTML;
+            // Page scripts live OUTSIDE <main> (end of body) — re-execute them so the
+            // new section initialises. Skip the persistent sidebar/partial scripts
+            // (sound.js, pjax, hex-bg) which already run and are window-guarded.
+            doc.querySelectorAll("body script").forEach(function (s) {
+                var txt = s.textContent || "";
+                if (s.src && /\/assets\/js\/sound\.js/.test(s.src)) return;
+                if (!s.src && /__pjax|__bgHex|__notif|__srvSel|__rbW/.test(txt))
+                    return;
+                var n = document.createElement("script");
+                if (s.src) n.src = s.src;
+                else n.textContent = txt;
+                document.body.appendChild(n);
+                n.parentNode.removeChild(n);
+            });
+            document.title = doc.title || document.title;
+            updateActive(new URL(url, location.href).pathname);
+            if (push) {
+                try {
+                    history.pushState({ pjax: 1 }, "", url);
+                } catch (e) {}
+            }
+            window.scrollTo(0, 0);
+        }
+        function go(url, push) {
+            fetch(url, {
+                headers: { "X-Pjax": "1" },
+                credentials: "same-origin",
+            })
+                .then(function (r) {
+                    if (r.redirected) {
+                        location.href = r.url;
+                        throw 0;
+                    }
+                    return r.text();
+                })
+                .then(function (h) {
+                    swap(h, url, push);
+                })
+                .catch(function () {
+                    if (arguments[0] !== 0) location.href = url;
+                });
+        }
+        document.addEventListener("click", function (e) {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+            var a = e.target.closest && e.target.closest("a");
+            if (!a) return;
+            if (a.target === "_blank") return;
+            var href = a.getAttribute("href");
+            if (!internal(href)) return;
+            e.preventDefault();
+            if (new URL(href, location.href).pathname === location.pathname)
+                return;
+            go(href, true);
+        });
+        window.addEventListener("popstate", function () {
+            go(location.pathname, false);
+        });
+    })();
 </script>
 <script>
-/* Real-time balance + notifications over WebSocket (STDB-backed). Falls back to
+    /* Floating hexagon network background. Nodes drift + connect; cursor repels nearby
+   nodes. Canvas = own compositor layer, so it never repaints page content. */
+    (function () {
+        if (window.__bgHex) return;
+        window.__bgHex = 1;
+        var prefersReduced =
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var cv = document.createElement("canvas");
+        cv.id = "bgHex";
+        (document.body || document.documentElement).insertBefore(
+            cv,
+            (document.body || document.documentElement).firstChild,
+        );
+        var ctx = cv.getContext("2d", { alpha: true });
+        var W = 0,
+            H = 0,
+            DPR = 1,
+            nodes = [],
+            mouse = { x: -9999, y: -9999, active: false },
+            raf = 0,
+            running = true;
+        var LINK = 132,
+            MR = 150,
+            ACCENT = [34, 197, 94];
+
+        function size() {
+            DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+            W = window.innerWidth;
+            H = window.innerHeight;
+            cv.width = W * DPR;
+            cv.height = H * DPR;
+            cv.style.width = W + "px";
+            cv.style.height = H + "px";
+            ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            var target = Math.round(
+                Math.min(90, Math.max(28, (W * H) / 22000)),
+            );
+            nodes = [];
+            for (var i = 0; i < target; i++) {
+                nodes.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    vx: (Math.random() - 0.5) * 0.22,
+                    vy: (Math.random() - 0.5) * 0.22,
+                    r: 5 + Math.random() * 4,
+                    a: Math.random() * Math.PI,
+                });
+            }
+        }
+
+        function hex(x, y, r, rot, fill, stroke) {
+            ctx.beginPath();
+            for (var k = 0; k < 6; k++) {
+                var ang = rot + (k * Math.PI) / 3,
+                    px = x + Math.cos(ang) * r,
+                    py = y + Math.sin(ang) * r;
+                if (k === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            if (fill) {
+                ctx.fillStyle = fill;
+                ctx.fill();
+            }
+            if (stroke) {
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        function frame() {
+            raf = 0;
+            if (!running) return;
+            ctx.clearRect(0, 0, W, H);
+            var i, j, n, m, dx, dy, d2, d;
+            // move
+            for (i = 0; i < nodes.length; i++) {
+                n = nodes[i];
+                n.x += n.vx;
+                n.y += n.vy;
+                n.a += 0.004;
+                if (n.x < -20) n.x = W + 20;
+                else if (n.x > W + 20) n.x = -20;
+                if (n.y < -20) n.y = H + 20;
+                else if (n.y > H + 20) n.y = -20;
+                if (mouse.active) {
+                    dx = n.x - mouse.x;
+                    dy = n.y - mouse.y;
+                    d2 = dx * dx + dy * dy;
+                    if (d2 < MR * MR && d2 > 0.01) {
+                        d = Math.sqrt(d2);
+                        var f = ((MR - d) / MR) * 1.4;
+                        n.x += (dx / d) * f;
+                        n.y += (dy / d) * f;
+                    }
+                }
+            }
+            // links
+            for (i = 0; i < nodes.length; i++) {
+                n = nodes[i];
+                for (j = i + 1; j < nodes.length; j++) {
+                    m = nodes[j];
+                    dx = n.x - m.x;
+                    dy = n.y - m.y;
+                    d2 = dx * dx + dy * dy;
+                    if (d2 < LINK * LINK) {
+                        var al = (1 - Math.sqrt(d2) / LINK) * 0.2;
+                        ctx.strokeStyle =
+                            "rgba(" +
+                            ACCENT[0] +
+                            "," +
+                            ACCENT[1] +
+                            "," +
+                            ACCENT[2] +
+                            "," +
+                            al.toFixed(3) +
+                            ")";
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(n.x, n.y);
+                        ctx.lineTo(m.x, m.y);
+                        ctx.stroke();
+                    }
+                }
+                // cursor-proximity glow
+                var near = 0;
+                if (mouse.active) {
+                    dx = n.x - mouse.x;
+                    dy = n.y - mouse.y;
+                    near = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / MR);
+                }
+                var base = 0.18 + near * 0.5;
+                hex(
+                    n.x,
+                    n.y,
+                    n.r,
+                    n.a,
+                    "rgba(" +
+                        ACCENT[0] +
+                        "," +
+                        ACCENT[1] +
+                        "," +
+                        ACCENT[2] +
+                        "," +
+                        (0.05 + near * 0.18).toFixed(3) +
+                        ")",
+                    "rgba(" +
+                        ACCENT[0] +
+                        "," +
+                        ACCENT[1] +
+                        "," +
+                        ACCENT[2] +
+                        "," +
+                        base.toFixed(3) +
+                        ")",
+                );
+            }
+            raf = requestAnimationFrame(frame);
+        }
+        function kick() {
+            if (!raf && running) raf = requestAnimationFrame(frame);
+        }
+
+        window.addEventListener(
+            "pointermove",
+            function (e) {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+                mouse.active = true;
+            },
+            { passive: true },
+        );
+        window.addEventListener(
+            "pointerleave",
+            function () {
+                mouse.active = false;
+            },
+            { passive: true },
+        );
+        window.addEventListener("resize", function () {
+            size();
+            kick();
+        });
+        document.addEventListener("visibilitychange", function () {
+            running = !document.hidden;
+            if (running) kick();
+            else if (raf) {
+                cancelAnimationFrame(raf);
+                raf = 0;
+            }
+        });
+
+        size();
+        if (prefersReduced) {
+            frame(); /* one static paint */
+        } else kick();
+    })();
+</script>
+<script>
+    /* Real-time balance + notifications over WebSocket (STDB-backed). Falls back to
    HTTP polling whenever the socket is down. Updates the sidebar balance, the unread
    badge, and toasts incoming payments (with a coin sound). */
-(function(){
-  if(window.__notif)return; window.__notif=1;
-  var SEEN='sgNotifSeen';
-  function seen(){ try{return +localStorage.getItem(SEEN)||0;}catch(e){return 0;} }
-  function setSeen(v){ try{localStorage.setItem(SEEN,String(v));}catch(e){} }
-  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  function badge(n){ var b=document.getElementById('sbNotifBadge'); if(!b)return; if(n>0){b.textContent=n>99?'99+':n;b.classList.remove('hidden');}else{b.classList.add('hidden');} }
-  function badgeBump(){ var b=document.getElementById('sbNotifBadge'); var n=(b&&!b.classList.contains('hidden'))?(parseInt(b.textContent,10)||0):0; badge(n+1); }
-  // single source of truth for the balance display — sidebar + in-game meter + global var
-  function setBal(v){ v=Number(v)||0; var s=document.getElementById('sbBal'); if(s)s.textContent=v.toLocaleString(); var m=document.getElementById('balMeter'); if(m)m.textContent=v.toLocaleString(); try{ window.bal=v; }catch(e){} }
-  function toast(it){
-    var t=document.createElement('div'); t.className='notif-toast';
-    var inner = it.t==='pay' ? '<b>'+esc(it.f||'Someone')+'</b> sent you <b>'+Number(it.a).toLocaleString()+' FC</b>' : esc(it.m||'Notification');
-    t.innerHTML='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg><div>'+inner+'</div>';
-    document.body.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.add('show'); });
-    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ if(t.parentNode)t.parentNode.removeChild(t); },300); }, 4500);
-    if(window.SG)SG.sfx(it.t==='ticket'?'click':'coins');
-  }
-
-  var ws=null, pollT=null, tries=0;
-  function stopPoll(){ if(pollT){clearInterval(pollT);pollT=null;} }
-  // Use the pjax-exempt timer so a page navigation's clearInts() doesn't silently kill
-  // the WS-fallback poll (which must outlive page swaps).
-  function startPoll(){ if(pollT)return; httpPoll(); pollT=(window.__rawSetInterval||setInterval)(httpPoll,5000); }
-  function httpPoll(){
-    fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
-      if(!d)return; if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0);
-      var last=seen(), mx=last;
-      (d.items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; if(it.ts>last)toast(it); });
-      setSeen(mx);
-    }).catch(function(){});
-  }
-  function recordSeen(items){ var mx=seen(); (items||[]).forEach(function(it){ if(it.ts>mx)mx=it.ts; }); setSeen(mx); }
-  function connect(){
-    var proto=location.protocol==='https:'?'wss://':'ws://';
-    try{ ws=new WebSocket(proto+location.host+'/ws'); }catch(e){ startPoll(); return; }
-    ws.onopen=function(){ tries=0; stopPoll(); };
-    ws.onmessage=function(ev){ var d; try{d=JSON.parse(ev.data);}catch(e){return;}
-      if(d.type==='init'){ if(d.bal!==undefined)setBal(d.bal); badge(d.unread||0); recordSeen(d.items); }
-      else if(d.type==='balance'){ setBal(d.bal); }
-      else if(d.type==='notification'){ var it=d.item; if(it){ toast(it); badgeBump(); if(it.ts>seen())setSeen(it.ts); } }
-      else if(d.type==='auth'&&!d.ok){ stopPoll(); } // not logged in
-      try{ window.dispatchEvent(new CustomEvent('sg:ws',{detail:d})); }catch(e){} // pages subscribe to live events (tickets etc)
-    };
-    ws.onerror=function(){ try{ws.close();}catch(e){} };
-    ws.onclose=function(){ ws=null; startPoll(); tries++; setTimeout(connect, Math.min(15000, 1000*tries)); };
-  }
-  connect();
-})();
-</script>
-<script>
-/* Server selector — lists the user's servers that have the bot; picking one sets the
-   active server (its pool/taxes/stats apply to your plays). Persists across pjax. */
-(function(){
-  if(window.__srvSel)return; window.__srvSel=1;
-  var servers=[], selected=null;
-  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  function cur(){ for(var i=0;i<servers.length;i++) if(servers[i].id===selected) return servers[i]; return null; }
-  // Expose the active server (id + EFFECTIVE tax%) so money pages can show the cut.
-  // During a bought Tax Holiday the effective rate is 0%.
-  // Prefer the live timestamp (handles expiry); fall back to the server's holiday flag.
-  function holidayOn(s){ if(!s) return false; if(s.holidayUntil) return s.holidayUntil > Date.now(); return !!s.holiday; }
-  var holidayTimer=null;
-  function scheduleHolidayFlip(s){ if(holidayTimer){ clearTimeout(holidayTimer); holidayTimer=null; }
-    if(holidayOn(s)){ holidayTimer=setTimeout(function(){ render(); publish(); }, Math.min(2147483000, s.holidayUntil-Date.now()+800)); } }
-  function publish(){ var s=cur();
-    if(s){ var hol=holidayOn(s); window.sgServer={ id:s.id, name:s.name, owner:!!s.owner, taxBps:(s.tax|0), taxPct:(hol?0:(s.tax|0))/100, holiday:hol }; scheduleHolidayFlip(s); }
-    else window.sgServer=null;
-    try{ window.dispatchEvent(new CustomEvent('sg:server',{detail:window.sgServer})); }catch(e){} paintTax(); }
-  window.sgCurrentServer=function(){ return selected; };
-  // Update any #srvTaxNote on the current page with the active server's cut. Pjax-safe:
-  // the sidebar persists, so pages only need the element + a call to window.sgPaintTax().
-  function paintTax(){ var els=document.querySelectorAll('.srv-tax-note'); if(!els.length) return; var s=window.sgServer;
-    var ic='<svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg> ';
-    var html = s ? ic + (s.holiday ? '<span><b>0%</b> tax · holiday on <b>'+esc(s.name)+'</b></span>' : '<span><b>'+(s.taxPct)+'%</b> tax on profit · <b>'+esc(s.name)+'</b></span>') : '';
-    for(var i=0;i<els.length;i++){ if(!s){ els[i].hidden=true; } else { els[i].hidden=false; els[i].innerHTML=html; } } }
-  window.sgPaintTax=paintTax;
-  function render(){
-    var s=cur(), nm=document.getElementById('srvName'), av=document.getElementById('srvAv'), w=document.getElementById('srvWrap');
-    if(nm) nm.textContent = s ? s.name : (servers.length?'Pick a server':'No server');
-    if(av) av.textContent = s ? (s.name||'?').slice(0,1).toUpperCase() : '?';
-    if(w) w.classList.toggle('srv-unset', !s);
-    var m=document.getElementById('srvMenu'); if(!m)return;
-    m.innerHTML = servers.length
-      ? servers.map(function(x){ var ht=holidayOn(x); return '<div class="srv-item'+(x.id===selected?' on':'')+'"><button class="srv-pick" type="button" onclick="sgPickSrv(\''+x.id+'\')"><span class="srv-av sm">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</span><span class="srv-it-name">'+esc(x.name)+'</span><span class="srv-tax'+(ht?' hol':'')+'">'+(ht?'0% 🎉':((x.tax|0)/100)+'%')+'</span>'+(x.owner?'<span class="srv-own">Owner</span>':'')+'</button>'+(x.owner?'<button class="srv-gear" type="button" title="Set winnings tax" onclick="sgEditTax(\''+x.id+'\',event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>':'')+'</div>'; }).join('')
-      : '<div class="srv-empty">No servers yet — type <b>&web</b> in a server that has the bot.</div>';
-  }
-  window.sgToggleSrv=function(e){ if(e)e.stopPropagation(); var m=document.getElementById('srvMenu'); if(m)m.classList.toggle('hidden'); };
-  window.sgPickSrv=function(id){
-    fetch('/api/select-server',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guildId:id}),credentials:'same-origin'})
-      .then(function(r){return r.json()}).then(function(d){ if(d&&d.ok){ selected=id; render(); publish(); var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); } else if(d&&d.error){ alert(d.error); } }).catch(function(){});
-  };
-  // Called by money pages when the server gate rejects an action — flash the picker open.
-  window.sgNeedServer=function(){ var b=document.getElementById('srvBtn'), m=document.getElementById('srvMenu');
-    if(m) m.classList.remove('hidden'); if(b){ b.classList.add('srv-flash'); setTimeout(function(){ b.classList.remove('srv-flash'); }, 1200); } };
-  // Owner-only: open the winnings-tax editor (gated behind a FluxerList vote, server-side).
-  window.sgEditTax=function(id,e){ if(e)e.stopPropagation();
-    fetch('/api/server/tax?gid='+encodeURIComponent(id),{credentials:'same-origin'})
-      .then(function(r){return r.json()}).then(function(d){ if(!d||d.error){ alert((d&&d.error)||'Failed to load tax'); return; } sgShowTaxDlg(id,d); })
-      .catch(function(){ alert('Failed to load tax'); });
-  };
-  function sgShowTaxDlg(id,d){
-    var sv=servers.filter(function(x){return x.id===id;})[0]||{name:'Server'};
-    var back=document.createElement('div'); back.className='sg-dlg-back';
-    var voteUrl=d.voteUrl||'https://fluxerlist.com';
-    var bank=Number(d.bank||0).toLocaleString();
-    var minPct=(d.minBps||0)/100, maxPct=(d.maxBps/100), curPct=(d.taxBps/100);
-    var raiseNote = d.needVoteToRaise
-      ? '<div class="sg-dlg-gate">You can <b>lower</b> your tax anytime. To <b>raise</b> it above '+curPct+'%, you need an active <a href="'+voteUrl+'" target="_blank" rel="noopener">FluxerList vote</a>.</div>'
-      : '';
-    var body = d.canChange
-      ? '<label class="sg-dlg-lab">Tax on winnings (% of profit)</label>'
-        +'<div class="sg-dlg-row"><input id="sgTaxIn" type="number" min="'+minPct+'" max="'+maxPct+'" step="0.5" value="'+curPct+'"><span>%</span></div>'
-        +'<div class="sg-dlg-hint">Min '+minPct+'%, max '+maxPct+'%. The cut feeds your server bank.</div>'
-        +raiseNote
-        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Cancel</button><button class="btn btn-primary" id="sgTaxSave">Save</button></div>'
-      : '<div class="sg-dlg-hint">Current tax: <b>'+curPct+'%</b>. Only the server owner can change it.</div>'
-        +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Close</button></div>';
-    back.innerHTML='<div class="sg-dlg" onclick="event.stopPropagation()"><div class="sg-dlg-h"><b>'+esc(sv.name)+'</b> · Server tax</div><div class="sg-dlg-bank">Bank: <b>'+bank+' FC</b></div>'+body+'</div>';
-    function close(){ try{document.body.removeChild(back);}catch(e){} }
-    back.addEventListener('click',close);
-    document.body.appendChild(back);
-    var c=back.querySelector('#sgTaxCancel'); if(c)c.onclick=close;
-    var s=back.querySelector('#sgTaxSave');
-    if(s)s.onclick=function(){ var v=parseFloat(back.querySelector('#sgTaxIn').value); if(!(v>=0)){ alert('Enter a valid percent'); return; }
-      s.disabled=true; s.textContent='Saving…';
-      fetch('/api/server/tax',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({gid:id,percent:v})})
-        .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok){ for(var i=0;i<servers.length;i++) if(servers[i].id===id) servers[i].tax=j.taxBps; render(); publish(); try{ window.dispatchEvent(new CustomEvent('sg:tax',{detail:{gid:id,taxBps:j.taxBps}})); }catch(e){} close(); }
-          else { alert((j&&j.error)||'Failed'); s.disabled=false; s.textContent='Save'; if(j&&j.needVote){ close(); window.open(j.voteUrl||voteUrl,'_blank'); } } })
-        .catch(function(){ alert('Failed'); s.disabled=false; s.textContent='Save'; });
-    };
-  }
-  document.addEventListener('click',function(){ var m=document.getElementById('srvMenu'); if(m)m.classList.add('hidden'); });
-  // (Re)load the server list. Safe to call repeatedly — only auto-pins when the user
-  // has no selection yet, so a refresh after joining a server won't change selection.
-  function loadServers(){ fetch('/api/servers',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){ if(!d)return; servers=d.servers||[]; selected=d.selected; render();
-    if(!d.pinned && servers.length){ window.sgPickSrv(selected); } else { publish(); }
-  }).catch(function(){}); }
-  // Live: tax/holiday, guild rename, and `servers` = "your server list changed" (you
-  // joined a new server — pushed by the bot on activity) → re-fetch the picker.
-  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d)return;
-    if(d.type==='servers'){ loadServers(); return; }
-    if(d.type!=='server-econ' && d.type!=='guild') return;
-    for(var i=0;i<servers.length;i++){ if(servers[i].id!==d.gid) continue;
-      if(d.type==='server-econ'){ servers[i].tax=d.taxBps; servers[i].holidayUntil=(d.shop&&d.shop.taxHolidayUntil)||0; }
-      else { if(d.name)servers[i].name=d.name; if(d.icon!==undefined)servers[i].icon=d.icon; }
-      render(); if(servers[i].id===selected)publish(); break; } });
-  // Fallback: refresh the list when the tab regains focus (covers a missed WS event).
-  document.addEventListener('visibilitychange', function(){ if(!document.hidden) loadServers(); });
-  loadServers();
-})();
-/* Global gate guard: any /api money call rejected with {needServer} flashes the
-   server picker so the user knows to choose one — no per-page wiring needed. */
-(function(){
-  if(window.__srvGate)return; window.__srvGate=1;
-  var orig=window.fetch.bind(window);
-  window.fetch=function(input,init){
-    var p=orig(input,init);
-    try{
-      var url=typeof input==='string'?input:(input&&input.url)||'';
-      if(url.indexOf('/api/')>=0){
-        return p.then(function(res){
-          try{
-            var ct=res.headers&&res.headers.get&&res.headers.get('content-type')||'';
-            if(ct.indexOf('application/json')>=0){
-              res.clone().json().then(function(j){ if(j&&j.needServer&&window.sgNeedServer) window.sgNeedServer(); }).catch(function(){});
+    (function () {
+        if (window.__notif) return;
+        window.__notif = 1;
+        var SEEN = "sgNotifSeen";
+        function seen() {
+            try {
+                return +localStorage.getItem(SEEN) || 0;
+            } catch (e) {
+                return 0;
             }
-          }catch(e){}
-          return res;
-        });
-      }
-    }catch(e){}
-    return p;
-  };
-})();
+        }
+        function setSeen(v) {
+            try {
+                localStorage.setItem(SEEN, String(v));
+            } catch (e) {}
+        }
+        function esc(s) {
+            return String(s).replace(/[&<>"]/g, function (c) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                }[c];
+            });
+        }
+        function badge(n) {
+            var b = document.getElementById("sbNotifBadge");
+            if (!b) return;
+            if (n > 0) {
+                b.textContent = n > 99 ? "99+" : n;
+                b.classList.remove("hidden");
+            } else {
+                b.classList.add("hidden");
+            }
+        }
+        function badgeBump() {
+            var b = document.getElementById("sbNotifBadge");
+            var n =
+                b && !b.classList.contains("hidden")
+                    ? parseInt(b.textContent, 10) || 0
+                    : 0;
+            badge(n + 1);
+        }
+        // single source of truth for the balance display — sidebar + in-game meter + global var
+        function setBal(v) {
+            v = Number(v) || 0;
+            var s = document.getElementById("sbBal");
+            if (s) s.textContent = v.toLocaleString();
+            var m = document.getElementById("balMeter");
+            if (m) m.textContent = v.toLocaleString();
+            try {
+                window.bal = v;
+            } catch (e) {}
+        }
+        function toast(it) {
+            var t = document.createElement("div");
+            t.className = "notif-toast";
+            var inner =
+                it.t === "pay"
+                    ? "<b>" +
+                      esc(it.f || "Someone") +
+                      "</b> sent you <b>" +
+                      Number(it.a).toLocaleString() +
+                      " FC</b>"
+                    : esc(it.m || "Notification");
+            t.innerHTML =
+                '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg><div>' +
+                inner +
+                "</div>";
+            document.body.appendChild(t);
+            requestAnimationFrame(function () {
+                t.classList.add("show");
+            });
+            setTimeout(function () {
+                t.classList.remove("show");
+                setTimeout(function () {
+                    if (t.parentNode) t.parentNode.removeChild(t);
+                }, 300);
+            }, 4500);
+            if (window.SG) SG.sfx(it.t === "ticket" ? "click" : "coins");
+        }
+
+        var ws = null,
+            pollT = null,
+            tries = 0;
+        function stopPoll() {
+            if (pollT) {
+                clearInterval(pollT);
+                pollT = null;
+            }
+        }
+        // Use the pjax-exempt timer so a page navigation's clearInts() doesn't silently kill
+        // the WS-fallback poll (which must outlive page swaps).
+        function startPoll() {
+            if (pollT) return;
+            httpPoll();
+            pollT = (window.__rawSetInterval || setInterval)(httpPoll, 5000);
+        }
+        function httpPoll() {
+            fetch("/api/notifications", { credentials: "same-origin" })
+                .then(function (r) {
+                    return r.ok ? r.json() : null;
+                })
+                .then(function (d) {
+                    if (!d) return;
+                    if (d.bal !== undefined) setBal(d.bal);
+                    badge(d.unread || 0);
+                    var last = seen(),
+                        mx = last;
+                    (d.items || []).forEach(function (it) {
+                        if (it.ts > mx) mx = it.ts;
+                        if (it.ts > last) toast(it);
+                    });
+                    setSeen(mx);
+                })
+                .catch(function () {});
+        }
+        function recordSeen(items) {
+            var mx = seen();
+            (items || []).forEach(function (it) {
+                if (it.ts > mx) mx = it.ts;
+            });
+            setSeen(mx);
+        }
+        function connect() {
+            var proto = location.protocol === "https:" ? "wss://" : "ws://";
+            try {
+                ws = new WebSocket(proto + location.host + "/ws");
+            } catch (e) {
+                startPoll();
+                return;
+            }
+            ws.onopen = function () {
+                tries = 0;
+                stopPoll();
+            };
+            ws.onmessage = function (ev) {
+                var d;
+                try {
+                    d = JSON.parse(ev.data);
+                } catch (e) {
+                    return;
+                }
+                if (d.type === "init") {
+                    if (d.bal !== undefined) setBal(d.bal);
+                    badge(d.unread || 0);
+                    recordSeen(d.items);
+                } else if (d.type === "balance") {
+                    setBal(d.bal);
+                } else if (d.type === "notification") {
+                    var it = d.item;
+                    if (it) {
+                        toast(it);
+                        badgeBump();
+                        if (it.ts > seen()) setSeen(it.ts);
+                    }
+                } else if (d.type === "auth" && !d.ok) {
+                    stopPoll();
+                } // not logged in
+                try {
+                    window.dispatchEvent(
+                        new CustomEvent("sg:ws", { detail: d }),
+                    );
+                } catch (e) {} // pages subscribe to live events (tickets etc)
+            };
+            ws.onerror = function () {
+                try {
+                    ws.close();
+                } catch (e) {}
+            };
+            ws.onclose = function () {
+                ws = null;
+                startPoll();
+                tries++;
+                setTimeout(connect, Math.min(15000, 1000 * tries));
+            };
+        }
+        connect();
+    })();
 </script>
 <script>
-/* Rakeback widget — per selected server. Lives in the sidebar so it persists
+    /* Server selector — lists the user's servers that have the bot; picking one sets the
+   active server (its pool/taxes/stats apply to your plays). Persists across pjax. */
+    (function () {
+        if (window.__srvSel) return;
+        window.__srvSel = 1;
+        var servers = [],
+            selected = null;
+        function esc(s) {
+            return String(s).replace(/[&<>"]/g, function (c) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                }[c];
+            });
+        }
+        function cur() {
+            for (var i = 0; i < servers.length; i++)
+                if (servers[i].id === selected) return servers[i];
+            return null;
+        }
+        // Expose the active server (id + EFFECTIVE tax%) so money pages can show the cut.
+        // During a bought Tax Holiday the effective rate is 0%.
+        // Prefer the live timestamp (handles expiry); fall back to the server's holiday flag.
+        function holidayOn(s) {
+            if (!s) return false;
+            if (s.holidayUntil) return s.holidayUntil > Date.now();
+            return !!s.holiday;
+        }
+        var holidayTimer = null;
+        function scheduleHolidayFlip(s) {
+            if (holidayTimer) {
+                clearTimeout(holidayTimer);
+                holidayTimer = null;
+            }
+            if (holidayOn(s)) {
+                holidayTimer = setTimeout(
+                    function () {
+                        render();
+                        publish();
+                    },
+                    Math.min(2147483000, s.holidayUntil - Date.now() + 800),
+                );
+            }
+        }
+        function publish() {
+            var s = cur();
+            if (s) {
+                var hol = holidayOn(s);
+                window.sgServer = {
+                    id: s.id,
+                    name: s.name,
+                    owner: !!s.owner,
+                    taxBps: s.tax | 0,
+                    taxPct: (hol ? 0 : s.tax | 0) / 100,
+                    holiday: hol,
+                };
+                scheduleHolidayFlip(s);
+            } else window.sgServer = null;
+            try {
+                window.dispatchEvent(
+                    new CustomEvent("sg:server", { detail: window.sgServer }),
+                );
+            } catch (e) {}
+            paintTax();
+        }
+        window.sgCurrentServer = function () {
+            return selected;
+        };
+        // Update any #srvTaxNote on the current page with the active server's cut. Pjax-safe:
+        // the sidebar persists, so pages only need the element + a call to window.sgPaintTax().
+        function paintTax() {
+            var els = document.querySelectorAll(".srv-tax-note");
+            if (!els.length) return;
+            var s = window.sgServer;
+            var ic =
+                '<svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg> ';
+            var html = s
+                ? ic +
+                  (s.holiday
+                      ? "<span><b>0%</b> tax · holiday on <b>" +
+                        esc(s.name) +
+                        "</b></span>"
+                      : "<span><b>" +
+                        s.taxPct +
+                        "%</b> tax on profit · <b>" +
+                        esc(s.name) +
+                        "</b></span>")
+                : "";
+            for (var i = 0; i < els.length; i++) {
+                if (!s) {
+                    els[i].hidden = true;
+                } else {
+                    els[i].hidden = false;
+                    els[i].innerHTML = html;
+                }
+            }
+        }
+        window.sgPaintTax = paintTax;
+        function render() {
+            var s = cur(),
+                nm = document.getElementById("srvName"),
+                av = document.getElementById("srvAv"),
+                w = document.getElementById("srvWrap");
+            if (nm)
+                nm.textContent = s
+                    ? s.name
+                    : servers.length
+                      ? "Pick a server"
+                      : "No server";
+            if (av)
+                av.textContent = s
+                    ? (s.name || "?").slice(0, 1).toUpperCase()
+                    : "?";
+            if (w) w.classList.toggle("srv-unset", !s);
+            var m = document.getElementById("srvMenu");
+            if (!m) return;
+            m.innerHTML = servers.length
+                ? servers
+                      .map(function (x) {
+                          var ht = holidayOn(x);
+                          return (
+                              '<div class="srv-item' +
+                              (x.id === selected ? " on" : "") +
+                              '"><button class="srv-pick" type="button" onclick="sgPickSrv(\'' +
+                              x.id +
+                              '\')"><span class="srv-av sm">' +
+                              esc((x.name || "?").slice(0, 1).toUpperCase()) +
+                              '</span><span class="srv-it-name">' +
+                              esc(x.name) +
+                              '</span><span class="srv-tax' +
+                              (ht ? " hol" : "") +
+                              '">' +
+                              (ht ? "0% 🎉" : (x.tax | 0) / 100 + "%") +
+                              "</span>" +
+                              (x.owner
+                                  ? '<span class="srv-own">Owner</span>'
+                                  : "") +
+                              "</button>" +
+                              (x.owner
+                                  ? '<button class="srv-gear" type="button" title="Set winnings tax" onclick="sgEditTax(\'' +
+                                    x.id +
+                                    '\',event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'
+                                  : "") +
+                              "</div>"
+                          );
+                      })
+                      .join("")
+                : '<div class="srv-empty">No servers yet — type <b>&web</b> in a server that has the bot.</div>';
+        }
+        window.sgToggleSrv = function (e) {
+            if (e) e.stopPropagation();
+            var m = document.getElementById("srvMenu");
+            if (m) m.classList.toggle("hidden");
+        };
+        window.sgPickSrv = function (id) {
+            fetch("/api/select-server", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ guildId: id }),
+                credentials: "same-origin",
+            })
+                .then(function (r) {
+                    return r.json();
+                })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        selected = id;
+                        render();
+                        publish();
+                        var m = document.getElementById("srvMenu");
+                        if (m) m.classList.add("hidden");
+                    } else if (d && d.error) {
+                        alert(d.error);
+                    }
+                })
+                .catch(function () {});
+        };
+        // Called by money pages when the server gate rejects an action — flash the picker open.
+        window.sgNeedServer = function () {
+            var b = document.getElementById("srvBtn"),
+                m = document.getElementById("srvMenu");
+            if (m) m.classList.remove("hidden");
+            if (b) {
+                b.classList.add("srv-flash");
+                setTimeout(function () {
+                    b.classList.remove("srv-flash");
+                }, 1200);
+            }
+        };
+        // Owner-only: open the winnings-tax editor (gated behind a FluxerList vote, server-side).
+        window.sgEditTax = function (id, e) {
+            if (e) e.stopPropagation();
+            fetch("/api/server/tax?gid=" + encodeURIComponent(id), {
+                credentials: "same-origin",
+            })
+                .then(function (r) {
+                    return r.json();
+                })
+                .then(function (d) {
+                    if (!d || d.error) {
+                        alert((d && d.error) || "Failed to load tax");
+                        return;
+                    }
+                    sgShowTaxDlg(id, d);
+                })
+                .catch(function () {
+                    alert("Failed to load tax");
+                });
+        };
+        function sgShowTaxDlg(id, d) {
+            var sv = servers.filter(function (x) {
+                return x.id === id;
+            })[0] || { name: "Server" };
+            var back = document.createElement("div");
+            back.className = "sg-dlg-back";
+            var voteUrl = d.voteUrl || "https://fluxerlist.com";
+            var bank = Number(d.bank || 0).toLocaleString();
+            var minPct = (d.minBps || 0) / 100,
+                maxPct = d.maxBps / 100,
+                curPct = d.taxBps / 100;
+            var raiseNote = d.needVoteToRaise
+                ? '<div class="sg-dlg-gate">You can <b>lower</b> your tax anytime. To <b>raise</b> it above ' +
+                  curPct +
+                  '%, you need an active <a href="' +
+                  voteUrl +
+                  '" target="_blank" rel="noopener">FluxerList vote</a>.</div>'
+                : "";
+            var body = d.canChange
+                ? '<label class="sg-dlg-lab">Tax on winnings (% of profit)</label>' +
+                  '<div class="sg-dlg-row"><input id="sgTaxIn" type="number" min="' +
+                  minPct +
+                  '" max="' +
+                  maxPct +
+                  '" step="0.5" value="' +
+                  curPct +
+                  '"><span>%</span></div>' +
+                  '<div class="sg-dlg-hint">Min ' +
+                  minPct +
+                  "%, max " +
+                  maxPct +
+                  "%. The cut feeds your server bank.</div>" +
+                  raiseNote +
+                  '<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Cancel</button><button class="btn btn-primary" id="sgTaxSave">Save</button></div>'
+                : '<div class="sg-dlg-hint">Current tax: <b>' +
+                  curPct +
+                  "%</b>. Only the server owner can change it.</div>" +
+                  '<div class="sg-dlg-act"><button class="btn btn-secondary" id="sgTaxCancel">Close</button></div>';
+            back.innerHTML =
+                '<div class="sg-dlg" onclick="event.stopPropagation()"><div class="sg-dlg-h"><b>' +
+                esc(sv.name) +
+                '</b> · Server tax</div><div class="sg-dlg-bank">Bank: <b>' +
+                bank +
+                " FC</b></div>" +
+                body +
+                "</div>";
+            function close() {
+                try {
+                    document.body.removeChild(back);
+                } catch (e) {}
+            }
+            back.addEventListener("click", close);
+            document.body.appendChild(back);
+            var c = back.querySelector("#sgTaxCancel");
+            if (c) c.onclick = close;
+            var s = back.querySelector("#sgTaxSave");
+            if (s)
+                s.onclick = function () {
+                    var v = parseFloat(back.querySelector("#sgTaxIn").value);
+                    if (!(v >= 0)) {
+                        alert("Enter a valid percent");
+                        return;
+                    }
+                    s.disabled = true;
+                    s.textContent = "Saving…";
+                    fetch("/api/server/tax", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "same-origin",
+                        body: JSON.stringify({ gid: id, percent: v }),
+                    })
+                        .then(function (r) {
+                            return r.json();
+                        })
+                        .then(function (j) {
+                            if (j && j.ok) {
+                                for (var i = 0; i < servers.length; i++)
+                                    if (servers[i].id === id)
+                                        servers[i].tax = j.taxBps;
+                                render();
+                                publish();
+                                try {
+                                    window.dispatchEvent(
+                                        new CustomEvent("sg:tax", {
+                                            detail: {
+                                                gid: id,
+                                                taxBps: j.taxBps,
+                                            },
+                                        }),
+                                    );
+                                } catch (e) {}
+                                close();
+                            } else {
+                                alert((j && j.error) || "Failed");
+                                s.disabled = false;
+                                s.textContent = "Save";
+                                if (j && j.needVote) {
+                                    close();
+                                    window.open(j.voteUrl || voteUrl, "_blank");
+                                }
+                            }
+                        })
+                        .catch(function () {
+                            alert("Failed");
+                            s.disabled = false;
+                            s.textContent = "Save";
+                        });
+                };
+        }
+        document.addEventListener("click", function () {
+            var m = document.getElementById("srvMenu");
+            if (m) m.classList.add("hidden");
+        });
+        // (Re)load the server list. Safe to call repeatedly — only auto-pins when the user
+        // has no selection yet, so a refresh after joining a server won't change selection.
+        function loadServers() {
+            fetch("/api/servers", { credentials: "same-origin" })
+                .then(function (r) {
+                    return r.ok ? r.json() : null;
+                })
+                .then(function (d) {
+                    if (!d) return;
+                    servers = d.servers || [];
+                    selected = d.selected;
+                    render();
+                    if (!d.pinned && servers.length) {
+                        window.sgPickSrv(selected);
+                    } else {
+                        publish();
+                    }
+                })
+                .catch(function () {});
+        }
+        // Live: tax/holiday, guild rename, and `servers` = "your server list changed" (you
+        // joined a new server — pushed by the bot on activity) → re-fetch the picker.
+        window.addEventListener("sg:ws", function (e) {
+            var d = e.detail;
+            if (!d) return;
+            if (d.type === "servers") {
+                loadServers();
+                return;
+            }
+            if (d.type !== "server-econ" && d.type !== "guild") return;
+            for (var i = 0; i < servers.length; i++) {
+                if (servers[i].id !== d.gid) continue;
+                if (d.type === "server-econ") {
+                    servers[i].tax = d.taxBps;
+                    servers[i].holidayUntil =
+                        (d.shop && d.shop.taxHolidayUntil) || 0;
+                } else {
+                    if (d.name) servers[i].name = d.name;
+                    if (d.icon !== undefined) servers[i].icon = d.icon;
+                }
+                render();
+                if (servers[i].id === selected) publish();
+                break;
+            }
+        });
+        // Fallback: refresh the list when the tab regains focus (covers a missed WS event).
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden) loadServers();
+        });
+        loadServers();
+    })();
+    /* Global gate guard: any /api money call rejected with {needServer} flashes the
+   server picker so the user knows to choose one — no per-page wiring needed. */
+    (function () {
+        if (window.__srvGate) return;
+        window.__srvGate = 1;
+        var orig = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var p = orig(input, init);
+            try {
+                var url =
+                    typeof input === "string"
+                        ? input
+                        : (input && input.url) || "";
+                if (url.indexOf("/api/") >= 0) {
+                    return p.then(function (res) {
+                        try {
+                            var ct =
+                                (res.headers &&
+                                    res.headers.get &&
+                                    res.headers.get("content-type")) ||
+                                "";
+                            if (ct.indexOf("application/json") >= 0) {
+                                res.clone()
+                                    .json()
+                                    .then(function (j) {
+                                        if (
+                                            j &&
+                                            j.needServer &&
+                                            window.sgNeedServer
+                                        )
+                                            window.sgNeedServer();
+                                    })
+                                    .catch(function () {});
+                            }
+                        } catch (e) {}
+                        return res;
+                    });
+                }
+            } catch (e) {}
+            return p;
+        };
+    })();
+</script>
+<script>
+    /* Rakeback widget — per selected server. Lives in the sidebar so it persists
    across pjax. Reloads when the server changes (sg:server) or a balance WS push
    arrives (sg:ws balance). Mirrors the old lobby tile behaviour. */
-(function(){
-  if(window.__rbW)return; window.__rbW=1;
-  function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
-  function els(){
-    return {
-      w: document.getElementById('rbWidget'),
-      amt: document.getElementById('rbAmt'),
-      sub: document.getElementById('rbSub'),
-      btn: document.getElementById('rbClaim')
-    };
-  }
-  function loadRakeback(){
-    fetch('/api/rakeback',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(d){
-      var e=els(); if(!d||!e.w){return;}
-      if(d.needServer){
-        if(e.amt)e.amt.textContent='0';
-        if(e.sub)e.sub.textContent='Select a server to earn rakeback';
-        if(e.btn){e.btn.disabled=true;e.btn.textContent='Select server';}
-        e.w.classList.add('rb-nosrv');
-        return;
-      }
-      e.w.classList.remove('rb-nosrv');
-      if(e.amt)e.amt.textContent=fmt(d.accrued||0);
-      if(e.sub)e.sub.textContent=(d.pct||0)+'% rakeback · accrues on every bet'+(d.taxBps===0?' (tax holiday — paused)':'');
-      if(e.btn){e.btn.disabled=!(d.accrued>0);e.btn.textContent='Claim';}
-    }).catch(function(){});
-  }
-  function bind(){
-    var e=els(); if(!e.btn||e.btn.__rbBound)return; e.btn.__rbBound=1;
-    e.btn.onclick=function(){
-      if(e.btn.disabled)return; e.btn.disabled=true; e.btn.textContent='…';
-      fetch('/api/rakeback/claim',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
-        if(d&&d.ok&&d.claimed>0){ if(e.amt)e.amt.textContent='0'; if(e.sub)e.sub.textContent='+'+fmt(d.claimed)+' FC claimed!'; }
-        else if(e.btn){e.btn.textContent='Claim';e.btn.disabled=false;}
-        setTimeout(loadRakeback,1200);
-      }).catch(function(){ if(e.btn){e.btn.textContent='Claim';e.btn.disabled=false;} });
-    };
-  }
-  // initial + reload on server change / balance push
-  loadRakeback(); bind();
-  window.addEventListener('sg:server', loadRakeback);
-  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(d&&d.type==='balance'){ loadRakeback(); bind(); } });
-  // re-bind after pjax swaps in case the button was replaced (sidebar persists,
-  // but be defensive): observe the widget subtree.
-  var mo=new MutationObserver(function(){ bind(); });
-  var w=document.getElementById('rbWidget'); if(w)mo.observe(w,{childList:true,subtree:true,attributes:true});
-})();
+    (function () {
+        if (window.__rbW) return;
+        window.__rbW = 1;
+        function fmt(n) {
+            return Number(Math.round(n || 0)).toLocaleString();
+        }
+        function els() {
+            return {
+                w: document.getElementById("rbWidget"),
+                amt: document.getElementById("rbAmt"),
+                btn: document.getElementById("rbClaim"),
+            };
+        }
+        function loadRakeback() {
+            fetch("/api/rakeback", { credentials: "same-origin" })
+                .then(function (r) {
+                    return r.ok ? r.json() : null;
+                })
+                .then(function (d) {
+                    var e = els();
+                    if (!d || !e.w) {
+                        return;
+                    }
+                    if (d.needServer) {
+                        if (e.amt) e.amt.textContent = "0";
+                        if (e.btn) {
+                            e.btn.disabled = true;
+                            e.btn.textContent = "Select server";
+                        }
+                        e.w.classList.add("rb-nosrv");
+                        return;
+                    }
+                    e.w.classList.remove("rb-nosrv");
+                    if (e.amt) e.amt.textContent = fmt(d.accrued || 0);
+                    if (e.btn) {
+                        e.btn.disabled = !(d.accrued > 0);
+                        e.btn.textContent = "Claim";
+                    }
+                    e.w.title =
+                        d.taxBps === 0
+                            ? "Tax holiday — rakeback paused"
+                            : "Cash back on every bet";
+                })
+                .catch(function () {});
+        }
+        function bind() {
+            var e = els();
+            if (!e.btn || e.btn.__rbBound) return;
+            e.btn.__rbBound = 1;
+            e.btn.onclick = function () {
+                if (e.btn.disabled) return;
+                e.btn.disabled = true;
+                e.btn.textContent = "…";
+                fetch("/api/rakeback/claim", {
+                    method: "POST",
+                    credentials: "same-origin",
+                })
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (d) {
+                        if (d && d.ok && d.claimed > 0) {
+                            if (e.amt) e.amt.textContent = "0";
+                            if (e.btn)
+                                e.btn.textContent =
+                                    "+" + fmt(d.claimed) + " FC";
+                        } else if (e.btn) {
+                            e.btn.textContent = "Claim";
+                            e.btn.disabled = false;
+                        }
+                        setTimeout(loadRakeback, 1200);
+                    })
+                    .catch(function () {
+                        if (e.btn) {
+                            e.btn.textContent = "Claim";
+                            e.btn.disabled = false;
+                        }
+                    });
+            };
+        }
+        // initial + reload on server change / balance push
+        loadRakeback();
+        bind();
+        window.addEventListener("sg:server", loadRakeback);
+        window.addEventListener("sg:ws", function (e) {
+            var d = e.detail;
+            if (d && d.type === "balance") {
+                loadRakeback();
+                bind();
+            }
+        });
+        // re-bind after pjax swaps in case the button was replaced (sidebar persists,
+        // but be defensive): observe the widget subtree.
+        var mo = new MutationObserver(function () {
+            bind();
+        });
+        var w = document.getElementById("rbWidget");
+        if (w)
+            mo.observe(w, { childList: true, subtree: true, attributes: true });
+    })();
 </script>
