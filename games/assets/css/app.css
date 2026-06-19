@@ -314,7 +314,7 @@ html{-webkit-tap-highlight-color:transparent}
   body .buy-btn.chip .buy-cost{font-size:.74rem}
   body .mn-tile{font-size:1.6rem}
   body .pk-slot{font-size:.66rem;padding:.45rem 0}
-  .input,select,textarea{font-size:16px;min-height:42px}
+  .input,input,select,textarea{font-size:16px;min-height:42px}
   .notif-toast{top:10px;right:10px;left:10px;max-width:none}
 }
 @media(max-width:480px){

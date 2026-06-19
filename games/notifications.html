@@ -1,91 +1,391 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Notifications — SirGreen Casino</title>
-<link rel="stylesheet" href="/assets/css/app.css">
-<style>
-.ntf-search{width:100%;max-width:680px;margin:0 0 .6rem;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.5rem .7rem;color:var(--text);font-size:.82rem}
-.ntf-search::placeholder{color:var(--text3)} .ntf-search:focus{outline:none;border-color:var(--accent)}
-.ntf-list{display:flex;flex-direction:column;gap:.3rem;max-width:680px}
-.ntf{display:flex;align-items:center;gap:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.45rem .65rem}
-.ntf-ic{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:color-mix(in srgb,var(--gc,#22c55e) 16%,transparent);color:var(--gc,#22c55e)}
-.ntf-ic .icon{width:15px;height:15px}
-.ntf-body{flex:1;min-width:0}
-.ntf-msg{font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ntf-msg b{color:var(--text)}
-.ntf-time{font-size:.62rem;color:var(--text3);margin-top:.1rem}
-.ntf-amt{font-size:.82rem;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap}
-.ntf-empty{color:var(--text3);text-align:center;padding:2.5rem 1rem;font-size:.85rem}
-.ntf.pay{--gc:#22c55e} .ntf.balance{--gc:#eab308} .ntf.ticket{--gc:#3b82f6}
-</style>
-</head>
-<body>
-<div class="app">
-__SIDEBAR__
-<main class="main">
-  <div class="page-head"><div>
-    <h1 class="page-title">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-      Notifications
-    </h1>
-    <div class="page-sub">Payments and casino activity — live.</div>
-  </div></div>
-  <input class="ntf-search" id="ntfSearch" placeholder="Search notifications…" autocomplete="off">
-  <div class="ntf-list" id="ntfList"><div class="ntf-empty">Loading…</div></div>
-</main>
-</div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Notifications — SirGreen Casino</title>
+        <link rel="stylesheet" href="/assets/css/app.css" />
+        <style>
+            .ntf-search {
+                width: 100%;
+                max-width: 680px;
+                margin: 0 0 0.6rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.5rem 0.7rem;
+                color: var(--text);
+                font-size: 0.82rem;
+            }
+            .ntf-search::placeholder {
+                color: var(--text3);
+            }
+            .ntf-search:focus {
+                outline: none;
+                border-color: var(--accent);
+            }
+            .ntf-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+                max-width: 680px;
+            }
+            .ntf {
+                display: flex;
+                align-items: center;
+                gap: 0.55rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 0.45rem 0.65rem;
+            }
+            .ntf-ic {
+                width: 28px;
+                height: 28px;
+                border-radius: 7px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                background: color-mix(
+                    in srgb,
+                    var(--gc, #22c55e) 16%,
+                    transparent
+                );
+                color: var(--gc, #22c55e);
+            }
+            .ntf-ic .icon {
+                width: 15px;
+                height: 15px;
+            }
+            .ntf-body {
+                flex: 1;
+                min-width: 0;
+            }
+            .ntf-msg {
+                font-size: 0.8rem;
+                font-weight: 600;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .ntf-msg b {
+                color: var(--text);
+            }
+            .ntf-time {
+                font-size: 0.62rem;
+                color: var(--text3);
+                margin-top: 0.1rem;
+            }
+            .ntf-amt {
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: var(--accent);
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+            }
+            .ntf-empty {
+                color: var(--text3);
+                text-align: center;
+                padding: 2.5rem 1rem;
+                font-size: 0.85rem;
+            }
+            .ntf.pay {
+                --gc: #22c55e;
+            }
+            .ntf.balance {
+                --gc: #eab308;
+            }
+            .ntf.ticket {
+                --gc: #3b82f6;
+            }
+            .ntf-pager {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.6rem;
+                max-width: 680px;
+                margin: 0.7rem 0 0;
+                flex-wrap: wrap;
+            }
+            .ntf-pager .ntf-info {
+                font-size: 0.72rem;
+                color: var(--text3);
+                font-variant-numeric: tabular-nums;
+            }
+            .ntf-pager .ntf-nav {
+                display: flex;
+                gap: 0.4rem;
+            }
+            .ntf-pager.hidden {
+                display: none;
+            }
+            .ntf-search {
+                font-size: 16px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            __SIDEBAR__
+            <main class="main">
+                <div class="page-head">
+                    <div>
+                        <h1 class="page-title">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path
+                                    d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+                                />
+                                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                            </svg>
+                            Notifications
+                        </h1>
+                        <div class="page-sub">
+                            Payments and casino activity — live.
+                        </div>
+                    </div>
+                </div>
+                <input
+                    class="ntf-search"
+                    id="ntfSearch"
+                    placeholder="Search notifications…"
+                    autocomplete="off"
+                />
+                <div class="ntf-list" id="ntfList">
+                    <div class="ntf-empty">Loading…</div>
+                </div>
+                <div class="ntf-pager hidden" id="ntfPager">
+                    <span class="ntf-info" id="ntfInfo"></span>
+                    <div class="ntf-nav">
+                        <button
+                            class="btn btn-secondary btn-sm"
+                            id="ntfPrev"
+                            type="button"
+                        >
+                            ‹ Prev
+                        </button>
+                        <button
+                            class="btn btn-secondary btn-sm"
+                            id="ntfNext"
+                            type="button"
+                        >
+                            Next ›
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
 
-<script>
-(function(){
-  function $(id){return document.getElementById(id);}
-  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-  function ago(ts){
-    var s=Math.max(0,Math.floor((Date.now()-ts)/1000));
-    if(s<60)return s+'s ago'; var m=Math.floor(s/60); if(m<60)return m+'m ago';
-    var h=Math.floor(m/60); if(h<24)return h+'h ago'; var d=Math.floor(h/24); return d+'d ago';
-  }
-  var ICONS={
-    pay:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg>',
-    balance:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
-    ticket:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 9a3 3 0 010-6h18a3 3 0 010 6 3 3 0 000 6 3 3 0 010 6H3a3 3 0 010-6 3 3 0 000-6z"/></svg>',
-    info:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'
-  };
-  var allItems=[];
-  function sortItems(){ allItems.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); } // newest first
-  function render(){
-    var el=$('ntfList'); if(!el)return;
-    var q=(($('ntfSearch')||{}).value||'').toLowerCase().trim();
-    var items=allItems.filter(function(it){ return !q || ((it.m||'')+' '+(it.f||'')+' '+(it.t||'')).toLowerCase().indexOf(q)>=0; });
-    if(!items.length){ el.innerHTML='<div class="ntf-empty">'+(allItems.length?'No matches.':'No notifications yet.')+'</div>'; return; }
-    el.innerHTML='';
-    items.forEach(function(it){
-      var row=document.createElement('div'); row.className='ntf '+(it.t||'info');
-      var msg = it.t==='pay' ? '<b>'+esc(it.f||'Someone')+'</b> sent you money' : esc(it.m||'Notification');
-      row.innerHTML='<div class="ntf-ic">'+(ICONS[it.t]||ICONS.info)+'</div>'+
-        '<div class="ntf-body"><div class="ntf-msg">'+msg+'</div><div class="ntf-time">'+ago(it.ts)+'</div></div>'+
-        (it.a?'<div class="ntf-amt">+'+Number(it.a).toLocaleString()+' FC</div>':'');
-      el.appendChild(row);
-    });
-  }
-  var si=$('ntfSearch'); if(si) si.addEventListener('input', render);
+        <script>
+            (function () {
+                function $(id) {
+                    return document.getElementById(id);
+                }
+                function esc(s) {
+                    return String(s).replace(/[&<>"]/g, function (c) {
+                        return {
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                        }[c];
+                    });
+                }
+                function ago(ts) {
+                    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+                    if (s < 60) return s + "s ago";
+                    var m = Math.floor(s / 60);
+                    if (m < 60) return m + "m ago";
+                    var h = Math.floor(m / 60);
+                    if (h < 24) return h + "h ago";
+                    var d = Math.floor(h / 24);
+                    return d + "d ago";
+                }
+                var ICONS = {
+                    pay: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M9 9.5h4a2 2 0 010 4H9"/></svg>',
+                    balance:
+                        '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+                    ticket: '<svg class="icon" viewBox="0 0 24 24"><path d="M3 9a3 3 0 010-6h18a3 3 0 010 6 3 3 0 000 6 3 3 0 010 6H3a3 3 0 010-6 3 3 0 000-6z"/></svg>',
+                    info: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',
+                };
+                var PAGE_SIZE = 20,
+                    page = 1,
+                    allItems = [];
+                function sortItems() {
+                    allItems.sort(function (a, b) {
+                        return (b.ts || 0) - (a.ts || 0);
+                    });
+                } // newest first
+                function filtered() {
+                    var q = (($("ntfSearch") || {}).value || "")
+                        .toLowerCase()
+                        .trim();
+                    return allItems.filter(function (it) {
+                        return (
+                            !q ||
+                            (
+                                (it.m || "") +
+                                " " +
+                                (it.f || "") +
+                                " " +
+                                (it.t || "")
+                            )
+                                .toLowerCase()
+                                .indexOf(q) >= 0
+                        );
+                    });
+                }
+                function rowHtml(it) {
+                    var msg =
+                        it.t === "pay"
+                            ? "<b>" +
+                              esc(it.f || "Someone") +
+                              "</b> sent you money"
+                            : esc(it.m || "Notification");
+                    return (
+                        '<div class="ntf ' +
+                        (it.t || "info") +
+                        '"><div class="ntf-ic">' +
+                        (ICONS[it.t] || ICONS.info) +
+                        "</div>" +
+                        '<div class="ntf-body"><div class="ntf-msg">' +
+                        msg +
+                        '</div><div class="ntf-time">' +
+                        ago(it.ts) +
+                        "</div></div>" +
+                        (it.a
+                            ? '<div class="ntf-amt">+' +
+                              Number(it.a).toLocaleString() +
+                              " FC</div>"
+                            : "") +
+                        "</div>"
+                    );
+                }
+                function render() {
+                    var el = $("ntfList");
+                    if (!el) return;
+                    var items = filtered();
+                    var total = items.length,
+                        pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+                    if (page > pages) page = pages;
+                    if (page < 1) page = 1;
+                    var pager = $("ntfPager"),
+                        info = $("ntfInfo"),
+                        prev = $("ntfPrev"),
+                        next = $("ntfNext");
+                    if (!total) {
+                        el.innerHTML =
+                            '<div class="ntf-empty">' +
+                            (allItems.length
+                                ? "No matches."
+                                : "No notifications yet.") +
+                            "</div>";
+                        if (pager) pager.classList.add("hidden");
+                        return;
+                    }
+                    var start = (page - 1) * PAGE_SIZE,
+                        slice = items.slice(start, start + PAGE_SIZE);
+                    el.innerHTML = slice.map(rowHtml).join("");
+                    if (pager) {
+                        var showNav = pages > 1;
+                        pager.classList.toggle("hidden", false);
+                        if (info)
+                            info.textContent = showNav
+                                ? "Showing " +
+                                  (start + 1) +
+                                  "–" +
+                                  (start + slice.length) +
+                                  " of " +
+                                  total +
+                                  "  ·  Page " +
+                                  page +
+                                  "/" +
+                                  pages
+                                : total +
+                                  " notification" +
+                                  (total === 1 ? "" : "s");
+                        if (prev) prev.disabled = page <= 1;
+                        if (next) next.disabled = page >= pages;
+                        if (prev && prev.parentNode)
+                            prev.parentNode.style.display = showNav
+                                ? ""
+                                : "none";
+                    }
+                }
+                var si = $("ntfSearch");
+                if (si)
+                    si.addEventListener("input", function () {
+                        page = 1;
+                        render();
+                    });
+                var prev = $("ntfPrev"),
+                    next = $("ntfNext");
+                if (prev)
+                    prev.addEventListener("click", function () {
+                        if (page > 1) {
+                            page--;
+                            render();
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                        }
+                    });
+                if (next)
+                    next.addEventListener("click", function () {
+                        page++;
+                        render();
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                    });
 
-  fetch('/api/notifications',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
-    if(!d){ $('ntfList').innerHTML='<div class="ntf-empty">Please sign in.</div>'; return; }
-    allItems=d.items||[]; sortItems(); render();
-    var sb=$('sbBal'); if(sb&&d.bal!==undefined)sb.textContent=Number(d.bal).toLocaleString();
-    fetch('/api/notifications/read',{method:'POST',credentials:'same-origin'}).then(function(){
-      var b=$('sbNotifBadge'); if(b)b.classList.add('hidden');
-      try{ localStorage.setItem('sgNotifSeen', String(Date.now())); }catch(e){}
-    }).catch(function(){});
-  }).catch(function(){ $('ntfList').innerHTML='<div class="ntf-empty">Failed to load.</div>'; });
+                fetch("/api/notifications", { credentials: "same-origin" })
+                    .then(function (r) {
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(function (d) {
+                        if (!d) {
+                            $("ntfList").innerHTML =
+                                '<div class="ntf-empty">Please sign in.</div>';
+                            return;
+                        }
+                        allItems = d.items || [];
+                        sortItems();
+                        page = 1;
+                        render();
+                        var sb = $("sbBal");
+                        if (sb && d.bal !== undefined)
+                            sb.textContent = Number(d.bal).toLocaleString();
+                        fetch("/api/notifications/read", {
+                            method: "POST",
+                            credentials: "same-origin",
+                        })
+                            .then(function () {
+                                var b = $("sbNotifBadge");
+                                if (b) b.classList.add("hidden");
+                                try {
+                                    localStorage.setItem(
+                                        "sgNotifSeen",
+                                        String(Date.now()),
+                                    );
+                                } catch (e) {}
+                            })
+                            .catch(function () {});
+                    })
+                    .catch(function () {
+                        $("ntfList").innerHTML =
+                            '<div class="ntf-empty">Failed to load.</div>';
+                    });
 
-  // live new notifications over the WS (no polling). Replace any prior handler (pjax re-nav).
-  if(window.__ntfHandler) window.removeEventListener('sg:ws', window.__ntfHandler);
-  window.__ntfHandler=function(e){ var d=e.detail; if(d&&d.type==='notification'&&d.item){ allItems.unshift(d.item); sortItems(); render(); } };
-  window.addEventListener('sg:ws', window.__ntfHandler);
-})();
-</script>
-</body>
+                // live new notifications over the WS (no polling). Replace any prior handler (pjax re-nav).
+                if (window.__ntfHandler)
+                    window.removeEventListener("sg:ws", window.__ntfHandler);
+                window.__ntfHandler = function (e) {
+                    var d = e.detail;
+                    if (d && d.type === "notification" && d.item) {
+                        allItems.unshift(d.item);
+                        sortItems();
+                        render();
+                    }
+                };
+                window.addEventListener("sg:ws", window.__ntfHandler);
+            })();
+        </script>
+    </body>
 </html>

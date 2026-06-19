@@ -59,7 +59,7 @@
 .iv-pos .v{text-align:right}
 .iv-pf-tot{display:flex;justify-content:space-between;font-size:.8rem;font-weight:700;border-top:1px solid var(--border);margin-top:.4rem;padding-top:.5rem}
 .iv-empty{color:var(--text3);font-size:.76rem;text-align:center;padding:.6rem}
-@media(max-width:880px){.iv-grid{grid-template-columns:1fr}.iv-bottom{grid-template-columns:1fr}}
+@media(max-width:880px){.iv-grid{grid-template-columns:1fr;gap:.8rem}.iv-bottom{grid-template-columns:1fr}.iv-list{flex-direction:row;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:.4rem;padding-bottom:.35rem}.iv-row{flex-shrink:0;min-width:152px;max-width:185px}.iv-chead{gap:.6rem}.iv-cprice .big{font-size:1.35rem}.iv-canvas-wrap{height:220px}.iv-trade .seg button{min-height:40px;padding:.55rem;font-size:.8rem}.iv-in input{font-size:16px;min-height:42px}.iv-chips button{min-height:36px;padding:.45rem;font-size:.74rem}.iv-go{min-height:44px}.iv-ctitle .em{font-size:1.5rem}.iv-ctitle .nm{font-size:.95rem}}
 </style>
 </head>
 <body>
@@ -166,8 +166,12 @@ function drawCross(idx){
 }
 function bindChartHover(){
   var cv=$('chart'); if(!cv||cv.__hb)return; cv.__hb=1;
-  cv.addEventListener('mousemove',function(ev){ if(!CHART||CHART.xs.length<2)return; var r=cv.getBoundingClientRect(); var mx=ev.clientX-r.left; var idx=0,best=1e9; for(var i=0;i<CHART.xs.length;i++){ var dd=Math.abs(CHART.xs[i]-mx); if(dd<best){best=dd;idx=i;} } drawChart(); drawCross(idx); });
+  function idxFromX(mx){ if(!CHART||CHART.xs.length<2)return -1; var idx=0,best=1e9; for(var i=0;i<CHART.xs.length;i++){ var dd=Math.abs(CHART.xs[i]-mx); if(dd<best){best=dd;idx=i;} } return idx; }
+  cv.addEventListener('mousemove',function(ev){ var r=cv.getBoundingClientRect(); var i=idxFromX(ev.clientX-r.left); if(i>=0){ drawChart(); drawCross(i); } });
   cv.addEventListener('mouseleave',function(){ var t=$('cTip'); if(t)t.hidden=true; drawChart(); });
+  cv.addEventListener('touchstart',function(ev){ var t=ev.touches[0]; if(!t)return; var r=cv.getBoundingClientRect(); var i=idxFromX(t.clientX-r.left); if(i>=0){ ev.preventDefault(); drawChart(); drawCross(i); } },{passive:false});
+  cv.addEventListener('touchmove',function(ev){ var t=ev.touches[0]; if(!t)return; var r=cv.getBoundingClientRect(); var i=idxFromX(t.clientX-r.left); if(i>=0){ ev.preventDefault(); drawChart(); drawCross(i); } },{passive:false});
+  cv.addEventListener('touchend',function(){ var t=$('cTip'); if(t)t.hidden=true; drawChart(); });
 }
 function renderPf(pf){
   var el=$('pf'); if(!el)return; if(!pf||!pf.positions||!pf.positions.length){ el.innerHTML='<div class="iv-empty">No holdings yet.</div>'; return; }
