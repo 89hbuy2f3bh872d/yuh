@@ -257,19 +257,69 @@ input,select,textarea{font:inherit;color:inherit}
 .soon-hero h2{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
 .soon-hero p{font-size:.85rem;color:var(--text2);max-width:42ch;line-height:1.55}
 
-/* ── Mobile: collapse sidebar to top bar ──────────────────────────────── */
+/* ── Mobile + zoom: touch-friendly stacked header ─────────────────────── */
+html{-webkit-tap-highlight-color:transparent}
+.sb-nav .sb-item,.sb-nav .sb-signout,.srv-btn,.rb-claim,.btn,.input,select,textarea{touch-action:manipulation}
+/* Desktop: nav wrapper is transparent to layout (zero regression). */
+.sb-nav{display:contents}
+
 @media(max-width:820px){
+  body{overflow-x:clip}
   .app{grid-template-columns:1fr}
-  .sidebar{position:sticky;top:0;height:auto;flex-direction:row;align-items:center;gap:.25rem;padding:.5rem .75rem;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);z-index:100}
-  .sb-brand{border:none;margin:0;padding:.2rem .4rem;flex-shrink:0}
+  .sidebar{position:sticky;top:0;height:auto;flex-direction:column;gap:.4rem;padding:.6rem .7rem;overflow:visible;border-right:none;border-bottom:1px solid var(--border);z-index:100}
+  /* brand: slim full-width row */
+  .sb-brand{border:none;margin:0;padding:.2rem .2rem .35rem;border-bottom:1px solid var(--border)}
   .sb-brand-sub{display:none}
-  .sb-section{display:none}
-  .sb-item{padding:.45rem .6rem;flex-shrink:0}
-  .sb-item span:not(.sb-badge){display:none}
-  .sb-badge{display:none}
-  .sb-spacer{display:none}
-  .sb-foot{border:none;padding:0;margin:0;display:flex;align-items:center;flex-shrink:0}
-  .sb-user{display:none}
-  .sb-signout span{display:none}
-  .main{padding:1.25rem 1.1rem 2.5rem}
+  /* server picker: full-width row (dropdown can escape — sidebar overflow:visible) */
+  .srv-wrap{margin:0}
+  .srv-btn{padding:.5rem .6rem;min-height:44px}
+  .srv-av{width:26px;height:26px}
+  .srv-name{font-size:.82rem}
+  .srv-menu{top:calc(100% + 5px)}
+  /* rakeback: full-width row, stays readable */
+  .rb-widget{margin:0}
+  .rb-claim{min-height:36px;padding:.45rem .9rem}
+  /* nav + foot: horizontal scroll of icon-only tiles with big touch targets */
+  .sb-nav{display:flex;flex-direction:row;align-items:center;gap:.2rem;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:.15rem}
+  .sb-nav .sb-section{display:none}
+  .sb-nav .sb-item{padding:.5rem .65rem;flex-shrink:0;min-height:44px;min-width:44px;justify-content:center;border-radius:10px}
+  .sb-nav .sb-item .icon{width:20px;height:20px}
+  .sb-nav .sb-item span:not(.sb-badge){display:none}
+  .sb-nav .sb-badge{display:none}
+  .sb-nav .sb-spacer{display:none}
+  .sb-nav .sb-foot{border:none;padding:0;margin:0;display:flex;align-items:center;gap:.2rem;flex-shrink:0}
+  .sb-nav .sb-user{display:none}
+  .sb-nav .sb-signout{width:auto;padding:.5rem .55rem;min-height:44px;min-width:44px;justify-content:center;margin-top:0}
+  .sb-nav .sb-signout span{display:none}
+  .sb-nav .sb-signout .icon{width:18px;height:18px}
+  /* content + shared components */
+  .main{padding:1.1rem .9rem 2.5rem}
+  .page-head{gap:.7rem;margin-bottom:1.1rem}
+  .page-title{font-size:1.25rem;gap:.45rem;flex-wrap:wrap}
+  .page-title .icon{width:20px;height:20px}
+  .tile-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem}
+  .tile-art .icon{width:32px;height:32px}
+  .btn{min-height:40px}
+  .btn-sm{min-height:34px}
+  /* game-specific controls (slots/house/cards) — body-prefixed so they win
+     over same-class base rules in later-loaded game stylesheets on mobile. */
+  body .step-btn{width:40px;height:40px;font-size:1.2rem}
+  body .qbet{font-size:.74rem;padding:.4rem .7rem;min-height:34px}
+  body .seg-b{padding:.55rem .4rem;min-height:40px;font-size:.8rem}
+  body .play-btn{min-height:48px;font-size:.92rem;padding:.85rem}
+  body .collect-btn{min-height:48px}
+  body .buy-btn{min-height:48px}
+  body .buy-btn.chip{min-height:44px;padding:.5rem .5rem}
+  body .buy-btn.chip .buy-top{font-size:.64rem}
+  body .buy-btn.chip .buy-cost{font-size:.74rem}
+  body .mn-tile{font-size:1.6rem}
+  body .pk-slot{font-size:.66rem;padding:.45rem 0}
+  .input,select,textarea{font-size:16px;min-height:42px}
+  .notif-toast{top:10px;right:10px;left:10px;max-width:none}
+}
+@media(max-width:480px){
+  .main{padding:1rem .7rem 2rem}
+  .tile-grid{grid-template-columns:1fr}
+  .page-title{font-size:1.15rem}
+  .card{padding:.9rem}
 }
