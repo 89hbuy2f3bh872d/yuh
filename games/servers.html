@@ -56,27 +56,74 @@
 .shop-act{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem;flex:none}
 .shop-color{width:34px;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:0;cursor:pointer}
 .shop-owned{font-size:.56rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:.05rem .35rem}
-/* server-case editor */
-.case-list{display:flex;flex-direction:column;gap:.5rem;margin:.3rem 0 .2rem;max-height:46vh;overflow:auto}
-.case-empty{font-size:.74rem;color:var(--text3);text-align:center;padding:.8rem}
-.case-it{display:flex;align-items:center;gap:.6rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.5rem .6rem}
-.case-ic{flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:1.1rem;background:var(--surface)}
-.case-info{flex:1;min-width:0}
-.case-name{font-size:.82rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.case-sub{font-size:.64rem;color:var(--text3)}
-.case-act{display:flex;gap:.3rem;flex:none}
-.case-f-grid{display:grid;grid-template-columns:auto 1fr;gap:.45rem .6rem;align-items:center;margin:.2rem 0 .6rem}
-.case-f-grid input{padding:.4rem .55rem;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:.82rem}
-.case-f-grid input[type=color]{padding:0;width:46px;height:30px;justify-self:start}
-.case-items-h{display:flex;justify-content:space-between;align-items:center;font-size:.7rem;color:var(--text3);margin-bottom:.3rem}
-.case-rtp{font-weight:800;color:var(--accent)}
-.case-rtp.bad{color:var(--red,#ef4444)}
-.case-items{display:flex;flex-direction:column;gap:.35rem;max-height:34vh;overflow:auto}
-.case-row{display:grid;grid-template-columns:48px 1fr 80px 70px 26px;gap:.3rem;align-items:center}
-.case-row .ci{padding:.35rem .4rem;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:.76rem;min-width:0}
-.case-rm{display:grid;place-items:center;color:var(--text3);background:transparent;border-radius:6px;height:30px}
-.case-rm:hover{color:var(--red,#ef4444);background:var(--surface)}
-@media(max-width:520px){.case-row{grid-template-columns:40px 1fr 64px 56px 24px}}
+/* ── Custom cases modal (reworked) ──────────────────────────────────── */
+.cc-dlg{width:min(560px,94vw);max-height:90vh;overflow-y:auto;background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--surface) 94%,#000));border:1px solid var(--border);border-radius:18px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 70px -20px rgba(0,0,0,.8);overflow:hidden}
+.cc-head{position:relative;padding:1.1rem 1.2rem 1rem;border-bottom:1px solid var(--border);background:radial-gradient(120% 100% at 50% 0%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 70%)}
+.cc-h-row{display:flex;align-items:center;gap:.55rem}
+.cc-close{margin-left:auto;width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;color:var(--text3);background:transparent;border:none;cursor:pointer;transition:color .15s,background .15s}
+.cc-close:hover{color:var(--text);background:var(--surface2)}
+.cc-close .icon{width:18px;height:18px}
+.cc-title{font-size:1.02rem;font-weight:800;display:flex;align-items:center;gap:.4rem}
+.cc-title .icon{width:18px;height:18px;color:var(--accent)}
+.cc-srv{display:flex;align-items:center;gap:.4rem;margin-top:.15rem;font-size:.7rem;color:var(--text3)}
+.cc-srv-av{width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:.62rem;flex:none}
+.cc-sub{font-size:.7rem;color:var(--text3);line-height:1.4;margin-top:.55rem}
+.cc-sub b{color:var(--text2)}
+.cc-body{padding:.6rem;display:flex;flex-direction:column;gap:.5rem}
+/* case list rows */
+.cc-list{display:flex;flex-direction:column;gap:.45rem}
+.cc-empty{display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:2rem 1rem;text-align:center;color:var(--text3)}
+.cc-empty .icon{width:36px;height:36px;opacity:.4}
+.cc-empty b{color:var(--text2);font-size:.82rem}
+.cc-card{display:flex;align-items:center;gap:.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:.6rem .7rem;transition:border-color .15s,transform .12s,box-shadow .2s}
+.cc-card:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--border));transform:translateY(-1px);box-shadow:0 8px 22px -14px rgba(0,0,0,.6)}
+.cc-ic{width:40px;height:40px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:1.3rem;background:var(--surface);border:1px solid var(--border)}
+.cc-card-info{flex:1;min-width:0}
+.cc-card-name{font-size:.84rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-card-meta{font-size:.64rem;color:var(--text3);margin-top:.1rem;display:flex;gap:.5rem;flex-wrap:wrap}
+.cc-card-meta b{color:var(--text2);font-weight:700}
+.cc-rtp-badge{font-size:.56rem;font-weight:800;padding:.1rem .35rem;border-radius:99px;border:1px solid transparent}
+.cc-rtp-badge.ok{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.cc-rtp-badge.bad{color:var(--red,#ef4444);background:color-mix(in srgb,var(--red,#ef4444) 12%,transparent);border-color:color-mix(in srgb,var(--red,#ef4444) 30%,transparent)}
+.cc-card-act{display:flex;gap:.3rem;flex:none}
+.cc-icon-btn{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.cc-icon-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--surface2)}
+.cc-icon-btn.danger:hover{color:var(--red,#ef4444);border-color:var(--red,#ef4444)}
+.cc-icon-btn .icon{width:14px;height:14px}
+/* new-case button */
+.cc-add{display:flex;align-items:center;justify-content:center;gap:.4rem;padding:.65rem;border-radius:11px;border:1px dashed color-mix(in srgb,var(--accent) 40%,var(--border));background:transparent;color:var(--accent);font-size:.78rem;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s}
+.cc-add:hover{background:var(--accent-soft);border-style:solid}
+.cc-add .icon{width:16px;height:16px}
+/* editor form */
+.cc-field{display:flex;flex-direction:column;gap:.25rem}
+.cc-field label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.cc-field input,.cc-field select{padding:.5rem .6rem;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:.84rem;transition:border-color .15s}
+.cc-field input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+.cc-field input:disabled{opacity:.6;cursor:not-allowed}
+.cc-field input[type=color]{height:38px;padding:2px;cursor:pointer}
+.cc-grid2{display:grid;grid-template-columns:1fr 1fr;gap:.55rem}
+.cc-grid3{display:grid;grid-template-columns:1fr 1fr auto;gap:.55rem}
+.cc-section-h{display:flex;align-items:center;justify-content:space-between;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:.5rem .1rem .3rem}
+/* items editor — compact, scannable rows */
+.cc-items{display:flex;flex-direction:column;gap:.35rem;max-height:32vh;overflow-y:auto;padding-right:.15rem}
+.cc-item{display:grid;grid-template-columns:42px 1fr 76px 64px 30px;gap:.35rem;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.3rem .35rem}
+.cc-item input{padding:.4rem .4rem;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:.76rem;min-width:0}
+.cc-item input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.cc-item input.ci-s{text-align:center;font-size:.95rem}
+.cc-rm{width:28px;height:28px;display:grid;place-items:center;border:none;background:transparent;color:var(--text3);border-radius:6px;cursor:pointer}
+.cc-rm:hover{color:var(--red,#ef4444);background:color-mix(in srgb,var(--red,#ef4444) 12%,transparent)}
+/* live RTP gauge */
+.cc-rtp-bar{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
+.cc-rtp-track{flex:1;height:8px;border-radius:99px;background:var(--surface);overflow:hidden;border:1px solid var(--border)}
+.cc-rtp-fill{height:100%;border-radius:99px;transition:width .25s,background .25s}
+.cc-rtp-label{font-size:.7rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cc-warn{font-size:.7rem;line-height:1.4;padding:.5rem .6rem;border-radius:9px;margin-top:.4rem}
+.cc-warn.bad{color:var(--red,#ef4444);background:color-mix(in srgb,var(--red,#ef4444) 10%,transparent);border:1px solid color-mix(in srgb,var(--red,#ef4444) 30%,transparent)}
+.cc-warn.ok{color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 25%,transparent)}
+/* footer actions */
+.cc-foot{display:flex;gap:.45rem;padding:.7rem 1.2rem;border-top:1px solid var(--border);background:var(--surface)}
+.cc-foot .btn{flex:1;justify-content:center}
+@media(max-width:520px){.cc-item{grid-template-columns:36px 1fr 60px 52px 26px}.cc-grid3{grid-template-columns:1fr 1fr}}
 .svc-vote{display:flex;align-items:center;gap:.5rem;font-size:.76rem;color:var(--text2);background:color-mix(in srgb,var(--gold) 10%,transparent);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:10px;padding:.6rem .75rem;margin-bottom:1rem}
 .svc-vote a{color:var(--gold);font-weight:700;text-decoration:underline}
 .svc-vote .icon{width:16px;height:16px;color:var(--gold);flex:none}
@@ -372,60 +419,98 @@ function manageCases(id){
 }
 function caseRow(c){
   var col=/^#[0-9a-fA-F]{6}$/.test(c.color||'')?c.color:'#2ecc71';
-  return '<div class="case-it"><div class="case-ic" style="color:'+col+'">'+esc((c.items&&c.items[0]&&c.items[0].s)||'🎁')+'</div>'
-    +'<div class="case-info"><div class="case-name">'+esc(c.label)+'</div><div class="case-sub">Entry '+fmt(c.entry)+' FC · '+(c.rtp)+'% payout · '+(c.items?c.items.length:0)+' items</div></div>'
-    +'<div class="case-act"><button class="btn btn-secondary btn-sm" data-edit="'+esc(c.id)+'">Edit</button><button class="btn btn-secondary btn-sm" data-del="'+esc(c.id)+'">✕</button></div></div>';
+  var rtpOk=(c.rtp||0)<=CASE_MAXRTP;
+  var firstItem=(c.items&&c.items[0]&&c.items[0].s)||'🎁';
+  return '<div class="cc-card">'
+    +'<div class="cc-ic" style="border-color:'+col+';color:'+col+'">'+esc(firstItem)+'</div>'
+    +'<div class="cc-card-info"><div class="cc-card-name">'+esc(c.label)+'</div>'
+      +'<div class="cc-card-meta"><span>Entry <b>'+fmt(c.entry)+'</b></span><span>'+(c.items?c.items.length:0)+' items</span>'
+      +'<span class="cc-rtp-badge '+(rtpOk?'ok':'bad')+'">'+(c.rtp||0)+'% RTP</span></div></div>'
+    +'<div class="cc-card-act">'
+      +'<button class="cc-icon-btn" title="Edit" data-edit="'+esc(c.id)+'"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
+      +'<button class="cc-icon-btn danger" title="Delete" data-del="'+esc(c.id)+'"><svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'
+    +'</div></div>';
 }
 function renderCaseList(id, cases){
-  caseBack.innerHTML='<div class="sg-dlg shop-dlg" onclick="event.stopPropagation()">'
-    +'<div class="sg-dlg-h"><b>Server cases</b></div>'
-    +'<div class="sg-dlg-hint">Custom cases your players can pick in case battles on this server. Average payout is capped at <b>'+CASE_MAXRTP+'%</b> so the house keeps an edge.</div>'
-    +'<div class="case-list">'+(cases.length?cases.map(caseRow).join(''):'<div class="case-empty">No cases yet — create one below.</div>')+'</div>'
-    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="caseClose">Close</button><button class="btn btn-primary" id="caseNew">+ New case</button></div></div>';
-  caseBack.querySelector('#caseClose').onclick=closeCases;
+  var s=SRV[id]||{name:'Server'};
+  caseBack.innerHTML='<div class="cc-dlg" onclick="event.stopPropagation()">'
+    +'<div class="cc-head">'
+      +'<div class="cc-h-row"><svg class="icon" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5M17 3a3 3 0 0 0 0 6h2V3zM7 21a3 3 0 0 0 0-6H5v6z"/></svg>'
+        +'<div class="cc-title">Custom Cases</div>'
+        +'<button class="cc-close" title="Close"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
+      +'<div class="cc-srv"><div class="cc-srv-av">'+esc(initials(s.name))+'</div>'+esc(s.name)+'</div>'
+      +'<div class="cc-sub">Custom cases your players can pick in case battles here. Average payout is capped at <b>'+CASE_MAXRTP+'%</b> so the house keeps an edge.</div>'
+    +'</div>'
+    +'<div class="cc-body">'
+      +(cases.length
+        ? '<div class="cc-list">'+cases.map(caseRow).join('')+'</div>'
+        : '<div class="cc-empty"><svg class="icon" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5M17 3a3 3 0 0 0 0 6h2V3zM7 21a3 3 0 0 0 0-6H5v6z"/></svg><b>No cases yet</b><span>Create your first case below.</span></div>')
+      +'<button class="cc-add" id="caseNew"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New case</button>'
+    +'</div>';
+  caseBack.querySelector('.cc-close').onclick=closeCases;
   caseBack.querySelector('#caseNew').onclick=function(){ renderCaseForm(id,null); };
   Array.prototype.forEach.call(caseBack.querySelectorAll('[data-edit]'),function(b){ b.onclick=function(){ var c=cases.filter(function(x){return x.id===b.dataset.edit;})[0]; renderCaseForm(id,c); }; });
   Array.prototype.forEach.call(caseBack.querySelectorAll('[data-del]'),function(b){ b.onclick=function(){ if(!confirm('Delete this case?'))return;
     fetch('/api/server/cases/'+encodeURIComponent(b.dataset.del)+'?gid='+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'})
       .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok)manageCases(id); else alert((j&&j.error)||'Failed'); }).catch(function(){alert('Failed')}); }; });
 }
-function caseItemRow(it){ return '<div class="case-row">'
-  +'<input class="ci ci-s" placeholder="🎁" value="'+esc(it.s||'')+'" maxlength="8">'
-  +'<input class="ci ci-n" placeholder="Name" value="'+esc(it.n||'')+'" maxlength="40">'
-  +'<input class="ci ci-v" type="number" min="0" placeholder="Value" value="'+(it.v||0)+'">'
-  +'<input class="ci ci-w" type="number" min="1" placeholder="Weight" value="'+(it.w||1)+'">'
-  +'<button class="case-rm" type="button" title="Remove">✕</button></div>'; }
+function caseItemRow(it){
+  return '<div class="cc-item">'
+    +'<input class="ci ci-s" placeholder="🎁" value="'+esc(it.s||'')+'" maxlength="8" title="Emoji">'
+    +'<input class="ci ci-n" placeholder="Name" value="'+esc(it.n||'')+'" maxlength="40">'
+    +'<input class="ci ci-v" type="number" min="0" placeholder="Value" value="'+(it.v||0)+'">'
+    +'<input class="ci ci-w" type="number" min="1" placeholder="Weight" value="'+(it.w||1)+'">'
+    +'<button class="cc-rm" type="button" title="Remove"><svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+}
 function renderCaseForm(id, c){
   var editing=!!c;
+  var s=SRV[id]||{name:'Server'};
   var items=(c&&c.items&&c.items.length)?c.items.slice():[{s:'🎁',n:'Common',v:10,w:60},{s:'💎',n:'Rare',v:80,w:8}];
-  caseBack.innerHTML='<div class="sg-dlg shop-dlg case-form" onclick="event.stopPropagation()">'
-    +'<div class="sg-dlg-h"><b>'+(editing?'Edit case':'New case')+'</b></div>'
-    +'<div class="case-f-grid">'
-      +'<label class="sg-dlg-lab">Case id'+(editing?' (locked)':'')+'</label><input id="cfId" '+(editing?'disabled':'')+' placeholder="lucky" value="'+esc(editing?String(c.id).replace(/^s_[0-9]+_/,''):'')+'" maxlength="24">'
-      +'<label class="sg-dlg-lab">Label</label><input id="cfLabel" placeholder="Lucky Case" value="'+esc(c?c.label:'')+'" maxlength="24">'
-      +'<label class="sg-dlg-lab">Entry (FC)</label><input id="cfEntry" type="number" min="10" value="'+(c?c.entry:100)+'">'
-      +'<label class="sg-dlg-lab">Color</label><input id="cfColor" type="color" value="'+(c&&/^#[0-9a-fA-F]{6}$/.test(c.color)?esc(c.color):'#2ecc71')+'">'
+  caseBack.innerHTML='<div class="cc-dlg" onclick="event.stopPropagation()">'
+    +'<div class="cc-head">'
+      +'<div class="cc-h-row"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>'
+        +'<div class="cc-title">'+(editing?'Edit Case':'New Case')+'</div>'
+        +'<button class="cc-close" title="Close"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
+      +'<div class="cc-srv"><div class="cc-srv-av">'+esc(initials(s.name))+'</div>'+esc(s.name)+'</div>'
     +'</div>'
-    +'<div class="case-items-h"><span>Items (chance = weight ÷ total)</span><span class="case-rtp" id="cfRtp">—</span></div>'
-    +'<div class="case-items" id="cfItems">'+items.map(caseItemRow).join('')+'</div>'
-    +'<button class="btn btn-secondary btn-sm" id="cfAdd" type="button" style="margin-top:.5rem">+ Add item</button>'
-    +'<div class="sg-dlg-hint" id="cfWarn"></div>'
-    +'<div class="sg-dlg-act"><button class="btn btn-secondary" id="cfBack">Back</button><button class="btn btn-primary" id="cfSave">'+(editing?'Save':'Create')+'</button></div></div>';
+    +'<div class="cc-body">'
+      +'<div class="cc-grid2">'
+        +'<div class="cc-field"><label>'+(editing?'Case ID (locked)':'Case ID')+'</label><input id="cfId" '+(editing?'disabled':'')+' placeholder="lucky" value="'+esc(editing?String(c.id).replace(/^s_[0-9]+_/,''):'')+'" maxlength="24"></div>'
+        +'<div class="cc-field"><label>Display name</label><input id="cfLabel" placeholder="Lucky Case" value="'+esc(c?c.label:'')+'" maxlength="24"></div>'
+      +'</div>'
+      +'<div class="cc-grid2">'
+        +'<div class="cc-field"><label>Entry cost (FC)</label><input id="cfEntry" type="number" min="10" value="'+(c?c.entry:100)+'"></div>'
+        +'<div class="cc-field"><label>Accent color</label><input id="cfColor" type="color" value="'+(c&&/^#[0-9a-fA-F]{6}$/.test(c.color)?esc(c.color):'#2ecc71')+'"></div>'
+      +'</div>'
+      +'<div class="cc-section-h"><span>Items · chance = weight ÷ total</span><button class="cc-icon-btn" id="cfAdd" title="Add item" style="width:26px;height:26px"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>'
+      +'<div class="cc-items" id="cfItems">'+items.map(caseItemRow).join('')+'</div>'
+      +'<div class="cc-rtp-bar"><div class="cc-rtp-track"><div class="cc-rtp-fill" id="cfFill" style="width:0%"></div></div><span class="cc-rtp-label" id="cfRtp">—</span></div>'
+      +'<div class="cc-warn ok" id="cfWarn">Average payout — (cap '+CASE_MAXRTP+'%).</div>'
+    +'</div>'
+    +'<div class="cc-foot"><button class="btn btn-secondary" id="cfBack">Back</button><button class="btn btn-primary" id="cfSave">'+(editing?'Save changes':'Create case')+'</button></div>'
+  +'</div>';
   var itemsEl=caseBack.querySelector('#cfItems');
-  function readForm(){ var its=[]; Array.prototype.forEach.call(itemsEl.querySelectorAll('.case-row'),function(r){ its.push({ s:r.querySelector('.ci-s').value, n:r.querySelector('.ci-n').value, v:Math.floor(Number(r.querySelector('.ci-v').value)||0), w:Math.floor(Number(r.querySelector('.ci-w').value)||0) }); });
+  function readForm(){ var its=[]; Array.prototype.forEach.call(itemsEl.querySelectorAll('.cc-item'),function(r){ its.push({ s:r.querySelector('.ci-s').value, n:r.querySelector('.ci-n').value, v:Math.floor(Number(r.querySelector('.ci-v').value)||0), w:Math.floor(Number(r.querySelector('.ci-w').value)||0) }); });
     return { label:caseBack.querySelector('#cfLabel').value, entry:Math.floor(Number(caseBack.querySelector('#cfEntry').value)||0), color:caseBack.querySelector('#cfColor').value, items:its }; }
   function recalc(){ var f=readForm(), tw=0, ev=0; f.items.forEach(function(i){ tw+=i.w; ev+=i.v*i.w; }); var rtp=(tw&&f.entry)?Math.round(ev/tw/f.entry*100):0;
-    var el=caseBack.querySelector('#cfRtp'); el.textContent=rtp+'% payout'; el.className='case-rtp'+(rtp>CASE_MAXRTP?' bad':'');
-    caseBack.querySelector('#cfWarn').innerHTML = rtp>CASE_MAXRTP ? '<b style="color:var(--red,#ef4444)">Too generous — must be ≤ '+CASE_MAXRTP+'%. Lower item values or raise the entry.</b>' : 'Average payout '+rtp+'% (cap '+CASE_MAXRTP+'%).'; }
+    var lbl=caseBack.querySelector('#cfRtp'); lbl.textContent=rtp+'%';
+    var fill=caseBack.querySelector('#cfFill'); var pct=Math.min(100,rtp); fill.style.width=pct+'%';
+    var ok=rtp<=CASE_MAXRTP;
+    fill.style.background = rtp>CASE_MAXRTP ? 'var(--red,#ef4444)' : (rtp>80?'linear-gradient(90deg,#f59e0b,#22c55e)':'#22c55e');
+    lbl.style.color = ok ? 'var(--accent)' : 'var(--red,#ef4444)';
+    var warn=caseBack.querySelector('#cfWarn');
+    if(rtp>CASE_MAXRTP){ warn.className='cc-warn bad'; warn.innerHTML='<b>Too generous</b> — must be ≤ '+CASE_MAXRTP+'%. Lower item values or raise the entry.'; }
+    else { warn.className='cc-warn ok'; warn.innerHTML='Average payout <b>'+rtp+'%</b> (cap '+CASE_MAXRTP+'%). '+(rtp<40?'Players might find it too stingy.':'Looks good.'); } }
   function bind(){ Array.prototype.forEach.call(itemsEl.querySelectorAll('.ci'),function(i){ i.oninput=recalc; });
-    Array.prototype.forEach.call(itemsEl.querySelectorAll('.case-rm'),function(b){ b.onclick=function(){ if(itemsEl.children.length<=2){alert('A case needs at least 2 items');return;} itemsEl.removeChild(b.parentNode); recalc(); }; }); }
+    Array.prototype.forEach.call(itemsEl.querySelectorAll('.cc-rm'),function(b){ b.onclick=function(){ if(itemsEl.children.length<=2){alert('A case needs at least 2 items');return;} itemsEl.removeChild(b.parentNode); recalc(); }; }); }
   caseBack.querySelector('#cfAdd').onclick=function(){ if(itemsEl.children.length>=16){alert('Max 16 items');return;} var t=document.createElement('div'); t.innerHTML=caseItemRow({s:'',n:'',v:0,w:1}); itemsEl.appendChild(t.firstChild); bind(); recalc(); };
+  caseBack.querySelector('.cc-close').onclick=function(){ manageCases(id); };
   caseBack.querySelector('#cfBack').onclick=function(){ manageCases(id); };
   caseBack.querySelector('#cfSave').onclick=function(){ var f=readForm(); f.gid=id; if(!editing)f.id=caseBack.querySelector('#cfId').value;
     var sv=this; sv.disabled=true; sv.textContent='Saving…';
     fetch(editing?'/api/server/cases/'+encodeURIComponent(c.id):'/api/server/cases',{method:editing?'PUT':'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(f)})
-      .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok)manageCases(id); else { alert((j&&j.error)||'Failed'); sv.disabled=false; sv.textContent=editing?'Save':'Create'; } })
-      .catch(function(){ alert('Failed'); sv.disabled=false; sv.textContent=editing?'Save':'Create'; }); };
+      .then(function(r){return r.json()}).then(function(j){ if(j&&j.ok)manageCases(id); else { alert((j&&j.error)||'Failed'); sv.disabled=false; sv.textContent=editing?'Save changes':'Create case'; } })
+      .catch(function(){ alert('Failed'); sv.disabled=false; sv.textContent=editing?'Save changes':'Create case'; }); };
   bind(); recalc();
 }
 

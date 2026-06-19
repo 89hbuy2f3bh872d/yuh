@@ -99,8 +99,20 @@ and Golden Square (bandit). The client is **engine-keyed** (`GAME.engine`), neve
 | `olympus` | Thunder Gods | 6×5 | multiplier | **~96%** | Regular per-spin / Super global mult |
 | `bandit` | Wild Bandit | **6×5** | **bandit** | **~96.3–96.4%** | **scatter-pays + Golden Squares + Collectors, 3 tiers** |
 
-Candy/olympus: `payScale` 1.07 / 1.055 (raised to real-casino ~96% RTP); reels concentrated for
-~37% dead spins. Bandit: own engine, max win **10000×** (possible in base + bonus).
+Candy/olympus: **~96% RTP**. Reels concentrated HARD (`140/95/58/22/10/5/3`, `payScale 0.39`)
+→ **dead spins ~18.6%** (was ~37%), **small hits ~72.5%** — "prefer small hits over dead
+spins". `SPINS.super 16 / hidden 18` (was 12/15) + mult table capped at ×10 (`[[2,54],[3,33],
+[5,10],[10,3]]`, dropped the ×25): steadier bonus → **Super buy now profits ~39% / busts ~19%
+/ median 0.86×** (was 37% / 32% / 0.76×). Concentrating the reel cuts dead spins AND smooths
+free-spin wins in one move; `payScale` then holds RTP. Bandit: own engine, max win **10000×**.
+
+> **RTP rounding trap (cost me hours):** per-win pays were `Math.round(x*bet)`. With the
+> concentrated reel the dominant win is the blue 5-cluster (pay 0.2). At bet 20,
+> `round(0.2·payScale·20)=round(payScale·4)` flips 1→2 exactly at payScale 0.375 → a **20% RTP
+> cliff** (84%↔109%) over a 0.005 payScale step, with ZERO cap hits. Fix: `evaluate` keeps the
+> win **fractional**; only the round TOTAL is rounded (`runRound` already does). Now RTP is
+> bet-independent (96.2% at bet 20 / 100 / 2000). Measure RTP at a HIGH bet (≥2000) to see the
+> true value — low-bet integer rounding lies.
 
 ### Wild Bandit = "Le Bandit" engine (`engine: "bandit"`) — full rebuild 2026
 **Scatter-pays, NOT clusters.** 5+ of a symbol ANYWHERE wins (`banditEval` counts each symbol;

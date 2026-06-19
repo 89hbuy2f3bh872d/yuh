@@ -4,7 +4,11 @@
 //   4 → Super bonus  (global multiplier, applied to the whole bonus at the end)
 //   5 → Hidden bonus (overpowered Super — more spins + boosted multipliers; NOT buyable)
 // Retriggers inside a bonus: 3 scatters +2 spins, 4 +4, 5 +6 (rare).
-// Whole round resolved server-side; client animates. Base/buy RTP ≈ 87%.
+// Whole round resolved server-side; client animates. Base/buy RTP ≈ 96%.
+// NOTE: per-win pays are kept FRACTIONAL (rounded only at the round total) — rounding each
+// tiny win to integer FC at low bets badly distorts RTP (the dominant small win sits on a .5
+// boundary, doubling on a 0.005 payScale change). Concentrated reels (low dead-spin %) make
+// that win dominant, so this matters.
 
 const MUL = "M:";
 function rnd() { return Math.random(); }
@@ -15,35 +19,35 @@ function rollMult(table) { let t = 0; for (let i = 0; i < table.length; i++) t +
 function payRows(a, b, c, d) { return [[15, d], [10, c], [8, b], [5, a]]; }
 
 const TRIG = { regular: 3, super: 4, hidden: 5 }; // scatters needed
-const SPINS = { regular: 8, super: 12, hidden: 15 };
+const SPINS = { regular: 8, super: 16, hidden: 18 }; // more spins → steadier bonus (Super profits more often)
 const HIDDEN_BOOST = 1.7; // hidden bonus multiplier-symbol frequency boost
 
 const GAMES = {
   candy: {
     id: "candy", name: "Candy Cascade", tag: "Cluster pays · tumbling candies", color: "#ec4899",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.07,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 0.39,
     sym: { blue: "🔵", green: "🟢", purple: "🟣", red: "🔴", apple: "🍎", grape: "🍇", melon: "🍉" },
-    reel: [["blue", 90], ["green", 68], ["purple", 50], ["red", 26], ["apple", 14], ["grape", 8], ["melon", 4]],
+    reel: [["blue", 140], ["green", 95], ["purple", 58], ["red", 22], ["apple", 10], ["grape", 5], ["melon", 3]],
     pays: {
       blue: payRows(0.2, 0.5, 1.0, 2.5), green: payRows(0.25, 0.6, 1.2, 3),
       purple: payRows(0.3, 0.8, 1.6, 4), red: payRows(0.4, 1.0, 2.2, 6),
       apple: payRows(0.6, 1.5, 3, 10), grape: payRows(0.9, 2.2, 5, 15), melon: payRows(1.5, 4, 9, 25),
     },
     scatter: { id: "SC", emoji: "🍭", chance: 0.017, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🍬", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3.5], [25, 1.0]] },
+    mult: { emoji: "🍬", chance: 0.17, table: [[2, 54], [3, 33], [5, 10], [10, 3]] },
   },
   olympus: {
     id: "olympus", name: "Thunder Gods", tag: "Cluster pays · global multiplier bonus", color: "#eab308",
-    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 1.055,
+    W: 6, H: 5, minCluster: 5, maxWinX: 5000, payScale: 0.39,
     sym: { ring: "💍", glass: "⏳", chalice: "🏺", crown: "👑", blue: "💙", green: "💚", red: "❤️" },
-    reel: [["ring", 90], ["glass", 68], ["chalice", 50], ["crown", 26], ["blue", 14], ["green", 8], ["red", 4]],
+    reel: [["ring", 140], ["glass", 95], ["chalice", 58], ["crown", 22], ["blue", 10], ["green", 5], ["red", 3]],
     pays: {
       ring: payRows(0.2, 0.5, 1, 2.5), glass: payRows(0.25, 0.6, 1.2, 3),
       chalice: payRows(0.3, 0.8, 1.6, 4), crown: payRows(0.45, 1.1, 2.4, 7),
       blue: payRows(0.6, 1.5, 3, 10), green: payRows(0.9, 2.4, 5.5, 16), red: payRows(1.6, 4.5, 10, 30),
     },
     scatter: { id: "SC", emoji: "⚡", chance: 0.017, payX: { 3: 2, 4: 5, 5: 20, 6: 100 } },
-    mult: { emoji: "🪙", chance: 0.17, table: [[2, 52], [3, 34], [5, 11], [10, 3.5], [25, 1.0]] },
+    mult: { emoji: "🪙", chance: 0.17, table: [[2, 54], [3, 33], [5, 10], [10, 3]] },
   },
   // Wild Bandit ("Le Bandit"-style): 6×5, scatter-pays (5+ matching ANYWHERE), Wild
   // substitutes, Super Cascade (all matching removed), Golden Squares (fixed cells that a
@@ -124,7 +128,9 @@ function evaluate(cfg, grid, bet) {
     }
     if (cells.length >= cfg.minCluster) {
       const x = payFor(cfg, s, cells.length);
-      if (x > 0) wins.push({ sym: s, emoji: cfg.sym[s], size: cells.length, positions: cells, win: Math.round(x * bet) });
+      // Keep the win FRACTIONAL — rounding each tiny win to integer FC at low bets distorts
+      // RTP badly (the dominant small win sits on a .5 boundary). The round TOTAL is rounded once.
+      if (x > 0) wins.push({ sym: s, emoji: cfg.sym[s], size: cells.length, positions: cells, win: x * bet });
     }
   }
   return wins;
