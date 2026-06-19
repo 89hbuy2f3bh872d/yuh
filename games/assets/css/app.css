@@ -1278,19 +1278,28 @@ textarea {
         min-width: 240px;
         max-width: calc(100vw - 1.4rem);
     }
-    /* rakeback: compact card in its grid cell */
+    /* rakeback: compact card in its grid cell, matching server picker size */
     .rb-widget {
         grid-area: rb;
         margin: 0;
         min-width: 0;
         padding: 0.4rem 0.5rem;
     }
-    .rb-sub {
+    .rb-head {
         display: none;
     }
     .rb-body {
-        margin-top: 0.35rem;
-        gap: 0.35rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        gap: 0.25rem;
+    }
+    .rb-amt {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1;
     }
     .rb-amt b {
         font-size: 0.95rem;
