@@ -21,6 +21,8 @@ type NotifRow = { owner: string; kind: string; amount: number | bigint; fromTag:
 type NotifCb = (n: NotifRow) => void;
 
 function num(v: number | bigint): number { return typeof v === "bigint" ? Number(v) : v; }
+// i64 reducer args must be BigInt. Floor + coerce defensively (NaN → 0).
+function bi(v: any): bigint { const n = Math.floor(Number(v)); return BigInt(Number.isFinite(n) ? n : 0); }
 
 export class Stdb {
   private conn: any;
@@ -32,6 +34,21 @@ export class Stdb {
   private balCbs = new Map<string, Set<BalCb>>();
   private bankCbs = new Map<string, Set<BalCb>>();
   private notifCbs = new Map<string, Set<NotifCb>>();
+  // ── migrated-table caches (PK string → normalized row). Seeded from iter() on each
+  //    table's onApplied and kept fresh by onInsert/onUpdate/onDelete. Numeric (i64)
+  //    fields are normalized to JS numbers here so the Database layer sees clean values.
+  private profiles = new Map<string, any>();
+  private sessions = new Map<string, any>();
+  private guilds = new Map<string, any>();
+  private srvStats = new Map<string, any>();
+  private holdings = new Map<string, any>();
+  private assets = new Map<string, any>();
+  private tickets = new Map<string, any>();
+  private rakeback = new Map<string, any>();
+  private loginTokens = new Map<string, any>();
+  private statCounters = new Map<string, any>();
+  private dailyStats = new Map<string, any>();
+  private kvStore = new Map<string, any>();
   private readyP?: Promise<void>;
 
   constructor(private uri: string, private moduleName: string, private token?: string) {}
@@ -58,6 +75,8 @@ export class Stdb {
           // quirk can't stop bank rows from syncing. Seed both caches from iter() on apply.
           conn.subscriptionBuilder().onApplied(() => { this.#seedBanks(conn); resolve(); }).subscribe(["SELECT * FROM account"]);
           try { conn.subscriptionBuilder().onApplied(() => this.#seedBanks(conn)).subscribe(["SELECT * FROM server_bank"]); } catch {}
+          // Everything migrated off Mongo: wire each new table's cache + subscription.
+          this.#wireMigrated(conn);
         })
         .onConnectError((_c: any, e: any) => reject(e instanceof Error ? e : new Error(e?.message || String(e))))
         .onDisconnect(() => { this.connected = false; this.readyP = undefined; setTimeout(() => this.ready().catch(() => {}), 1500); });
@@ -201,4 +220,103 @@ export class Stdb {
     const items = rows.map(r => ({ t: r.kind, m: r.msg, a: num(r.amount), f: r.fromTag, ts: num(r.ts), read: r.read }));
     return { items, unread: items.filter(i => !i.read).length };
   }
+
+  // ── migrated tables: cache wiring + accessors + reducer wrappers ════════════
+  // Resolve a table accessor regardless of codegen casing (camelCase vs snake_case).
+  #tbl(conn: any, names: string[]): any { for (const n of names) { if (conn?.db?.[n]) return conn.db[n]; } return null; }
+
+  // Wire one table: maintain a PK→row cache via insert/update/delete + a SELECT * sub.
+  #wireMigrated(conn: any) {
+    const wire = (sql: string, accessors: string[], pk: string, map: Map<string, any>, norm: (r: any) => any) => {
+      const tbl = this.#tbl(conn, accessors);
+      if (!tbl) { try { console.warn(`[stdb] table accessor not found for '${sql}' — keys:`, Object.keys(conn.db || {}).join(",")); } catch {} return; }
+      const put = (r: any) => { try { map.set(String(r[pk]), norm(r)); } catch {} };
+      const del = (r: any) => { map.delete(String(r[pk])); };
+      tbl.onInsert?.((_c: any, r: any) => put(r));
+      tbl.onUpdate?.((_c: any, _o: any, n: any) => put(n));
+      tbl.onDelete?.((_c: any, r: any) => del(r));
+      try { conn.subscriptionBuilder().onApplied(() => { try { map.clear(); for (const r of tbl.iter?.() ?? []) put(r); } catch {} }).subscribe([`SELECT * FROM ${sql}`]); } catch {}
+    };
+    wire("user_profile", ["userProfile", "user_profile"], "owner", this.profiles, r => ({ _id: String(r.owner), owner: String(r.owner), tag: r.tag || "", av: r.av || "", tw: num(r.tw), tl: num(r.tl), gp: num(r.gp), ld: num(r.ld), lw: num(r.lw), bwdDay: r.bwdDay || "", bwdTotal: num(r.bwdTotal), perms: r.perms || "", gids: r.gids || "", pet: r.pet || "" }));
+    wire("session", ["session"], "token", this.sessions, r => ({ token: String(r.token), owner: String(r.owner), expiryMs: num(r.expiryMs) }));
+    wire("guild", ["guild"], "gid", this.guilds, r => ({ gid: String(r.gid), ownerId: r.ownerId || "", name: r.name || "", icon: r.icon || "", memberCount: num(r.memberCount), invite: r.invite || "", taxBps: num(r.taxBps), rakebackPct: num(r.rakebackPct), verified: !!r.verified, shop: r.shop || "", roleShop: r.roleShop || "", lastSeen: num(r.lastSeen), joinedAt: num(r.joinedAt) }));
+    wire("server_stats", ["serverStats", "server_stats"], "gid", this.srvStats, r => ({ gid: String(r.gid), gp: num(r.gp), wagered: num(r.wagered), payout: num(r.payout), taxed: num(r.taxed), big: num(r.big), playerCount: num(r.playerCount), lastPlay: num(r.lastPlay) }));
+    wire("holding", ["holding"], "key", this.holdings, r => ({ key: String(r.key), owner: String(r.owner), assetId: String(r.assetId), units: Number(r.units) || 0, cost: num(r.cost) }));
+    wire("invest_asset", ["investAsset", "invest_asset"], "id", this.assets, r => ({ _id: String(r.id), id: String(r.id), kind: r.kind || "nft", name: r.name || "", emoji: r.emoji || "", color: r.color || "", price: Number(r.price) || 0, baseline: Number(r.baseline) || 0, vol: Number(r.vol) || 0, supply: Number(r.supply) || 0, prevPrice: Number(r.prevPrice) || 0, bias: Number(r.bias) || 0, hist: r.hist || "", updatedAt: num(r.updatedAt) }));
+    wire("ticket", ["ticket"], "id", this.tickets, r => ({ _id: String(r.id), id: String(r.id), uid: String(r.uid), tag: r.tag || "", subject: r.subject || "", status: r.status || "open", messages: r.messages || "", updatedAt: num(r.updatedAt), createdAt: num(r.createdAt) }));
+    wire("rakeback_ledger", ["rakebackLedger", "rakeback_ledger"], "key", this.rakeback, r => ({ key: String(r.key), uid: String(r.uid), gid: String(r.gid), accrued: num(r.accrued), wagered: num(r.wagered), claimed: num(r.claimed), updatedAt: num(r.updatedAt) }));
+    wire("login_token", ["loginToken", "login_token"], "token", this.loginTokens, r => ({ token: String(r.token), uid: String(r.uid), gid: r.gid || "", expAt: num(r.expAt) }));
+    wire("stat_counter", ["statCounter", "stat_counter"], "key", this.statCounters, r => ({ key: String(r.key), count: num(r.count) }));
+    wire("daily_stat", ["dailyStat", "daily_stat"], "date", this.dailyStats, r => ({ date: String(r.date), total: num(r.total), cmds: r.cmds || "{}" }));
+    wire("kv", ["kv"], "key", this.kvStore, r => ({ key: String(r.key), val: r.val || "" }));
+  }
+
+  // ── cache accessors (instant, no round-trip) ────────────────────────────────
+  getProfile(owner: string): any { return this.profiles.get(String(owner)) || null; }
+  allProfiles(): any[] { return [...this.profiles.values()]; }
+  getSessionRow(token: string): any { return this.sessions.get(String(token)) || null; }
+  getGuildRow(gid: string): any { return this.guilds.get(String(gid)) || null; }
+  allGuilds(): any[] { return [...this.guilds.values()]; }
+  getStats(gid: string): any { return this.srvStats.get(String(gid)) || null; }
+  allStats(): any[] { return [...this.srvStats.values()]; }
+  allKv(): any[] { return [...this.kvStore.values()]; }
+  getHoldingsFor(owner: string): any[] { const out: any[] = []; for (const h of this.holdings.values()) if (h.owner === String(owner)) out.push(h); return out; }
+  totalHoldingUnits(): Map<string, number> { const m = new Map<string, number>(); for (const h of this.holdings.values()) if (h.units > 0) m.set(h.assetId, (m.get(h.assetId) || 0) + h.units); return m; }
+  getAssetRow(id: string): any { return this.assets.get(String(id)) || null; }
+  allAssets(): any[] { return [...this.assets.values()]; }
+  getTicketRow(id: string): any { return this.tickets.get(String(id)) || null; }
+  allTickets(): any[] { return [...this.tickets.values()]; }
+  getRakebackRow(uid: string, gid: string): any { return this.rakeback.get(String(uid) + "@" + String(gid)) || null; }
+  getLoginTokenRow(token: string): any { return this.loginTokens.get(String(token)) || null; }
+  allStatCounters(): any[] { return [...this.statCounters.values()]; }
+  allDailyStats(): any[] { return [...this.dailyStats.values()]; }
+  getKv(key: string): any { return this.kvStore.get(String(key)) || null; }
+
+  // ── reducer wrappers (camelCase reducer name + camelCase object args) ────────
+  //    i64 args → BigInt; f64/bool/String pass through. Fire-and-forget calls that
+  //    don't need a result swallow errors; the rest await + read the cache for state.
+  async upsertProfile(owner: string, tag: string, av: string) { return this.#call("upsertProfile", { owner, tag: tag || "", av: av || "" }).catch(() => {}); }
+  async recordGameStats(owner: string, won: boolean, amount: number) { return this.#call("recordGameStats", { owner, won: !!won, amount: bi(amount) }).catch(() => {}); }
+  async setPerms(owner: string, permsJson: string) { return this.#call("setPerms", { owner, permsJson }); }
+  async setUserGuilds(owner: string, gidsJson: string) { return this.#call("setUserGuilds", { owner, gidsJson }).catch(() => {}); }
+  async setPet(owner: string, petJson: string) { return this.#call("setPet", { owner, petJson }).catch(() => {}); }
+  async setLastDaily(owner: string, ts: number) { return this.#call("setLastDaily", { owner, ts: bi(ts) }).catch(() => {}); }
+  async setLastWork(owner: string, ts: number) { return this.#call("setLastWork", { owner, ts: bi(ts) }).catch(() => {}); }
+  async tryBankWithdraw(owner: string, day: string, amount: number, cap: number) { return this.#call("tryBankWithdraw", { owner, day, amount: bi(amount), cap: bi(cap) }); }
+  async createSession(owner: string, token: string, expiryMs: number) { return this.#call("createSession", { owner, token, expiryMs: bi(expiryMs) }); }
+  async revokeSession(token: string) { return this.#call("revokeSession", { token }).catch(() => {}); }
+  async revokeAllSessions(owner: string) { return this.#call("revokeAllSessions", { owner }).catch(() => {}); }
+  async pruneExpiredSessions() { return this.#call("pruneExpiredSessions", {}).catch(() => {}); }
+  async upsertGuild(gid: string, ownerId: string, name: string, icon: string, memberCount: number) { return this.#call("upsertGuild", { gid, ownerId: ownerId || "", name: name || "", icon: icon || "", memberCount: bi(memberCount) }).catch(() => {}); }
+  async setGuildTax(gid: string, taxBps: number) { return this.#call("setGuildTax", { gid, taxBps: bi(taxBps) }); }
+  async setGuildRakeback(gid: string, pct: number) { return this.#call("setGuildRakeback", { gid, pct: bi(pct) }); }
+  async setGuildVerified(gid: string, verified: boolean) { return this.#call("setGuildVerified", { gid, verified: !!verified }); }
+  async setGuildInvite(gid: string, invite: string) { return this.#call("setGuildInvite", { gid, invite: invite || "" }); }
+  async setGuildShop(gid: string, shopJson: string) { return this.#call("setGuildShop", { gid, shopJson }); }
+  async setRoleShop(gid: string, roleShopJson: string) { return this.#call("setRoleShop", { gid, roleShopJson }); }
+  async recordServerWager(gid: string, uid: string, amount: number) { return this.#call("recordServerWager", { gid, uid: uid || "", amount: bi(amount) }).catch(() => {}); }
+  async recordServerPayout(gid: string, payout: number, tax: number) { return this.#call("recordServerPayout", { gid, payout: bi(payout), tax: bi(tax) }).catch(() => {}); }
+  async addHolding(owner: string, assetId: string, units: number, cost: number) { return this.#call("addHolding", { owner, assetId, units: Number(units) || 0, cost: bi(cost) }); }
+  async removeHolding(owner: string, assetId: string, sellUnits: number, costPortion: number) { return this.#call("removeHolding", { owner, assetId, sellUnits: Number(sellUnits) || 0, costPortion: bi(costPortion) }); }
+  async addRakeback(uid: string, gid: string, earn: number, wager: number) { return this.#call("addRakeback", { uid, gid, earn: bi(earn), wager: bi(wager) }).catch(() => {}); }
+  async claimRakeback(uid: string, gid: string) { return this.#call("claimRakeback", { uid, gid }); }
+  async saveAsset(a: any) { return this.#call("saveAsset", { id: String(a._id ?? a.id), kind: a.kind || "nft", name: a.name || "", emoji: a.emoji || "", color: a.color || "", price: Number(a.price) || 0, baseline: Number(a.baseline) || 0, vol: Number(a.vol) || 0, supply: Number(a.supply) || 0, prevPrice: Number(a.prevPrice ?? a.price) || 0, bias: Number(a.bias) || 0, hist: typeof a.hist === "string" ? a.hist : JSON.stringify(a.hist || []), updatedAt: bi(a.updatedAt || Date.now()) }).catch(() => {}); }
+  async createTicket(id: string, uid: string, tag: string, subject: string, messagesJson: string, createdAt: number) { return this.#call("createTicket", { id, uid, tag: tag || "", subject: subject || "", messagesJson, createdAt: bi(createdAt) }); }
+  async addTicketMessage(id: string, messagesJson: string, status: string, updatedAt: number) { return this.#call("addTicketMessage", { id, messagesJson, status, updatedAt: bi(updatedAt) }); }
+  async setTicketStatus(id: string, status: string, updatedAt: number) { return this.#call("setTicketStatus", { id, status, updatedAt: bi(updatedAt) }); }
+  async deleteTicket(id: string) { return this.#call("deleteTicket", { id }).catch(() => {}); }
+  async createLoginToken(token: string, uid: string, gid: string, expAt: number) { return this.#call("createLoginToken", { token, uid, gid: gid || "", expAt: bi(expAt) }); }
+  async consumeLoginToken(token: string) { return this.#call("consumeLoginToken", { token }).catch(() => {}); }
+  async recordCommand(name: string, date: string) { return this.#call("recordCommand", { name, date }).catch(() => {}); }
+  async kvSet(key: string, val: string) { return this.#call("kvSet", { key, val }); }
+  async wipeTable(tableName: string) { return this.#call("wipeTable", { tableName }).catch(() => {}); }
+
+  // ── one-time migration imports (exact full-row upserts; Mongo→STDB) ──────────
+  async importProfile(p: any) { return this.#call("importProfile", { owner: String(p.owner), tag: p.tag || "", av: p.av || "", tw: bi(p.tw), tl: bi(p.tl), gp: bi(p.gp), ld: bi(p.ld), lw: bi(p.lw), bwdDay: p.bwdDay || "", bwdTotal: bi(p.bwdTotal), perms: p.perms || "", gids: p.gids || "", pet: p.pet || "" }); }
+  async importGuild(g: any) { return this.#call("importGuild", { gid: String(g.gid), ownerId: g.ownerId || "", name: g.name || "", icon: g.icon || "", memberCount: bi(g.memberCount), invite: g.invite || "", taxBps: bi(g.taxBps), rakebackPct: bi(g.rakebackPct), verified: !!g.verified, shop: g.shop || "", roleShop: g.roleShop || "", lastSeen: bi(g.lastSeen), joinedAt: bi(g.joinedAt) }); }
+  async importServerStats(s: any) { return this.#call("importServerStats", { gid: String(s.gid), gp: bi(s.gp), wagered: bi(s.wagered), payout: bi(s.payout), taxed: bi(s.taxed), big: bi(s.big), playerCount: bi(s.playerCount), lastPlay: bi(s.lastPlay) }); }
+  async importHolding(h: any) { return this.#call("importHolding", { owner: String(h.owner), assetId: String(h.assetId), units: Number(h.units) || 0, cost: bi(h.cost) }); }
+  async importRakeback(r: any) { return this.#call("importRakeback", { uid: String(r.uid), gid: String(r.gid), accrued: bi(r.accrued), wagered: bi(r.wagered), claimed: bi(r.claimed) }); }
+  async importStatCounter(key: string, count: number) { return this.#call("importStatCounter", { key, count: bi(count) }); }
+  async importDailyStat(date: string, total: number) { return this.#call("importDailyStat", { date, total: bi(total) }); }
 }

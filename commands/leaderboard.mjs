@@ -20,17 +20,10 @@ export default {
       return message.channel.send({ embeds: [ embed(COLORS.gold).setTitle("🏆 Top Earners").setDescription(lines.join("\n")).setFooter({ text: `&lb rich  ·  &lb earners` }) ] });
     }
 
-    // rich — live STDB balances via the bridge
+    // rich — live STDB balances (getLeaderboard sorts by the live account balance now)
     const limit = 10;
-    let stRows = [];
-    if (db._bridge && db._bridge.leaderboard) {
-      stRows = await db._bridge.leaderboard(limit);
-    }
-    if (!stRows.length) {
-      // fallback to Mongo if the bridge isn't attached (shouldn't happen in prod)
-      rows = await db.getLeaderboard("bal", limit);
-      stRows = rows.map(r => ({ owner: r._id, balance: Number(r.bal || 0) }));
-    }
+    rows = await db.getLeaderboard("bal", limit);
+    const stRows = rows.map(r => ({ owner: r._id, balance: Number(r.bal || 0) }));
     if (!stRows.length) return message.channel.send({ embeds: [embed(COLORS.warn).setDescription("No data yet.")] });
 
     const medals = ["🥇","🥈","🥉"];

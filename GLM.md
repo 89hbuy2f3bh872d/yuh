@@ -10,9 +10,10 @@ first**, then this.
 ## 0. TL;DR
 
 - Two processes under PM2: `sirgreen-bot` (Node `index.mjs`) + `sirgreen-web` (Bun/Elysia `web/server.ts`).
-- Two databases with **strict ownership**: **SpacetimeDB** owns the money ledger
-  (balances, transactions, server banks); **MongoDB** owns everything else (users,
-  sessions, guilds, stats, shop, assets, holdings).
+- **ONE database: SpacetimeDB** — owns the ENTIRE datastore (balances, banks,
+  notifications, profiles, sessions, guilds, stats, holdings, assets, tickets, rakeback,
+  login tokens, command stats, custom tiers). MongoDB was fully migrated out
+  (`scripts/migrate-to-stdb.mjs`); the running app no longer touches Mongo.
 - All game outcomes are **server-authoritative**; the client only animates.
 - Pages are static `.html` in `games/`, each with scoped `<style>` + inline `<script>`,
   navigated via **pjax** (the runtime lives in `games/partials/sidebar.html`).
@@ -26,24 +27,24 @@ first**, then this.
 
 ```
 Discord ──> Node bot (index.mjs) ──localhost /internal/*──> Bun web (web/server.ts) ──ws──> SpacetimeDB
-                  │                                              │
-                  └──────────────── MongoDB (src/Database.mjs) ──┘
-Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (rest)
+Browser ──HTTPS(Cloudflare)──> Bun web ──ws──> SpacetimeDB (the entire datastore)
 ```
 
-- `web/server.ts` is the core (~1470 lines): all HTTP routes, sessions, money endpoints,
-  OAuth, the realtime WebSocket hub, and the investing price engine.
-- `web/src/stdb.ts` is the single STDB connection: reducers + table subs + caches.
-- `src/Database.mjs` is the Mongo layer, **shared by both processes** (Bun runs `.mjs`).
-- The bot never touches STDB directly — it delegates to the web service via
-  `src/stdbBridge.mjs` (loopback-only `/internal/*`).
+- `web/server.ts` is the core (~1150 lines): all HTTP routes, sessions, money endpoints,
+  OAuth, the realtime WebSocket hub, the investing price engine, AND the single STDB conn.
+- `web/src/stdb.ts` is the single STDB connection: reducer wrappers + per-table subs +
+  in-memory caches for **every** table.
+- `src/Database.mjs` is a thin **facade** over STDB (web: `{stdb}`) or the web's
+  `/internal/*` API (bot: `{http}`) — same method names as the old Mongo layer.
+- The bot runs **no DB client**; it delegates every data op to the web via `/internal/*`
+  (loopback + shared secret). `src/stdbBridge.mjs` is deleted.
 
-### Process responsibilities (do not cross these lines)
+### Process responsibilities
 | Concern | Owner |
 |---|---|
-| Balances, transactions, server banks, notifications | **STDB** (`spacetimedb/src/lib.rs`) |
-| Users, sessions, guilds, serverstats, shop, tickets, cases, assets, holdings | **Mongo** (`src/Database.mjs`) |
-| HTTP routing, sessions, money endpoints, WS hub, invest engine | `web/server.ts` |
+| **The entire datastore** (balances, banks, notifications, profiles, sessions, guilds, serverstats, shop, tickets, cases, assets, holdings, rakeback, login tokens, command stats) | **STDB** (`spacetimedb/src/lib.rs`) |
+| HTTP routing, sessions, money endpoints, WS hub, invest engine, STDB connection | `web/server.ts` + `web/src/stdb.ts` |
+| Data facade (parse JSON blobs, cache reads, reducer calls) | `src/Database.mjs` |
 | Discord chat commands | `commands/*.mjs` |
 
 ---
@@ -544,9 +545,25 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
 17. **Case battle shared mode**: split the entry POT (guaranteed loss after rake). Fixed to
     split total reward VALUE — good pulls now profit everyone. Net RTP ≈ 90%.
 18. **Rakeback**: Stake-style cashback (`wager × houseEdge × pct`) on all play, per-server.
-    New `rakeback` Mongo collection + `accrueRakeback` hooks at every wager site (slots,
+    New `rakeback` collection + `accrueRakeback` hooks at every wager site (slots,
     house, cards, case-battle — the last also closes the serverstats gap). Claim from the
     lobby tile. Owner-configurable pct (default 5%). Halts during tax holidays.
+19. **Mongo → STDB migration (whole datastore)**: replaced all 10 Mongo collections with
+    13 new STDB tables (`user_profile`, `session`, `guild`, `server_stats`, `server_player`,
+    `holding`, `invest_asset`, `ticket`, `rakeback_ledger`, `login_token`, `stat_counter`,
+    `daily_stat`, `kv`) + the 3 original ledger tables. `Database.mjs` became a two-backend
+    facade (web=`{stdb}` cache/reducer; bot=`{http}` to `/internal/*`); the bot no longer
+    runs any DB client; `stdbBridge.mjs` deleted. Key design choices: JSON fields are opaque
+    `String` blobs (merge/parse in JS, not Rust — no `serde_json` needed); atomic numeric ops
+    are Rust i64/f64 math; return-value reducers do the full op + `Err` on failure, then JS
+    reads the cache (`claim_rakeback` credits the balance *inside* the txn → route doesn't
+    re-credit); unbounded `players[]` → relational `server_player` + `player_count`; composite
+    PKs are single `owner|asset`/`uid@gid`/`gid|uid` strings. `pruneExpiredSessions` moved to
+    a web timer. One-time `scripts/migrate-to-stdb.mjs` (POSTs Mongo rows to `/internal/migrate`
+    → `import_*` reducers; balances NOT migrated — the ledger already owns them). Couldn't be
+    runtime-tested on the dev box (no Bun/STDB/`module_bindings`) — `cargo check` + `node --check`
+    pass; the TS layers (`stdb.ts`, `server.ts`) verify on first VPS deploy. Biggest untested
+    assumption: codegen camelCases reducer ARG names (matches the confirmed name/field casing).
 
 ---
 

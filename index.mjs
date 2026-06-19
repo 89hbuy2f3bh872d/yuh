@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import { Client, Events, EmbedBuilder, GatewayOpcodes } from "@fluxerjs/core";
 import { CommandHandler } from "./src/CommandHandler.mjs";
 import { Database } from "./src/Database.mjs";
-import { StdbBridge } from "./src/stdbBridge.mjs";
 import { COLORS } from "./src/theme.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,24 +17,18 @@ try {
   process.exit(1);
 }
 
-for (const key of ["token", "mongodb"]) {
-  if (!config[key]) { console.error(`[Startup] FATAL: missing config key "${key}".`); process.exit(1); }
-}
+if (!config.token) { console.error(`[Startup] FATAL: missing config key "token".`); process.exit(1); }
+if (!config.web?.internalSecret) { console.error("[Startup] FATAL: config.web.internalSecret required — the bot reaches the SpacetimeDB-backed datastore via the web service's loopback /internal API."); process.exit(1); }
 
-const db = new Database(config.mongodb.uri, config.mongodb.database);
+// SpacetimeDB owns the ENTIRE datastore now. This Node process is ONLY the Discord/
+// Fluxer bot and runs NO database client of its own — every data op is a thin HTTP call
+// to the Bun/Elysia web service's loopback /internal/* API (which owns the single STDB
+// connection). One source of truth, zero Mongo. Start the web service for this to work:
+//   bun run web/server.ts
+const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 80);
+const db = new Database({ http: { base: webUrl, secret: config.web.internalSecret } });
 await db.connect();
-setInterval(() => db.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
-
-// The website runs exclusively on the Bun + Elysia service (web/server.ts).
-// This Node process is ONLY the Discord/Fluxer bot; for balance ops it routes to
-// the Elysia service over localhost (which owns SpacetimeDB).
-if (config.spacetime && config.web?.internalSecret) {
-  const webUrl = "http://127.0.0.1:" + (config.web.port ?? config.webPort ?? 80);
-  db.attachBalanceBridge(new StdbBridge(webUrl, config.web.internalSecret));
-  console.log(`[Startup] Balance bridge → ${webUrl}. Web is served by the Elysia service (bun run web/server.ts).`);
-} else {
-  console.warn("[Startup] config.spacetime / config.web.internalSecret missing — bot will use Mongo balances and won't bridge. Start the Elysia service (web/server.ts) to serve the website.");
-}
+console.log(`[Startup] Data layer → web /internal API at ${webUrl} (STDB-backed, no Mongo).`);
 
 const client = new Client({ intents: 0, suppressIntentWarning: true, ...config["fluxer.js"] });
 const handler = new CommandHandler(client, db, config);

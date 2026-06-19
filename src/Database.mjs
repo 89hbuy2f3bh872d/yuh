@@ -1,35 +1,31 @@
-import { MongoClient } from "mongodb";
+// Database — the data layer, now backed entirely by SpacetimeDB (migrated off MongoDB).
+//
+// TWO BACKENDS, same method surface so callers (web/server.ts, commands, CommandHandler)
+// never change:
+//   • WEB  → new Database({ stdb })            — reads STDB caches, calls STDB reducers.
+//   • BOT  → new Database({ http: { base, secret } }) — thin client to the web's loopback
+//            /internal/* endpoints (the bot runs no STDB client of its own).
+//
+// STDB owns ALL state now. JSON-shaped fields (perms, gids, shop, role_shop, ticket
+// messages, asset hist, pet) are stored as opaque String blobs in STDB and parsed/merged
+// here. Numeric/money changes are atomic reducers. There is NO Mongo, NO balance bridge.
 
-/**
- * Compact field names to minimise Atlas free-tier storage:
- *   _id = userId
- *   bal = balance
- *   tw  = totalWon
- *   tl  = totalLost
- *   gp  = gamesPlayed
- *   ld  = lastDaily (Unix ms)
- *   st  = session tokens { token -> expiry }
- */
+import crypto from "node:crypto";
 
 const DEFAULTS = { bal: 1_000, tw: 0, tl: 0, gp: 0, ld: 0 };
-
-// Maximum values to cap balance at (prevents overflow exploits)
-const MAX_BALANCE  = 9_000_000_000_000; // 9 trillion FC
-const MAX_DELTA    = 9_000_000_000_000; // max single balance change
-const MAX_FIELD_INC = 9_000_000_000_000;
 
 // Per-server tax on winnings, in basis points (1500 = 15%). Capped at 50%.
 const DEFAULT_TAX_BPS = 1500;
 const MAX_TAX_BPS = 5000;
+const MAX_DELTA = 1_000_000_000; // mirrors STDB MAX_DELTA (per-op cap)
+
 function clampTaxBps(bps) {
   const v = Math.round(Number(bps));
   if (!Number.isFinite(v)) return DEFAULT_TAX_BPS;
   return Math.max(0, Math.min(MAX_TAX_BPS, v));
 }
 
-// Investing — seed assets. FC-T = the FluxCoin index whose value tracks total FC in
-// circulation (like USD-T tracking dollar reserves); the rest are NFTs that start cheap
-// and rise with demand. `baseline` = mean-reversion target, `vol` = volatility.
+// Investing — seed assets. FC-T tracks total FC in circulation; the rest are NFTs.
 const INVEST_SEED = [
   { _id: "fct",       kind: "fct", name: "FC-T",          emoji: "🪙", color: "#f1c40f", price: 1.00, baseline: 1.00, vol: 0.004 },
   { _id: "pixelpeng", kind: "nft", name: "Pixel Penguin",  emoji: "🐧", color: "#3b9dff", price: 5,   baseline: 9,   vol: 0.060 },
@@ -39,900 +35,505 @@ const INVEST_SEED = [
   { _id: "aquagem",   kind: "nft", name: "Aqua Gem",       emoji: "💠", color: "#1abc9c", price: 4,   baseline: 10,  vol: 0.075 },
 ];
 
-// User ID validation — Discord IDs are 17-20 digits
 const USER_ID_RE = /^\d{17,20}$/;
+function isValidUserId(uid) { return typeof uid === "string" && USER_ID_RE.test(uid.trim()); }
 
-function isValidUserId(uid) {
-  return typeof uid === "string" && USER_ID_RE.test(uid.trim());
-}
-
-// Session tokens are hex (crypto.randomBytes(...).toString("hex")). Reject anything else
-// so a cookie value can't inject Mongo dot-path / operator segments.
+// Session tokens are hex. Reject anything else (defensive; STDB PK is the token string).
 const SESSION_TOKEN_RE = /^[a-f0-9]{24,128}$/i;
 function isSessionToken(t) { return typeof t === "string" && SESSION_TOKEN_RE.test(t); }
 
-function clamp(n, lo, hi) {
-  const v = Number(n) || 0;
-  return Math.max(lo, Math.min(hi, v));
-}
+function clamp(n, lo, hi) { const v = Number(n) || 0; return Math.max(lo, Math.min(hi, v)); }
 
-function dbNameFromUri(uri, fallback = "casino") {
-  try {
-    const u = new URL(uri.replace(/^mongodb(\+srv)?:\/\//, "https://"));
-    const n = u.pathname.replace(/^\//, "").split("?")[0];
-    return n || fallback;
-  } catch { return fallback; }
-}
-
-function unwrap(r) {
-  if (!r) return null;
-  return r.value !== undefined ? r.value : r;
-}
+// JSON blob helpers (STDB stores these as opaque strings).
+function parseArr(s) { try { const v = JSON.parse(s || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
+function parseObj(s) { try { const v = JSON.parse(s || "{}"); return (v && typeof v === "object" && !Array.isArray(v)) ? v : {}; } catch { return {}; } }
+function genId() { return crypto.randomBytes(9).toString("hex"); }
+function todayUtc() { return new Date().toISOString().slice(0, 10); } // YYYY-MM-DD
 
 export class Database {
-  constructor(uri, dbNameOverride) {
-    this._uri    = uri;
-    this._dbName = (dbNameOverride?.trim()) ? dbNameOverride : dbNameFromUri(uri);
-    this._bridge = null; // optional StdbBridge — when set, balances live in SpacetimeDB
+  constructor(opts = {}) {
+    // WEB mode: { stdb: <Stdb instance> }.  BOT mode: { http: { base, secret } }.
+    this.stdb = opts.stdb || null;
+    this.http = opts.http || null;
   }
 
-  /** Route balance reads/writes through SpacetimeDB (via the web service bridge). */
-  attachBalanceBridge(bridge) { this._bridge = bridge; }
+  // Deprecated no-ops kept so existing call sites don't break.
+  attachBalanceBridge(_b) { /* balances live in STDB directly now */ }
 
   async connect() {
-    this._client = new MongoClient(this._uri);
-    await this._client.connect();
-    this._db      = this._client.db(this._dbName);
-    this._users   = this._db.collection("u");
-    this._stats   = this._db.collection("stats");
-    this._guilds  = this._db.collection("guilds");
-    this._tokens  = this._db.collection("logintokens");
-    this._srvStats = this._db.collection("serverstats");
-    this._rakeback = this._db.collection("rakeback");  // per-user-per-server rakeback ledger
-    this._assets   = this._db.collection("assets");    // investing: tradeable assets + price history
-    this._holdings = this._db.collection("holdings");  // investing: per-user positions
-    // Ensure indexes
-    try {
-      await this._users.createIndex({ "st.e": -1 }); // session expiry TTL
-      await this._stats.createIndex({ _id: 1 });
-      await this._tokens.createIndex({ expAt: 1 }, { expireAfterSeconds: 0 }); // auto-expire login links
-    } catch (_) { /* index may already exist */ }
+    if (this.http) return;              // bot: the web service owns the datastore
+    await this.stdb.ready().catch(() => {});
     await this.seedAssets().catch(() => {});
-    console.log(`[DB] Connected → ${this._dbName}.u`);
+    console.log("[DB] STDB-backed data layer ready");
   }
 
-  // ─── Input validation helpers ──────────────────────────────────────────────
+  // ─── HTTP helpers (bot mode) ────────────────────────────────────────────────
+  async _post(path, body) {
+    try {
+      const r = await fetch(this.http.base + path, { method: "POST", headers: { "Content-Type": "application/json", "x-internal": this.http.secret }, body: JSON.stringify(body) });
+      return r.ok ? await r.json() : { ok: false, error: "http " + r.status };
+    } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  }
 
   _uid(uid) {
     if (!isValidUserId(uid)) throw new Error(`Invalid userId: ${JSON.stringify(uid)}`);
     return uid.trim();
   }
 
-  // ─── User record helpers ───────────────────────────────────────────────────
-
+  // ─── Users ──────────────────────────────────────────────────────────────────
   async getUser(userId) {
+    if (this.http) { const d = await this._post("/internal/user", { uid: userId }); return (d && d.user) ? d.user : { _id: String(userId), ...DEFAULTS }; }
     const id = this._uid(userId);
-    const r = await this._users.findOneAndUpdate(
-      { _id: id },
-      [
-        { $set: {
-          bal: { $ifNull: ["$bal", DEFAULTS.bal] },
-          tw:  { $ifNull: ["$tw",  DEFAULTS.tw]  },
-          tl:  { $ifNull: ["$tl",  DEFAULTS.tl]  },
-          gp:  { $ifNull: ["$gp",  DEFAULTS.gp]  },
-          ld:  { $ifNull: ["$ld",  DEFAULTS.ld]  },
-        } },
-      ],
-      { upsert: true, returnDocument: "after" }
-    );
-    const doc = unwrap(r) ?? { _id: id, ...DEFAULTS };
-    if (this._bridge) { try { doc.bal = await this._bridge.balance(id); } catch { /* keep mongo bal as fallback */ } }
-    return doc;
+    const p = this.stdb.getProfile(id);
+    const bal = this.stdb.getBalance(id);
+    if (!p) {
+      // First touch — create the profile + account (background; cache fills shortly).
+      this.stdb.upsertProfile(id, "", "");
+      this.stdb.ensureAccount?.(id);
+      return { _id: id, bal: bal || DEFAULTS.bal, ...DEFAULTS };
+    }
+    return {
+      _id: id, bal, tw: p.tw, tl: p.tl, gp: p.gp, ld: p.ld, lw: p.lw,
+      tag: p.tag, av: p.av, perms: parseArr(p.perms), gids: parseArr(p.gids),
+      pet: p.pet ? parseObj(p.pet) : null,
+    };
   }
 
-  /**
-   * Atomically deduct `delta` from userId's balance, but ONLY if their
-   * current balance is >= |delta|. Returns the new document on success,
-   * or null if the user couldn't afford it.
-   *
-   * For positive `delta` (credit): cap at MAX_BALANCE.
-   * For negative `delta` (debit): requires existing bal >= |delta|.
-   */
+  // Atomically deduct (delta<0) / credit (delta>0). Returns the new doc, or null if a
+  // deduction couldn't be covered.
   async atomicDeduct(userId, delta) {
-    const id    = this._uid(userId);
-    const d     = clamp(delta, -MAX_DELTA, MAX_DELTA);
-    if (this._bridge) {
-      const res = d < 0 ? await this._bridge.deduct(id, Math.abs(d)) : await this._bridge.credit(id, d);
-      return res.ok ? { _id: id, bal: Number(res.bal || 0) } : null; // null = couldn't afford
+    const id = this._uid(userId);
+    const d = clamp(delta, -MAX_DELTA, MAX_DELTA);
+    if (d === 0) return { _id: id, bal: await this._bal(id) };
+    if (this.http) {
+      const res = d < 0 ? await this._post("/internal/deduct", { uid: id, amount: Math.abs(d) }) : await this._post("/internal/credit", { uid: id, amount: d });
+      return res.ok ? { _id: id, bal: Number(res.bal || 0) } : null;
     }
-    const exact = d < 0 ? d : { $min: [d, MAX_BALANCE - "$bal"] };
-
-    // For deductions, use a conditional update that only succeeds if bal >= |delta|
-    if (d < 0) {
-      const r = await this._users.findOneAndUpdate(
-        { _id: id, bal: { $gte: Math.abs(d) } },
-        [{ $set: { bal: { $max: [0, { $add: ["$bal", d] }] } } }],
-        { returnDocument: "after" }
-      );
-      return unwrap(r);
-    }
-
-    // For credits, just apply the delta capped at MAX_BALANCE
-    const r = await this._users.findOneAndUpdate(
-      { _id: id },
-      [{ $set: { bal: { $min: [{ $add: [{ $ifNull: ["$bal", 0] }, d] }, MAX_BALANCE] } } }],
-      { upsert: true, returnDocument: "after" }
-    );
-    return unwrap(r);
+    try {
+      if (d < 0) await this.stdb.deduct(id, Math.abs(d)); else await this.stdb.credit(id, d);
+      return { _id: id, bal: this.stdb.getBalance(id) };
+    } catch { return null; } // insufficient
   }
 
-  /**
-   * Convenience wrapper: atomically deduct, record the game result, and
-   * optionally credit winnings in a single logical operation.
-   * Returns { ok: true, newBal } on success, { ok: false } if insufficient funds.
-   */
+  // Take a bet, pay a win, record the result — atomically.
   async atomicGame(userId, bet, wonAmount = 0) {
-    const id    = this._uid(userId);
-    const b     = clamp(Math.abs(bet), 0, MAX_DELTA);
-    const w     = clamp(Math.abs(wonAmount), 0, MAX_DELTA);
-    if (this._bridge) {
-      const res = await this._bridge.settle(id, b, w); // atomic in STDB: take bet, pay win
-      if (!res.ok) return { ok: false };
-      await this.recordGame(id, w > b, Math.max(b, w));
-      return { ok: true, newBal: Number(res.bal || 0) };
+    const id = this._uid(userId);
+    const b = clamp(Math.abs(bet), 0, MAX_DELTA);
+    const w = clamp(Math.abs(wonAmount), 0, MAX_DELTA);
+    if (this.http) {
+      const res = await this._post("/internal/game", { uid: id, bet: b, payout: w });
+      return res.ok ? { ok: true, newBal: Number(res.newBal || 0) } : { ok: false };
     }
-    // Net change: -(bet) + wonAmount
-    const net   = w - b;
-    const newBal = await this.atomicDeduct(id, net);
-    if (newBal === null) return { ok: false };
-    // After atomicDeduct the bal field is guaranteed to be valid
-    await this.recordGame(id, net > 0, Math.max(b, w));
-    return { ok: true, newBal: newBal.bal };
+    try { await this.stdb.settle(id, b, w); } catch { return { ok: false }; }
+    await this.recordGame(id, w > b, Math.max(b, w));
+    return { ok: true, newBal: this.stdb.getBalance(id) };
   }
 
   async updateBalance(userId, delta) {
     const id = this._uid(userId);
-    const d  = clamp(delta, -MAX_DELTA, MAX_DELTA);
-    if (this._bridge) {
-      const res = d >= 0 ? await this._bridge.credit(id, d) : await this._bridge.deduct(id, Math.abs(d));
+    const d = clamp(delta, -MAX_DELTA, MAX_DELTA);
+    if (d === 0) return { _id: id, bal: await this._bal(id) };
+    if (this.http) {
+      const res = d >= 0 ? await this._post("/internal/credit", { uid: id, amount: d }) : await this._post("/internal/deduct", { uid: id, amount: Math.abs(d) });
       return { _id: id, bal: Number(res.bal || 0) };
     }
-    const r  = await this._users.findOneAndUpdate(
-      { _id: id },
-      [{ $set: { bal: { $min: [{ $add: [{ $ifNull: ["$bal", 0] }, d] }, MAX_BALANCE] } } }],
-      { upsert: true, returnDocument: "after" }
-    );
-    return unwrap(r) ?? { bal: d };
+    try { if (d >= 0) await this.stdb.credit(id, d); else await this.stdb.deduct(id, Math.abs(d)); } catch {}
+    return { _id: id, bal: this.stdb.getBalance(id) };
   }
+
+  async _bal(id) { return this.http ? Number((await this._post("/internal/user", { uid: id }))?.user?.bal || 0) : this.stdb.getBalance(id); }
 
   async setLastDaily(userId, ts) {
-    await this._users.updateOne(
-      { _id: this._uid(userId) },
-      { $set: { ld: clamp(ts, 0, Date.now()) } },
-      { upsert: true }
-    );
+    const id = this._uid(userId), t = clamp(ts, 0, Date.now());
+    if (this.http) return void this._post("/internal/last-daily", { uid: id, ts: t });
+    await this.stdb.setLastDaily(id, t);
   }
-
   async setLastWork(userId, ts) {
-    await this._users.updateOne(
-      { _id: this._uid(userId) },
-      { $set: { lw: clamp(ts, 0, Date.now()) } },
-      { upsert: true }
-    );
+    const id = this._uid(userId), t = clamp(ts, 0, Date.now());
+    if (this.http) return void this._post("/internal/last-work", { uid: id, ts: t });
+    await this.stdb.setLastWork(id, t);
   }
 
   async recordGame(userId, won, amount) {
-    const id   = this._uid(userId);
-    const amt  = clamp(amount, 0, MAX_FIELD_INC);
-    const inc  = { gp: 1 };
-    if (won) inc.tw = amt; else inc.tl = amt;
-    await this._users.updateOne({ _id: id }, { $inc: inc } , { upsert: true });
+    const id = this._uid(userId), amt = clamp(amount, 0, MAX_DELTA);
+    if (this.http) return void this._post("/internal/record-game", { uid: id, won: !!won, amount: amt });
+    await this.stdb.recordGameStats(id, !!won, amt);
   }
 
-  // ─── Fluxer identity cache (for the misc send-money picker) ──────────────────
-
-  /**
-   * Cache a user's Fluxer display name + avatar URL on their doc.
-   * Called on every OAuth login so the misc picker can show real names
-   * without per-user Fluxer API calls. Fields: tag (username), av (avatar URL).
-   */
+  // ─── Profiles / identity ────────────────────────────────────────────────────
   async setProfile(userId, { tag, avatar } = {}) {
     const id = this._uid(userId);
-    const set = {};
-    if (typeof tag === "string" && tag.length) set.tag = tag.slice(0, 64);
-    if (typeof avatar === "string") set.av = avatar.slice(0, 256);
-    if (!Object.keys(set).length) return;
-    await this._users.updateOne({ _id: id }, { $set: set }, { upsert: true });
+    if (this.http) return void this._post("/internal/profile", { uid: id, tag: tag || "", avatar: avatar || "" });
+    await this.stdb.upsertProfile(id, typeof tag === "string" ? tag : "", typeof avatar === "string" ? avatar : "");
   }
 
-  /**
-   * Search users for the transfer picker. Matches on _id prefix OR cached
-   * tag (case-insensitive). Excludes excludeId. Returns lightweight docs —
-   * NEVER leak other users' balances to a requester (bal omitted by caller).
-   */
   async searchUsers(q, limit = 25, excludeId = null) {
     const lim = clamp(limit, 1, 50);
-    const term = String(q ?? "").trim();
-    let filter;
-    if (!term) {
-      filter = {};
-    } else {
-      // Escape regex metacharacters in the user-supplied term
-      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rx = { $regex: safe, $options: "i" };
-      filter = { $or: [{ _id: rx }, { tag: rx }] };
+    const term = String(q ?? "").trim().toLowerCase();
+    const out = [];
+    for (const p of this.stdb.allProfiles()) {
+      if (excludeId && p.owner === String(excludeId)) continue;
+      if (term && !(p.owner.toLowerCase().includes(term) || (p.tag || "").toLowerCase().includes(term))) continue;
+      out.push({ _id: p.owner, tag: p.tag, av: p.av });
+      if (out.length >= lim) break;
     }
-    if (excludeId) filter = { $and: [filter, { _id: { $ne: String(excludeId) } }] };
-    return this._users
-      .find(filter)
-      .project({ _id: 1, tag: 1, av: 1 })
-      .limit(lim)
-      .toArray();
+    return out;
   }
 
-  // ─── Admin permissions ──────────────────────────────────────────────────────
-
-  /**
-   * Admin-only user search for the User List tab. Returns full admin-relevant
-   * fields (balance, perms). Use ONLY behind an admin gate.
-   */
   async searchUsersAdmin(q, limit = 30) {
     const lim = clamp(limit, 1, 100);
-    const term = String(q ?? "").trim();
-    let filter;
-    if (!term) {
-      filter = {};
-    } else {
-      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rx = { $regex: safe, $options: "i" };
-      filter = { $or: [{ _id: rx }, { tag: rx }] };
+    const term = String(q ?? "").trim().toLowerCase();
+    const out = [];
+    for (const p of this.stdb.allProfiles()) {
+      if (term && !(p.owner.toLowerCase().includes(term) || (p.tag || "").toLowerCase().includes(term))) continue;
+      out.push({ _id: p.owner, tag: p.tag, av: p.av, bal: this.stdb.getBalance(p.owner), perms: parseArr(p.perms) });
     }
-    return this._users
-      .find(filter)
-      .project({ _id: 1, tag: 1, av: 1, bal: 1, perms: 1 })
-      .sort({ bal: -1 })
-      .limit(lim)
-      .toArray();
+    out.sort((a, b) => (b.bal ?? 0) - (a.bal ?? 0));
+    return out.slice(0, lim);
   }
 
-  /** Get a user's admin permission array (empty if none). */
   async getPerms(userId) {
     const id = this._uid(userId);
-    const u = await this._users.findOne({ _id: id }, { projection: { perms: 1 } });
-    return Array.isArray(u?.perms) ? u.perms : [];
+    const p = this.stdb.getProfile(id);
+    return p ? parseArr(p.perms) : [];
   }
-
-  /** Overwrite a user's permission array (validated, deduped by caller). */
   async setPerms(userId, perms) {
     const id = this._uid(userId);
     const arr = Array.isArray(perms) ? [...new Set(perms.map(String))] : [];
-    if (arr.length) await this._users.updateOne({ _id: id }, { $set: { perms: arr } }, { upsert: true });
-    else await this._users.updateOne({ _id: id }, { $unset: { perms: "" } });
+    await this.stdb.setPerms(id, JSON.stringify(arr));
     return arr;
   }
-
-  /** List all users that currently hold at least one admin permission. */
   async listAdmins() {
-    return this._users
-      .find({ perms: { $exists: true, $ne: [] } })
-      .project({ _id: 1, tag: 1, av: 1, bal: 1, perms: 1 })
-      .limit(200)
-      .toArray();
+    const out = [];
+    for (const p of this.stdb.allProfiles()) {
+      const perms = parseArr(p.perms);
+      if (perms.length) out.push({ _id: p.owner, tag: p.tag, av: p.av, bal: this.stdb.getBalance(p.owner), perms });
+    }
+    return out.slice(0, 200);
   }
 
-  /**
-   * Atomic two-party transfer using a MongoDB transaction.
-   * Only succeeds if sender has sufficient funds AND both documents
-   * are updated atomically. Returns true on success, false on failure.
-   */
   async transfer(fromId, toId, amount, fromTag) {
-    const fId = this._uid(fromId);
-    const tId = this._uid(toId);
+    const fId = this._uid(fromId), tId = this._uid(toId);
     if (fId === tId) return false;
     const amt = clamp(Math.abs(amount), 1, MAX_DELTA);
-
-    if (this._bridge) {
-      const res = await this._bridge.transfer(fId, tId, amt, fromTag || fId); // atomic + notifies in STDB
-      return !!res.ok;
-    }
-
-    const session = this._client.startSession();
-    try {
-      let success = false;
-      await session.withTransaction(async () => {
-        // Check sender balance within the transaction
-        const sender = await this._users.findOne(
-          { _id: fId },
-          { session, projection: { bal: 1 } }
-        );
-        if ((sender?.bal ?? 0) < amt) {
-          // Abort the transaction
-          await session.abortTransaction();
-          return;
-        }
-        // Debit sender and credit receiver in one atomic batch
-        await this._users.bulkWrite([
-          { updateOne: {
-              filter: { _id: fId },
-              update: { $inc: { bal: -amt } },
-              upsert: false, // must exist — we already checked
-          }},
-          { updateOne: {
-              filter: { _id: tId },
-              update: { $inc: { bal:  amt } },
-              upsert: true,
-          }},
-        ], { session });
-        success = true;
-      }, { readPreference: "primary", readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
-      if (success) {
-        await this.addNotification(tId, { type: "pay", amount: amt, fromTag: fromTag || fId, msg: `received ${amt.toLocaleString()} FC` }).catch(() => {});
-      }
-      return success;
-    } finally {
-      await session.endSession();
-    }
+    if (this.http) { const res = await this._post("/internal/transfer", { from: fId, to: tId, amount: amt, fromTag: fromTag || fId }); return !!res.ok; }
+    try { await this.stdb.transfer(fId, tId, amt, fromTag || fId); return true; } catch { return false; }
   }
 
-  // ─── Notifications (per-user inbox; capped at 50 newest) ──────────────────────
+  // ─── Notifications ──────────────────────────────────────────────────────────
   async addNotification(userId, notif = {}) {
     const id = this._uid(userId);
-    const n = {
-      t: String(notif.type || "info").slice(0, 16),
-      m: String(notif.msg || "").slice(0, 200),
-      a: Number(notif.amount) || 0,
-      f: String(notif.fromTag || "").slice(0, 64),
-      ts: Date.now(),
-    };
-    await this._users.updateOne(
-      { _id: id },
-      { $push: { nt: { $each: [n], $slice: -50 } }, $inc: { nu: 1 } },
-      { upsert: true }
-    ).catch(() => {});
+    const n = { t: String(notif.type || "info").slice(0, 16), m: String(notif.msg || "").slice(0, 200), a: Number(notif.amount) || 0, f: String(notif.fromTag || "").slice(0, 64), ts: Date.now() };
+    if (this.http) { await this._post("/internal/notify", { uid: id, kind: n.t, amount: n.a, fromTag: n.f, msg: n.m }); return n; }
+    await this.stdb.addNotification(id, n.t, n.a, n.f, n.m);
     return n;
   }
-  async getNotifications(userId) {
-    const u = await this._users.findOne({ _id: this._uid(userId) }, { projection: { nt: 1, nu: 1 } });
-    return { items: (u?.nt || []).slice().reverse(), unread: Math.max(0, Number(u?.nu || 0)) };
-  }
-  async markNotificationsRead(userId) {
-    await this._users.updateOne({ _id: this._uid(userId) }, { $set: { nu: 0 } }).catch(() => {});
-  }
+  async getNotifications(userId) { return this.stdb.getNotifications(this._uid(userId)); }
+  async markNotificationsRead(userId) { await this.stdb.markRead(this._uid(userId)); }
 
+  // ─── Leaderboards / stats ───────────────────────────────────────────────────
   async getLeaderboard(field, limit) {
-    return this._users
-      .find({})
-      .sort({ [field ?? "bal"]: -1 })
-      .limit(clamp(limit, 1, 100))
-      .toArray();
+    const lim = clamp(limit, 1, 100);
+    const f = ["bal", "tw", "tl", "gp"].includes(field) ? field : "bal";
+    if (this.http) { const d = await this._post("/internal/leaderboard-sorted", { field: f, limit: lim }); return Array.isArray(d.rows) ? d.rows : []; }
+    const rows = this.stdb.allProfiles().map(p => ({ _id: p.owner, bal: this.stdb.getBalance(p.owner), tw: p.tw, tl: p.tl, gp: p.gp, tag: p.tag, av: p.av }));
+    rows.sort((a, b) => (b[f] ?? 0) - (a[f] ?? 0));
+    return rows.slice(0, lim);
   }
 
-  // ─── Admin stats ───────────────────────────────────────────────────────────
-
-  /** Increment a command counter. Called by CommandHandler on every invocation. */
   async recordCommand(cmdName) {
-    if (!this._stats) return;
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    await this._stats.bulkWrite([
-      // All-time total per command
-      { updateOne: { filter: { _id: `cmd:${cmdName}` }, update: { $inc: { count: 1 } }, upsert: true } },
-      // Daily bucket
-      { updateOne: { filter: { _id: `daily:${today}` }, update: { $inc: { [`cmds.${cmdName}`]: 1, total: 1 } }, upsert: true } },
-    ]);
+    if (this.http) return void this._post("/internal/record-command", { cmd: cmdName });
+    await this.stdb.recordCommand(String(cmdName || "").slice(0, 48), todayUtc());
   }
-
-  /** Upsert a guild record whenever the bot receives a message from that guild. */
-  async upsertGuild(guildId, data) {
-    if (!this._guilds) return;
-    await this._guilds.updateOne(
-      { _id: guildId },
-      { $set: { ...data, lastSeen: Date.now() }, $setOnInsert: { joinedAt: Date.now() } },
-      { upsert: true }
-    );
-  }
-
-  /** Pull all-time command counts. */
   async getCommandStats() {
-    if (!this._stats) return [];
-    return this._stats.find({ _id: /^cmd:/ }).sort({ count: -1 }).toArray();
+    return this.stdb.allStatCounters().map(c => ({ _id: "cmd:" + c.key, count: c.count })).sort((a, b) => b.count - a.count);
   }
-
-  /** Pull last N daily buckets. */
   async getDailyStats(days = 14) {
-    if (!this._stats) return [];
-    return this._stats.find({ _id: /^daily:/ }).sort({ _id: -1 }).limit(days).toArray();
+    return this.stdb.allDailyStats().map(d => ({ _id: d.date, total: d.total })).sort((a, b) => (a._id < b._id ? 1 : -1)).slice(0, days);
   }
 
-  /** Pull all known guilds. */
-  async getGuilds() {
-    if (!this._guilds) return [];
-    return this._guilds.find({}).sort({ lastSeen: -1 }).toArray();
+  // ─── Guilds ─────────────────────────────────────────────────────────────────
+  _guildDoc(g) {
+    if (!g) return null;
+    return { _id: g.gid, name: g.name, icon: g.icon, ownerId: g.ownerId, memberCount: g.memberCount, invite: g.invite, taxBps: g.taxBps, rakebackPct: g.rakebackPct, verified: g.verified, shop: parseObj(g.shop), roleShop: parseArr(g.roleShop), lastSeen: g.lastSeen, joinedAt: g.joinedAt };
   }
-  async getGuildsByIds(ids) {
-    if (!this._guilds || !Array.isArray(ids) || !ids.length) return [];
-    return this._guilds.find({ _id: { $in: ids.map(String) } }).toArray();
+  async upsertGuild(guildId, data = {}) {
+    const gid = String(guildId);
+    if (this.http) return void this._post("/internal/guild-upsert", { gid, ...data });
+    await this.stdb.upsertGuild(gid, data.ownerId || "", data.name || "", data.icon || "", Math.floor(Number(data.memberCount) || 0));
   }
-  async getGuild(id) { if (!this._guilds) return null; return this._guilds.findOne({ _id: String(id) }); }
-  /** Push a guild name/icon change to the web service for realtime broadcast. */
-  async notifyGuild(gid, data) { try { await this._bridge?.guildUpdate?.(String(gid), data); } catch { /* best-effort */ } }
+  async getGuilds() { return this.stdb.allGuilds().map(g => this._guildDoc(g)).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)); }
+  async getGuildsByIds(ids) { if (!Array.isArray(ids) || !ids.length) return []; return ids.map(id => this._guildDoc(this.stdb.getGuildRow(String(id)))).filter(Boolean); }
+  async getGuild(id) { return this._guildDoc(this.stdb.getGuildRow(String(id))); }
+  async notifyGuild(gid, data) { if (this.http) await this._post("/internal/guild", { gid: String(gid), ...data }); }
 
-  /** Associate a user with a guild (so the web server-selector lists it). Returns
-   *  true if it was newly added. Lets the selector pick up servers a user joined
-   *  after they last logged in, without needing a fresh OAuth. */
   async addUserGuild(uid, guildId) {
-    if (!this._users || !isValidUserId(uid) || !guildId) return false;
-    const r = await this._users.updateOne({ _id: uid.trim() }, { $addToSet: { gids: String(guildId) } }).catch(() => null);
-    return !!(r && r.modifiedCount);
+    if (!isValidUserId(uid) || !guildId) return false;
+    const id = uid.trim(), gid = String(guildId);
+    if (this.http) { const res = await this._post("/internal/user-guild-add", { uid: id, gid }); return !!res.added; }
+    const p = this.stdb.getProfile(id);
+    const gids = p ? parseArr(p.gids) : [];
+    if (gids.includes(gid)) return false;
+    gids.push(gid);
+    await this.stdb.setUserGuilds(id, JSON.stringify(gids.slice(0, 300)));
+    return true;
   }
-  /** Tell the web service to push a "servers changed" event to this user's tabs. */
-  async notifyUserGuilds(uid) { try { await this._bridge?.userGuildsChanged?.(String(uid)); } catch { /* best-effort */ } }
-
-  /** All user IDs registered to a guild (it's in their `gids`). For bank-wide payouts. */
+  async notifyUserGuilds(uid) { if (this.http) await this._post("/internal/user-guilds", { uid: String(uid) }); }
   async getGuildUserIds(guildId) {
-    if (!this._users || !guildId) return [];
-    const rows = await this._users.find({ gids: String(guildId) }, { projection: { _id: 1 } }).toArray().catch(() => []);
-    return rows.map(r => String(r._id)).filter(isValidUserId);
+    if (!guildId) return [];
+    const gid = String(guildId), out = [];
+    for (const p of this.stdb.allProfiles()) if (parseArr(p.gids).includes(gid) && isValidUserId(p.owner)) out.push(p.owner);
+    return out;
   }
-  /** Per-owner daily bank-withdraw ledger, stored on the user doc as `bwd = { d, t }`
-   *  (UTC day string + total withdrawn that day). Caps cash-out from server banks. */
+
+  // Per-owner daily bank-withdraw ledger (stored on the profile as bwdDay/bwdTotal).
   async bankWithdrawnToday(uid, day) {
-    if (!this._users || !isValidUserId(uid)) return 0;
-    const u = await this._users.findOne({ _id: uid.trim() }, { projection: { bwd: 1 } }).catch(() => null);
-    return (u?.bwd && u.bwd.d === day) ? (Number(u.bwd.t) || 0) : 0;
+    if (!isValidUserId(uid)) return 0;
+    const p = this.stdb.getProfile(uid.trim());
+    return (p && p.bwdDay === day) ? (Number(p.bwdTotal) || 0) : 0;
   }
-  /** Atomically attempt a bank-withdraw ledger increment, respecting the daily cap.
-   *  Returns true if it fit under the cap (and was recorded), false if it would exceed.
-   *  Race-free: the conditional filter `bwd.t + amount <= cap` is evaluated atomically by
-   *  Mongo, so two concurrent withdraws can't both pass the cap check. */
   async tryRecordBankWithdraw(uid, day, amount, cap) {
-    if (!this._users || !isValidUserId(uid)) return false;
+    if (!isValidUserId(uid)) return false;
     const amt = Math.floor(Number(amount) || 0); if (!(amt > 0)) return false;
-    // Case A: same day, current total + amt must be ≤ cap → $inc t.
-    const a = await this._users.updateOne(
-      { _id: uid.trim(), "bwd.d": day, $expr: { $lte: [{ $add: [{ $ifNull: ["$bwd.t", 0] }, amt] }, cap] } },
-      { $inc: { "bwd.t": amt } }
-    ).catch(() => null);
-    if (a && a.modifiedCount > 0) return true;
-    // Case B: no ledger yet today (or stale day) → set fresh {d, t: amt} if amt ≤ cap.
-    if (amt <= cap) {
-      const b = await this._users.updateOne(
-        { _id: uid.trim(), $or: [{ bwd: { $exists: false } }, { "bwd.d": { $ne: day } }] },
-        { $set: { bwd: { d: day, t: amt } } }
-      ).catch(() => null);
-      return !!(b && b.modifiedCount > 0);
-    }
-    return false;
+    try { await this.stdb.tryBankWithdraw(uid.trim(), String(day), amt, Math.floor(Number(cap) || 0)); return true; } catch { return false; }
   }
 
-  // ─── Pending slot win (persisted so an uncollected win survives a web restart) ──
-  async setPendingSlot(uid, p) {
-    if (!this._users || !isValidUserId(uid)) return;
-    await this._users.updateOne({ _id: uid.trim() }, { $set: { psl: p } }, { upsert: true }).catch(() => {});
-  }
-  async clearPendingSlot(uid) {
-    if (!this._users || !isValidUserId(uid)) return;
-    await this._users.updateOne({ _id: uid.trim() }, { $unset: { psl: "" } }).catch(() => {});
-  }
+  // ─── Pending slot win (restart recovery; stored in kv as psl:<uid>) ──────────
+  async setPendingSlot(uid, p) { if (!isValidUserId(uid)) return; await this.stdb.kvSet("psl:" + uid.trim(), JSON.stringify(p || {})); }
+  async clearPendingSlot(uid) { if (!isValidUserId(uid)) return; await this.stdb.kvSet("psl:" + uid.trim(), ""); }
   async loadPendingSlots() {
-    if (!this._users) return [];
-    const rows = await this._users.find({ psl: { $exists: true } }, { projection: { psl: 1 } }).toArray().catch(() => []);
-    return rows.map(r => ({ uid: String(r._id), ...(r.psl || {}) }));
+    const out = [];
+    for (const r of this.stdb.allKv()) {
+      if (!r.key.startsWith("psl:") || !r.val) continue;
+      const uid = r.key.slice(4);
+      out.push({ uid, ...parseObj(r.val) });
+    }
+    return out;
   }
 
-  // ─── Server role shop (buy Discord roles with FC; 75% → server bank) ────────
+  // ─── Role shop ──────────────────────────────────────────────────────────────
   async getRoleShop(id) {
-    if (!this._guilds) return [];
-    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { roleShop: 1 } }).catch(() => null);
-    return Array.isArray(g?.roleShop) ? g.roleShop : [];
+    const gid = String(id);
+    if (this.http) { const d = await this._post("/internal/role-shop", { gid }); return Array.isArray(d.rows) ? d.rows : []; }
+    return parseArr(this.stdb.getGuildRow(gid)?.roleShop);
   }
   async setRoleShop(id, arr) {
-    if (!this._guilds) return;
+    const gid = String(id);
     const clean = (Array.isArray(arr) ? arr : []).slice(0, 25).map(r => ({ roleId: String(r.roleId), name: String(r.name || "Role").slice(0, 80), price: Math.floor(Number(r.price) || 0) }));
-    await this._guilds.updateOne({ _id: String(id) }, { $set: { roleShop: clean } }, { upsert: true });
+    if (this.http) return void this._post("/internal/role-shop-set", { gid, rows: clean });
+    await this.stdb.setRoleShop(gid, JSON.stringify(clean));
   }
-  /** Charge a role purchase: deduct full price from the buyer, 75% → server bank (25% sink). */
   async rolePurchase(uid, gid, price) {
-    if (this._bridge?.rolePurchase) return this._bridge.rolePurchase(uid, gid, price);
-    return { ok: false, error: "no bridge" };
+    if (this.http) return this._post("/internal/role-purchase", { uid, gid, price });
+    // web-side direct (unused by web today, but keep parity): deduct full, 75% → bank.
+    const u = this._uid(uid), g = String(gid), p = Math.floor(Number(price) || 0);
+    if (!(p > 0)) return { ok: false, error: "bad price" };
+    try { await this.stdb.deduct(u, p); } catch { return { ok: false, error: "insufficient" }; }
+    const toBank = Math.floor(p * 0.75);
+    if (toBank > 0) await this.stdb.creditWin(u, toBank, g, toBank).catch(() => {});
+    return { ok: true, bal: this.stdb.getBalance(u), banked: toBank };
   }
 
-  // ─── Investing (assets + per-user holdings) ─────────────────────────────────
+  // ─── Investing ──────────────────────────────────────────────────────────────
   async seedAssets() {
-    if (!this._assets) return;
-    // One-time migration: rename the legacy "flx" (FluxCoin Index) to "fct" (FC-T), which
-    // now tracks total FC in circulation. Preserve price/history if the doc exists.
-    const legacy = await this._assets.findOne({ _id: "flx" }).catch(() => null);
-    if (legacy && !await this._assets.findOne({ _id: "fct" }, { projection: { _id: 1 } }).catch(() => null)) {
-      const fct = INVEST_SEED.find(a => a._id === "fct");
-      await this._assets.insertOne({ ...legacy, ...fct, _id: "fct", kind: "fct", name: "FC-T", baseline: fct.baseline, vol: fct.vol }).catch(() => {});
-      await this._assets.deleteOne({ _id: "flx" }).catch(() => {});
-      // Re-key any holdings from flx → fct so existing positions carry over.
-      await this._holdings.updateMany({ "h.flx": { $exists: true } }, { $rename: { "h.flx": "h.fct" } }).catch(() => {});
-    }
+    if (this.http) return;
+    // Wait briefly for the invest_asset subscription to apply so we don't clobber live
+    // prices by "seeding" assets that already exist. On a fresh DB this just waits out
+    // the loop then seeds all six.
+    for (let i = 0; i < 25 && this.stdb.allAssets().length === 0; i++) await new Promise(r => setTimeout(r, 100));
     for (const a of INVEST_SEED) {
-      const ex = await this._assets.findOne({ _id: a._id }, { projection: { _id: 1 } }).catch(() => null);
-      if (!ex) await this._assets.insertOne({ ...a, bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], updatedAt: Date.now() }).catch(() => {});
+      if (!this.stdb.getAssetRow(a._id)) {
+        await this.stdb.saveAsset({ ...a, bias: 0, supply: 0, prevPrice: a.price, hist: [[Date.now(), a.price]], updatedAt: Date.now() });
+      }
     }
   }
-  async getAssets() { if (!this._assets) return []; return this._assets.find({}).sort({ kind: 1, _id: 1 }).toArray().catch(() => []); }
-  async getAsset(id) { if (!this._assets) return null; return this._assets.findOne({ _id: String(id) }).catch(() => null); }
-  /** Persist live asset state from the price engine (bulk upsert). */
-  async saveAssets(list) {
-    if (!this._assets || !Array.isArray(list) || !list.length) return;
-    const ops = list.map(a => ({ updateOne: { filter: { _id: a._id }, update: { $set: a }, upsert: true } }));
-    await this._assets.bulkWrite(ops, { ordered: false }).catch(() => {});
+  _assetDoc(a) { return a ? { _id: a.id, kind: a.kind, name: a.name, emoji: a.emoji, color: a.color, price: a.price, baseline: a.baseline, vol: a.vol, bias: a.bias, supply: a.supply, prevPrice: a.prevPrice, hist: parseArr(a.hist), updatedAt: a.updatedAt } : null; }
+  async getAssets() { return this.stdb.allAssets().map(a => this._assetDoc(a)).sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : (a._id < b._id ? -1 : 1))); }
+  async getAsset(id) { return this._assetDoc(this.stdb.getAssetRow(String(id))); }
+  async saveAssets(list) { if (!Array.isArray(list)) return; for (const a of list) await this.stdb.saveAsset(a); }
+  async totalHoldingUnits() { return this.stdb.totalHoldingUnits(); }
+  async getHoldings(uid) {
+    const out = {};
+    for (const h of this.stdb.getHoldingsFor(String(uid))) out[h.assetId] = { u: h.units, c: h.cost };
+    return out;
   }
-  // Sum the TOTAL units held across all users for each asset — used to compute the total
-  // invested value (units × price) so FC-T's circulation count includes invested FC.
-  // Returns a Map of assetId → total units.
-  async totalHoldingUnits() {
-    if (!this._holdings) return new Map();
-    // Aggregate: for each asset, sum h.<assetId>.u across all user docs.
-    // We use $objectToArray to dynamic-iterate the h sub-doc.
-    const rows = await this._holdings.aggregate([
-      { $project: { h: { $objectToArray: "$h" } } },
-      { $unwind: "$h" },
-      { $group: { _id: "$h.k", totalU: { $sum: "$h.v.u" } } },
-    ]).toArray().catch(() => []);
-    const m = new Map();
-    for (const r of rows) if (r._id && Number(r.totalU) > 0) m.set(r._id, Number(r.totalU));
-    return m;
-  }
-  async getHoldings(uid) { if (!this._holdings) return {}; const d = await this._holdings.findOne({ _id: String(uid) }).catch(() => null); return (d && d.h) || {}; }
-  async setHoldings(uid, h) { if (!this._holdings) return; await this._holdings.updateOne({ _id: String(uid) }, { $set: { h } }, { upsert: true }).catch(() => {}); }
-  // Atomically ADD units + cost to a holding (buy). Race-free via $inc.
+  async setHoldings(_uid, _h) { /* unused: positions move via addHolding/removeHolding */ }
   async addHolding(uid, assetId, units, cost) {
-    if (!this._holdings) return;
-    const u = Number(units) || 0, c = Math.round(Number(cost) || 0);
-    await this._holdings.updateOne({ _id: String(uid) }, { $inc: { [`h.${assetId}.u`]: u, [`h.${assetId}.c`]: c } }, { upsert: true }).catch(() => {});
+    const u = Number(units) || 0; if (!(u > 0)) return;
+    await this.stdb.addHolding(String(uid), String(assetId), u, Math.round(Number(cost) || 0));
   }
-  // Atomically DEDUCT units guarded by having enough. Returns realized cost or null on
-  // insufficient funds / lost race. The conditional filter prevents double-selling: two
-  // concurrent sells can't both pass the `u >= sellU` guard.
   async removeHolding(uid, assetId, units) {
-    if (!this._holdings) return null;
     const sellU = Number(units); if (!(sellU > 0)) return null;
-    const doc = await this._holdings.findOne({ _id: String(uid) }).catch(() => null);
-    const cur = doc?.h?.[assetId];
-    if (!cur || !(cur.u >= sellU)) return null;
-    const costPortion = Math.round((cur.c || 0) * (sellU / cur.u));
-    const res = await this._holdings.updateOne(
-      { _id: String(uid), [`h.${assetId}.u`]: { $gte: sellU } },
-      { $inc: { [`h.${assetId}.u`]: -sellU, [`h.${assetId}.c`]: -costPortion } }
-    ).catch(() => null);
-    if (!res || res.modifiedCount === 0) return null;
-    if (cur.u - sellU <= 1e-6) await this._holdings.updateOne({ _id: String(uid) }, { $unset: { [`h.${assetId}`]: "" } }).catch(() => {});
-    return { soldUnits: sellU, costPortion };
+    const id = String(uid), aid = String(assetId);
+    const cur = this.stdb.getHoldingsFor(id).find(h => h.assetId === aid);
+    if (!cur || !(cur.units >= sellU - 1e-9)) return null;
+    const costPortion = Math.round((cur.cost || 0) * (sellU / cur.units));
+    try { await this.stdb.removeHolding(id, aid, sellU, costPortion); return { soldUnits: sellU, costPortion }; } catch { return null; }
   }
-  /** Assets + the user's portfolio (bot path → web engine). */
-  async investMe(uid) {
-    if (this._bridge?.investMe) return this._bridge.investMe(uid);
-    return { assets: [], portfolio: { positions: [], value: 0, cost: 0, pnl: 0 }, bal: 0 };
-  }
-  /** Buy/sell through the web price engine + STDB (bot path). */
-  async investTrade(side, uid, assetId, amount) {
-    if (this._bridge?.investTrade) return this._bridge.investTrade(side, uid, assetId, amount);
-    return { ok: false, error: "no bridge" };
-  }
+  async investMe(uid) { return this._post("/internal/invest/me", { uid }); }
+  async investTrade(side, uid, assetId, amount) { return this._post("/internal/invest/trade", { side, uid, asset: assetId, amount }); }
 
-  /** Set (or clear, when empty) a server's join invite. Caller must validate the URL. */
-  async setGuildInvite(id, invite) {
-    if (!this._guilds) return;
-    if (invite) await this._guilds.updateOne({ _id: String(id) }, { $set: { invite: String(invite).slice(0, 256) } }, { upsert: true });
-    else await this._guilds.updateOne({ _id: String(id) }, { $unset: { invite: "" } });
-  }
+  // ─── Guild economy (tax / invite / rakeback / verify / shop) ─────────────────
+  async setGuildInvite(id, invite) { await this.stdb.setGuildInvite(String(id), invite ? String(invite).slice(0, 256) : ""); }
+  async getGuildTax(id) { const g = this.stdb.getGuildRow(String(id)); return Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS; }
+  async setGuildTax(id, bps) { const v = clampTaxBps(bps); await this.stdb.setGuildTax(String(id), v); return v; }
 
-  /** Per-server tax on winnings, in basis points (default 1500 = 15%). */
-  async getGuildTax(id) {
-    if (!this._guilds) return DEFAULT_TAX_BPS;
-    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1 } });
-    const bps = g?.taxBps;
-    return Number.isFinite(bps) ? clampTaxBps(bps) : DEFAULT_TAX_BPS;
-  }
-  /** Set a server's winnings tax (basis points, clamped 0..MAX_TAX_BPS). */
-  async setGuildTax(id, bps) {
-    if (!this._guilds) return DEFAULT_TAX_BPS;
-    const v = clampTaxBps(bps);
-    await this._guilds.updateOne({ _id: String(id) }, { $set: { taxBps: v, lastSeen: Date.now() } }, { upsert: true });
-    return v;
-  }
-
-  // ─── Per-server economy stats (owner dashboard) ─────────────────────────────
-  // One doc per guild: gp=games, wagered, payout (paid to players), taxed (cut
-  // into the server bank, cumulative), big=biggest single payout, players=unique.
-  /** Count a wager placed on a server (one game). */
   async recordServerWager(gid, amount, uid) {
-    if (!this._srvStats || !gid) return;
-    const amt = Math.max(0, Math.floor(Number(amount) || 0));
-    const upd = { $inc: { gp: 1, wagered: amt }, $set: { lastPlay: Date.now() } };
-    if (isValidUserId(uid)) upd.$addToSet = { players: uid }; // unique player set
-    await this._srvStats.updateOne({ _id: String(gid) }, upd, { upsert: true }).catch(() => {});
+    if (!gid) return;
+    await this.stdb.recordServerWager(String(gid), isValidUserId(uid) ? uid : "", Math.max(0, Math.floor(Number(amount) || 0)));
   }
-  /** Record a payout (and the tax it fed into the server bank). */
   async recordServerPayout(gid, payout, tax) {
-    if (!this._srvStats || !gid) return;
-    const pay = Math.max(0, Math.floor(Number(payout) || 0));
-    const tx = Math.max(0, Math.floor(Number(tax) || 0));
-    await this._srvStats.updateOne(
-      { _id: String(gid) },
-      { $inc: { payout: pay, taxed: tx }, $max: { big: pay } },
-      { upsert: true }
-    ).catch(() => {});
+    if (!gid) return;
+    await this.stdb.recordServerPayout(String(gid), Math.max(0, Math.floor(Number(payout) || 0)), Math.max(0, Math.floor(Number(tax) || 0)));
   }
-  async getServerStats(gid) {
-    if (!this._srvStats || !gid) return null;
-    return this._srvStats.findOne({ _id: String(gid) }).catch(() => null);
-  }
-  async getServerStatsMany(gids) {
-    if (!this._srvStats || !Array.isArray(gids) || !gids.length) return [];
-    return this._srvStats.find({ _id: { $in: gids.map(String) } }).toArray().catch(() => []);
-  }
-  /** Top servers by a stat field (global leaderboard). */
+  _statsDoc(s) { return s ? { _id: s.gid, gp: s.gp, wagered: s.wagered, payout: s.payout, taxed: s.taxed, big: s.big, players: s.playerCount, playerCount: s.playerCount, lastPlay: s.lastPlay } : null; }
+  async getServerStats(gid) { if (!gid) return null; return this._statsDoc(this.stdb.getStats(String(gid))); }
+  async getServerStatsMany(gids) { if (!Array.isArray(gids) || !gids.length) return []; return gids.map(g => this._statsDoc(this.stdb.getStats(String(g)))).filter(Boolean); }
   async getTopServerStats(sortKey, limit = 50) {
-    if (!this._srvStats) return [];
     const field = { wagered: "wagered", taxed: "taxed", games: "gp", payout: "payout" }[sortKey] || "wagered";
-    return this._srvStats.find({}).sort({ [field]: -1 }).limit(Math.min(200, Math.max(1, limit | 0))).toArray().catch(() => []);
+    const rows = this.stdb.allStats().map(s => this._statsDoc(s));
+    rows.sort((a, b) => (b[field] ?? 0) - (a[field] ?? 0));
+    return rows.slice(0, Math.min(200, Math.max(1, limit | 0)));
   }
 
-  // ─── Rakeback (Stake-style cashback on the theoretical house edge) ─────────
-  // Per-user-per-server ledger keyed by uid+"@"+gid. Accrual = wager × (taxBps/10000) × pct.
-  // Accrual halts during a tax holiday (taxBps=0 → house earns nothing to rebate).
-  /** Accrue rakeback for a wager. Fire-and-forget from every play site. */
+  // ─── Rakeback ───────────────────────────────────────────────────────────────
   async addRakeback(uid, gid, wager, taxBps, pct) {
-    if (!this._rakeback || !gid || !isValidUserId(uid)) return;
+    if (!gid || !isValidUserId(uid)) return;
     const w = Math.max(0, Math.floor(Number(wager) || 0));
     const tb = Math.max(0, Number(taxBps) || 0);
     const p = Math.max(0, Math.min(20, Number(pct) || 0));
-    if (!(w > 0) || !(tb > 0) || !(p > 0)) return;            // 0 tax (holiday) or 0% → no accrual
-    const earn = Math.floor(w * tb / 10000 * p / 100);         // FC pending
+    if (!(w > 0) || !(tb > 0) || !(p > 0)) return;
+    const earn = Math.floor(w * tb / 10000 * p / 100);
     if (!(earn > 0)) return;
-    await this._rakeback.updateOne(
-      { _id: uid + "@" + gid },
-      { $inc: { accrued: earn, wagered: w }, $set: { uid, gid, updatedAt: Date.now() } },
-      { upsert: true }
-    ).catch(() => {});
+    await this.stdb.addRakeback(uid, String(gid), earn, w);
   }
-  /** Read a player's rakeback state for a server. */
   async getRakeback(uid, gid) {
-    if (!this._rakeback || !gid || !isValidUserId(uid)) return { accrued: 0, wagered: 0, claimed: 0 };
-    const r = await this._rakeback.findOne({ _id: uid + "@" + gid }).catch(() => null);
+    if (!gid || !isValidUserId(uid)) return { accrued: 0, wagered: 0, claimed: 0 };
+    const r = this.stdb.getRakebackRow(uid, String(gid));
     return { accrued: r?.accrued || 0, wagered: r?.wagered || 0, claimed: r?.claimed || 0 };
   }
-  /** Atomically claim (read + zero) the pending rakeback. Returns the FC amount claimed.
-   *  Uses findOneAndUpdate with a pipeline so the read-and-zero is a single atomic op —
-   *  two concurrent claims can't both read the same accrued balance. */
+  // Atomic claim: the STDB reducer zeroes accrued + credits the balance in one txn, so
+  // the amount paid is exactly the balance delta. The route must NOT credit again.
   async claimRakeback(uid, gid) {
-    if (!this._rakeback || !gid || !isValidUserId(uid)) return 0;
-    // Pipeline: snapshot the current accrued into `claimAmt`, zero it, add to `claimed`.
-    // findOneAndUpdate with a pipeline is atomic — no TOCTOU window.
-    const r = await this._rakeback.findOneAndUpdate(
-      { _id: uid + "@" + gid },
-      [
-        { $set: { claimAmt: { $ifNull: ["$accrued", 0] } } },
-        { $set: { accrued: 0, claimed: { $add: [{ $ifNull: ["$claimed", 0] }, "$claimAmt"] }, updatedAt: Date.now() } },
-      ],
-      { upsert: true, returnDocument: "after" }
-    ).catch(() => null);
-    return Math.max(0, Math.floor(r?.claimAmt || 0));
+    if (!gid || !isValidUserId(uid)) return 0;
+    const before = this.stdb.getBalance(uid);
+    try { await this.stdb.claimRakeback(uid, String(gid)); } catch { return 0; }
+    return Math.max(0, this.stdb.getBalance(uid) - before);
   }
-  /** Owner config: set a guild's rakeback percentage (0–20). */
-  async setGuildRakebackPct(gid, pct) {
-    if (!this._guilds || !gid) return;
-    const p = Math.max(0, Math.min(20, Math.floor(Number(pct) || 0)));
-    await this._guilds.updateOne({ _id: String(gid) }, { $set: { rakebackPct: p } }, { upsert: true }).catch(() => {});
-  }
-  /** Read a guild's configured rakeback percentage (default 5). */
-  async getGuildRakebackPct(gid) {
-    if (!this._guilds || !gid) return 5;
-    const g = await this._guilds.findOne({ _id: String(gid) }, { projection: { rakebackPct: 1 } }).catch(() => null);
-    const p = Number(g?.rakebackPct);
-    return Number.isFinite(p) ? Math.max(0, Math.min(20, p)) : 5;
-  }
+  async setGuildRakebackPct(gid, pct) { if (!gid) return; await this.stdb.setGuildRakeback(String(gid), Math.max(0, Math.min(20, Math.floor(Number(pct) || 0)))); }
+  async getGuildRakebackPct(gid) { if (!gid) return 5; const g = this.stdb.getGuildRow(String(gid)); const p = Number(g?.rakebackPct); return Number.isFinite(p) ? Math.max(0, Math.min(20, p)) : 5; }
 
-  // ─── Per-server shop / economy (owner perks bought with the server bank) ─────
-  /** Read a guild's economy bits: tax + shop perk state + verified flag. */
   async getGuildEconomy(id) {
-    if (!this._guilds) return { taxBps: DEFAULT_TAX_BPS, shop: {}, verified: false };
-    const g = await this._guilds.findOne({ _id: String(id) }, { projection: { taxBps: 1, shop: 1, verified: 1 } }).catch(() => null);
-    return { taxBps: Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS, shop: g?.shop || {}, verified: !!g?.verified };
+    const g = this.stdb.getGuildRow(String(id));
+    return { taxBps: Number.isFinite(g?.taxBps) ? clampTaxBps(g.taxBps) : DEFAULT_TAX_BPS, shop: parseObj(g?.shop), verified: !!g?.verified };
   }
-
-  /** Admin: mark a server verified (blue badge) or remove it. */
-  async setGuildVerified(id, on) {
-    if (!this._guilds) return;
-    await this._guilds.updateOne({ _id: String(id) }, on ? { $set: { verified: true } } : { $unset: { verified: "" } }, { upsert: true });
-  }
-  /** Merge fields into a guild's `shop` sub-document (e.g. { featuredUntil: ts }). */
+  async setGuildVerified(id, on) { await this.stdb.setGuildVerified(String(id), !!on); }
   async mergeGuildShop(id, patch) {
-    if (!this._guilds || !patch) return;
-    const set = { lastSeen: Date.now() };
-    for (const k of Object.keys(patch)) set[`shop.${k}`] = patch[k];
-    await this._guilds.updateOne({ _id: String(id) }, { $set: set }, { upsert: true }).catch(() => {});
+    if (!patch) return;
+    const g = this.stdb.getGuildRow(String(id));
+    const shop = parseObj(g?.shop);
+    for (const k of Object.keys(patch)) shop[k] = patch[k];
+    await this.stdb.setGuildShop(String(id), JSON.stringify(shop));
   }
 
-  // ─── Server-scoped login links (created by &web, consumed by the web /s/:token) ──
+  // ─── Login tokens ───────────────────────────────────────────────────────────
   async createLoginToken(token, uid, guildId, ttlMs = 600_000) {
-    if (!this._tokens) return;
-    await this._tokens.insertOne({ _id: String(token), uid: this._uid(uid), gid: guildId ? String(guildId) : null, expAt: new Date(Date.now() + ttlMs) }).catch(() => {});
+    const id = this._uid(uid), gid = guildId ? String(guildId) : "";
+    if (this.http) return void this._post("/internal/login-token", { token: String(token), uid: id, gid, ttlMs });
+    await this.stdb.createLoginToken(String(token), id, gid, Date.now() + clamp(ttlMs, 60_000, 86_400_000));
   }
   async consumeLoginToken(token) {
-    if (!this._tokens || !token) return null;
-    const r = await this._tokens.findOneAndDelete({ _id: String(token) }).catch(() => null);
-    const d = unwrap(r) ?? r?.value ?? r;
-    if (!d || !d.uid) return null;
-    if (d.expAt && new Date(d.expAt).getTime() < Date.now()) return null;
-    return { uid: d.uid, gid: d.gid || null };
+    if (!token) return null;
+    const r = this.stdb.getLoginTokenRow(String(token));
+    if (!r) return null;
+    await this.stdb.consumeLoginToken(String(token));
+    if (r.expAt && r.expAt < Date.now()) return null;
+    return { uid: r.uid, gid: r.gid || null };
   }
 
-  /** Cache which guilds a user belongs to (from OAuth scope=guilds at login). */
   async setUserGuilds(userId, gids) {
-    await this._users.updateOne({ _id: this._uid(userId) }, { $set: { gids: (Array.isArray(gids) ? gids : []).slice(0, 300).map(String) } }, { upsert: true }).catch(() => {});
+    const id = this._uid(userId);
+    await this.stdb.setUserGuilds(id, JSON.stringify((Array.isArray(gids) ? gids : []).slice(0, 300).map(String)));
   }
 
-  /** Pull top N users by balance. */
+  // ─── Admin aggregates ───────────────────────────────────────────────────────
   async getAdminUserStats(limit = 20) {
-    // Balances live in STDB, NOT Mongo (Mongo's `bal` is a stale 1000 starter). We can't
-    // join STDB here (no stdb ref), so return the users sorted by wagered (a real Mongo
-    // stat) and let the caller enrich with live STDB balances. Projects the fields the
-    // admin panel needs; `bal` will be overwritten by the caller from STDB.
-    return this._users
-      .find({})
-      .sort({ tw: -1 })
-      .limit(limit)
-      .project({ _id: 1, bal: 1, tw: 1, tl: 1, gp: 1, tag: 1, av: 1 })
-      .toArray();
+    const rows = this.stdb.allProfiles().map(p => ({ _id: p.owner, bal: this.stdb.getBalance(p.owner), tw: p.tw, tl: p.tl, gp: p.gp, tag: p.tag, av: p.av }));
+    rows.sort((a, b) => (b.tw ?? 0) - (a.tw ?? 0));
+    return rows.slice(0, clamp(limit, 1, 200));
   }
-
-  /** Aggregate totals across all users. */
   async getGlobalTotals() {
-    const r = await this._users.aggregate([
-      { $group: {
-          _id: null,
-          totalUsers:    { $sum: 1 },
-          totalBalance:  { $sum: "$bal" },
-          totalWon:      { $sum: "$tw" },
-          totalLost:     { $sum: "$tl" },
-          totalGames:    { $sum: "$gp" },
-      } }
-    ]).toArray();
-    return r[0] ?? { totalUsers: 0, totalBalance: 0, totalWon: 0, totalLost: 0, totalGames: 0 };
+    let totalUsers = 0, totalBalance = 0, totalWon = 0, totalLost = 0, totalGames = 0;
+    for (const p of this.stdb.allProfiles()) { totalUsers++; totalBalance += this.stdb.getBalance(p.owner); totalWon += p.tw; totalLost += p.tl; totalGames += p.gp; }
+    return { totalUsers, totalBalance, totalWon, totalLost, totalGames };
   }
 
-  // ─── Sessions ──────────────────────────────────────────────────────────────
-
-  /**
-   * Validates a session token for the given userId.
-   * Also returns the expiry timestamp so the caller can use it as needed.
-   * Returns null if invalid, or an object { uid, token, exp, ip } if valid.
-   */
+  // ─── Sessions ───────────────────────────────────────────────────────────────
   async validateSession(userId, token) {
-    // Token is interpolated into a Mongo field path (`st.<token>`) — only accept the
-    // hex shape we mint, so a crafted cookie can't probe arbitrary nested keys.
     if (!isSessionToken(token)) return null;
     const id = this._uid(userId);
-    const u  = await this._users.findOne(
-      { _id: id, [`st.${token}`]: { $exists: true } },
-      { projection: { [`st.${token}`]: 1 } }
-    );
-    const exp = u?.st?.[token];
-    if (!exp || Date.now() > exp) return null;
-    return { uid: id, token, exp };
+    const s = this.stdb.getSessionRow(token);
+    if (!s || s.owner !== id) return null;
+    if (!s.expiryMs || Date.now() > s.expiryMs) return null;
+    return { uid: id, token, exp: s.expiryMs };
   }
-
-  async createSession(userId, token, ttlMs, ipAddress = null) {
-    const id     = this._uid(userId);
-    const expiry = Date.now() + clamp(ttlMs ?? 7_200_000, 60_000, 604_800_000);
-    const fields = { [`st.${token}`]: expiry };
-    if (ipAddress) fields["sessionMeta.lastIp"] = ipAddress;
-    const r = await this._users.findOne({ _id: id });
-    if (!r) {
-      await this._users.updateOne(
-        { _id: id },
-        { $setOnInsert: { _id: id, ...DEFAULTS }, $set: fields },
-        { upsert: true }
-      );
-    } else {
-      await this._users.updateOne({ _id: id }, { $set: fields });
-    }
-  }
-
-  /**
-   * Rotate session: revoke old token and issue a new one.
-   * Used on privilege escalation (e.g. admin login).
-   */
-  async rotateSession(userId, oldToken, newToken, ttlMs, ipAddress = null) {
-    const id     = this._uid(userId);
-    const expiry = Date.now() + clamp(ttlMs ?? 7_200_000, 60_000, 604_800_000);
-    // NOTE: never put the same path in both $set and $unset — Mongo rejects the whole
-    // update (path conflict), which previously silently dropped the new session and
-    // bounced the user back to /login. Only set the NEW token; unset the OLD one.
-    const set = { [`st.${newToken}`]: expiry };
-    if (ipAddress) set["sessionMeta.lastIp"] = ipAddress;
-    const update = oldToken && oldToken !== newToken
-      ? { $set: set, $unset: { [`st.${oldToken}`]: "" } }
-      : { $set: set };
-    await this._users.updateOne({ _id: id }, update, { upsert: true });
-  }
-
-  async revokeSession(userId, token) {
-    if (!isSessionToken(token)) return;
+  async createSession(userId, token, ttlMs, _ip = null) {
     const id = this._uid(userId);
-    await this._users.updateOne({ _id: id }, { $unset: { [`st.${token}`]: "" } });
+    await this.stdb.createSession(id, String(token), Date.now() + clamp(ttlMs ?? 7_200_000, 60_000, 604_800_000));
   }
-
-  /** Revoke ALL sessions for a user (e.g. on logout-all or admin ban). */
-  async revokeAllSessions(userId) {
-    const id = this._uid(userId);
-    const u  = await this._users.findOne({ _id: id }, { projection: { st: 1 } });
-    if (!u?.st) return;
-    const unset = {};
-    for (const tok of Object.keys(u.st)) unset[`st.${tok}`] = "";
-    await this._users.updateOne({ _id: id }, { $unset: unset });
+  async rotateSession(userId, oldToken, newToken, ttlMs, ip = null) {
+    await this.createSession(userId, newToken, ttlMs, ip);
+    if (oldToken && oldToken !== newToken && isSessionToken(oldToken)) await this.stdb.revokeSession(String(oldToken));
   }
+  async revokeSession(userId, token) { if (isSessionToken(token)) await this.stdb.revokeSession(String(token)); }
+  async revokeAllSessions(userId) { await this.stdb.revokeAllSessions(this._uid(userId)); }
+  async pruneExpiredSessions() { if (this.http) return; await this.stdb.pruneExpiredSessions(); }
 
-  async pruneExpiredSessions() {
-    const now   = Date.now();
-    const users = await this._users.find({ st: { $exists: true } }).toArray();
-    for (const u of users) {
-      if (!u.st) continue;
-      const unset = {};
-      for (const [tok, exp] of Object.entries(u.st))
-        if (exp < now) unset[`st.${tok}`] = "";
-      if (Object.keys(unset).length)
-        await this._users.updateOne({ _id: u._id }, { $unset: unset });
-    }
+  // ─── Custom case tiers (kv singleton) ───────────────────────────────────────
+  async getCustomTiers() { const r = this.stdb.getKv("custom_tiers"); return r ? parseArr(r.val) : []; }
+  async saveCustomTiers(tiers) { await this.stdb.kvSet("custom_tiers", JSON.stringify(Array.isArray(tiers) ? tiers : [])); }
+
+  // ─── Support tickets ────────────────────────────────────────────────────────
+  _ticketDoc(t) { return t ? { _id: t.id, uid: t.uid, tag: t.tag, subject: t.subject, status: t.status, messages: parseArr(t.messages), updatedAt: t.updatedAt, createdAt: t.createdAt } : null; }
+  async createTicket(t) {
+    const id = String(t._id || genId());
+    await this.stdb.createTicket(id, this._uid(t.uid), String(t.tag || "").slice(0, 64), String(t.subject || "").slice(0, 200), JSON.stringify(Array.isArray(t.messages) ? t.messages : []), Number(t.createdAt) || Date.now());
+    return { ...t, _id: id };
   }
-
-  // ─── Custom case tiers (for admin panel) ──────────────────────────────────
-
-  async getCustomTiers() {
-    if (!this._db) return [];
-    const col = this._db.collection("cb_tiers");
-    const doc = await col.findOne({ _id: "custom_tiers" });
-    return doc?.tiers ?? [];
+  async listTickets(filter = {}) {
+    let rows = this.stdb.allTickets().map(t => this._ticketDoc(t));
+    if (filter && filter.status) rows = rows.filter(t => t.status === filter.status);
+    if (filter && filter.uid) rows = rows.filter(t => t.uid === String(filter.uid));
+    rows.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return rows.slice(0, 200);
   }
-
-  async saveCustomTiers(tiers) {
-    if (!this._db) return;
-    const col = this._db.collection("cb_tiers");
-    await col.updateOne(
-      { _id: "custom_tiers" },
-      { $set: { tiers } },
-      { upsert: true },
-    );
-  }
-
-  // ─── Support tickets ──────────────────────────────────────────────────────
-  async createTicket(t) { if (!this._db) return null; await this._db.collection("tickets").insertOne(t); return t; }
-  async listTickets(filter = {}) { if (!this._db) return []; return this._db.collection("tickets").find(filter).sort({ updatedAt: -1 }).limit(200).toArray(); }
-  async getTicket(id) { if (!this._db) return null; return this._db.collection("tickets").findOne({ _id: id }); }
+  async getTicket(id) { return this._ticketDoc(this.stdb.getTicketRow(String(id))); }
   async addTicketMessage(id, msg) {
-    if (!this._db) return;
-    await this._db.collection("tickets").updateOne(
-      { _id: id },
-      { $push: { messages: msg }, $set: { updatedAt: msg.at, status: msg.from === "admin" ? "answered" : "open" } },
-    );
+    const t = this.stdb.getTicketRow(String(id));
+    if (!t) return;
+    const msgs = parseArr(t.messages); msgs.push(msg);
+    const status = msg.from === "admin" ? "answered" : "open";
+    await this.stdb.addTicketMessage(String(id), JSON.stringify(msgs), status, Number(msg.at) || Date.now());
   }
-  async setTicketStatus(id, status) { if (!this._db) return; await this._db.collection("tickets").updateOne({ _id: id }, { $set: { status, updatedAt: Date.now() } }); }
-  async deleteTicket(id) { if (!this._db) return; await this._db.collection("tickets").deleteOne({ _id: id }); }
+  async setTicketStatus(id, status) { await this.stdb.setTicketStatus(String(id), String(status), Date.now()); }
+  async deleteTicket(id) { await this.stdb.deleteTicket(String(id)); }
 
-  // ─── Destructive: wipe every collection (owner-gated at the route) ──────────
+  // ─── Destructive wipe (owner-gated at the route) ────────────────────────────
   async wipeAll() {
-    if (!this._db) return false;
-    const cols = await this._db.listCollections().toArray();
-    for (const c of cols) {
-      if (c.name.startsWith("system.")) continue;
-      try { await this._db.collection(c.name).deleteMany({}); } catch (e) {}
-    }
+    const tables = ["account", "server_bank", "notification", "user_profile", "session", "guild", "server_stats", "server_player", "holding", "invest_asset", "ticket", "rakeback_ledger", "login_token", "stat_counter", "daily_stat", "kv"];
+    for (const t of tables) await this.stdb.wipeTable(t);
     return true;
   }
 
-  // ─── Pets ─────────────────────────────────────────────────────────────────
-  async getPet(uid) { const u = await this.getUser(uid); return u?.pet ?? null; }
+  // ─── Pets ───────────────────────────────────────────────────────────────────
+  async getPet(uid) {
+    if (this.http) { const d = await this._post("/internal/pet-get", { uid }); return (d && d.pet) ? d.pet : null; }
+    const p = this.stdb.getProfile(this._uid(uid));
+    return (p && p.pet) ? parseObj(p.pet) : null;
+  }
   async savePet(uid, pet) {
-    if (!this._users) return;
-    const set = pet ? { pet } : {};
-    const op = pet ? { $set: { pet } } : { $unset: { pet: "" } };
-    await this._users.updateOne({ _id: String(uid) }, op, { upsert: true });
+    const id = this._uid(uid);
+    if (this.http) return void this._post("/internal/pet-set", { uid: id, pet: pet || null });
+    await this.stdb.setPet(id, pet ? JSON.stringify(pet) : "");
   }
 }

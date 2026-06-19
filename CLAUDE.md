@@ -4,25 +4,22 @@ A Discord (Fluxer) casino bot + web app. Virtual currency **FluxCoins (FC)**. Pu
 
 ---
 
-## 1. Architecture (two processes + two databases)
+## 1. Architecture (two processes + ONE database — SpacetimeDB)
 
 Two long-running processes, run under **PM2** as `sirgreen-bot` and `sirgreen-web`:
 
-- **Node bot** — `index.mjs`. The `@fluxerjs/core` Discord bot: chat commands (`commands/*.mjs`), presence, internal DM endpoint. Talks to the web service over localhost for balance ops.
-- **Bun + Elysia web service** — `web/server.ts`. Owns HTTP routing, static assets, sessions, all money endpoints, and the realtime WebSocket. This is the core file (~1000 lines).
+- **Node bot** — `index.mjs`. The `@fluxerjs/core` Discord bot: chat commands (`commands/*.mjs`), presence, internal DM endpoint. Runs **NO database client** — every data op is a thin HTTP call to the web's loopback `/internal/*` API.
+- **Bun + Elysia web service** — `web/server.ts`. Owns HTTP routing, static assets, sessions, all money endpoints, the realtime WebSocket, AND the single SpacetimeDB connection. This is the core file (~1150 lines).
 
-Two databases, **strict ownership** — do not cross these lines:
+**ONE database now: SpacetimeDB.** (MongoDB was fully migrated out — see §11 + `scripts/migrate-to-stdb.mjs`.)
 
-- **SpacetimeDB (STDB)** — Rust module `spacetimedb/src/lib.rs`, name `sirgreen-6ls47`, published to a **local** host (`ws://127.0.0.1:3000`). Owns **balances, transactions, notifications, per-server banks**. Every reducer is an atomic ACID transaction → race-free, no app-level locks, fast. This is the money ledger.
-- **MongoDB** (`fluxer_casino`) — `src/Database.mjs`. Owns **everything else**: user profiles, sessions, guilds, per-server stats, shop/economy config, support tickets, case tiers, login tokens.
-
-`src/Database.mjs` is shared by both processes (Bun runs `.mjs` directly). Balance ops in the bot delegate to STDB via `src/stdbBridge.mjs` (HTTP → web's `/internal/*`); the web service calls STDB directly via `web/src/stdb.ts`.
+- **SpacetimeDB (STDB)** — Rust module `spacetimedb/src/lib.rs`, name `sirgreen-6ls47`, published to a **local** host (`ws://127.0.0.1:3000`). Owns **EVERYTHING**: balances, transactions, notifications, per-server banks, user profiles, sessions, guilds, per-server stats + unique players, holdings, assets, tickets, rakeback, login tokens, command stats, custom case tiers, kv singletons. Every reducer is an atomic ACID transaction → race-free, no app-level locks, fast.
+- `web/src/stdb.ts` is the single STDB connection: reducer wrappers + per-table in-memory caches (seeded from `iter()` on each table's `onApplied`, kept fresh by insert/update/delete).
+- `src/Database.mjs` is a thin **facade** with two backends, same method surface: **WEB** = `new Database({ stdb })` (reads STDB caches, calls reducers); **BOT** = `new Database({ http: { base, secret } })` (HTTP client to the web's `/internal/*`). JSON-shaped fields (perms, gids, shop, role_shop, ticket messages, asset hist, pet) are opaque `String` blobs in STDB; the facade parses/merges them. **No Mongo, no balance bridge** (`stdbBridge.mjs` deleted).
 
 ```
 Discord ──> Node bot (index.mjs) ──localhost /internal/*──> Bun web (web/server.ts) ──ws──> SpacetimeDB
-                  │                                              │
-                  └──────────────── MongoDB ─────────────────────┘
-Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (everything else)
+Browser ──HTTPS(Cloudflare)──> Bun web ──ws──> SpacetimeDB (the entire datastore)
 ```
 
 ---
@@ -32,11 +29,11 @@ Browser ──HTTPS(Cloudflare)──> Bun web ──> STDB (balances) + Mongo (
 | File | Role |
 |------|------|
 | `web/server.ts` | **The core.** All HTTP routes, sessions, money endpoints, WebSocket hub, OAuth, internal bridge. Elysia/Bun. |
-| `web/src/stdb.ts` | STDB client wrapper (the single connection). Reducer calls + table subscriptions + caches (balance, bank, notifications). |
-| `spacetimedb/src/lib.rs` | Rust STDB module: tables (`account`, `notification`, `server_bank`) + reducers. |
-| `src/Database.mjs` | MongoDB layer (shared by bot + web). Users, sessions, guilds, serverstats, shop, tickets, cases, login tokens. |
-| `src/stdbBridge.mjs` | Bot → web `/internal/*` HTTP client (balance ops, guild-rename push). |
-| `index.mjs` | Node bot entry: client, presence, internal DM HTTP endpoint, bridge attach. |
+| `web/src/stdb.ts` | STDB client wrapper (the single connection). Reducer wrappers + per-table subscriptions + caches for **every** table (balances, banks, notifications, profiles, sessions, guilds, stats, holdings, assets, tickets, rakeback, login tokens, stat counters, kv). |
+| `spacetimedb/src/lib.rs` | Rust STDB module: **all 16 tables** (`account`, `notification`, `server_bank`, `user_profile`, `session`, `guild`, `server_stats`, `server_player`, `holding`, `invest_asset`, `ticket`, `rakeback_ledger`, `login_token`, `stat_counter`, `daily_stat`, `kv`) + ~45 reducers. |
+| `src/Database.mjs` | **STDB facade** (two backends: web=`{stdb}`, bot=`{http}`). Same method surface as the old Mongo layer; parses JSON blobs; no Mongo. |
+| `scripts/migrate-to-stdb.mjs` | One-time Mongo→STDB migration (reads Mongo, POSTs to web `/internal/migrate`). |
+| `index.mjs` | Node bot entry: client, presence, internal DM HTTP endpoint, HTTP-backed Database. |
 | `src/CommandHandler.mjs` | Command dispatch + per-guild upsert + realtime guild-rename ping. |
 | `commands/*.mjs` | Chat commands (`&web`, `&work`, games, etc.). |
 | `src/HouseGames.mjs` | Server-authoritative house games (Plinko/Coinflip/Double/Mines/HiLo/Chicken Road). Exports `PLINKO` tables + `CHICKEN` cfg. Stateful games keep per-uid state here; `~3%` edge (`EDGE=0.97`). |
@@ -70,6 +67,10 @@ pm2 restart sirgreen-web
 ```
 Adding a table/reducer is an **additive migration** (no wipe). `module_bindings/` is generated on the VPS — it is NOT in the repo and not on the dev box, so you can't run `spacetime generate` locally.
 
+**One-time Mongo→STDB data migration** (after the first deploy of the all-STDB module): run `node scripts/migrate-to-stdb.mjs` on the VPS with the web service UP (it POSTs Mongo rows to `/internal/migrate`, which calls the `import_*` reducers). Balances are NOT migrated (the STDB ledger already owns them). Idempotent. Then restart the bot last (`pm2 restart sirgreen-bot`) so it picks up the HTTP-backed Database. Order: publish → generate → restart web → migrate → restart bot → verify → drop Mongo.
+
+**New-table conventions (all 13 migrated tables):** JSON-shaped data (perms, gids, shop, role_shop, ticket messages, asset hist, pet) is stored as an opaque `String` column — a plain setter reducer; the merge/parse happens in `Database.mjs` (JS). Only numeric money/stat changes are atomic Rust math (`record_game_stats`, `record_server_wager`, `add_holding`, `claim_rakeback`, etc.). Return-value ops follow the existing pattern: `await reducer` (which `Err`s on failure → promise rejects), then read the cache for the result; `claim_rakeback` even credits the balance *inside* the reducer (so the route must NOT credit again). Composite PKs are single `String` columns (`owner|asset`, `uid@gid`, `gid|uid`).
+
 ---
 
 ## 4. Elysia / Bun gotchas (hard-won)
@@ -78,7 +79,7 @@ Adding a table/reducer is an **additive migration** (no wipe). `module_bindings/
 - `set.redirect` is NOT honored — use the `redir(set, url)` helper (manual 302 + Location).
 - Set-Cookie via raw `Response` headers doesn't stick — use the Elysia **`cookie` API** (`cookie.sid.set({...})`). See `setAuthCookies()`.
 - Static files via `Bun.file(path)`. Global hooks via `.onRequest()`. WebSocket via built-in `.ws("/ws")`; read the upgrade cookie via `.derive(({request}) => ({cookieHeader}))` → `ws.data.cookieHeader`.
-- Config the code actually reads: `cfg.mongodb.uri` / `cfg.mongodb.database`, `cfg.web.port` (prod = 80), `cfg.web.internalSecret`, `cfg.web.botPort` (8091), `cfg.spacetime.{uri,module,token}`, `cfg.owners` (array — `["1512241609448620032"]` is THE bot owner), `cfg.fluxerClientId/Secret`, `cfg.webBaseUrl`, `cfg.fluxerListServerId/ApiKey`. (`config_example.json` is partly stale — trust the code.)
+- Config the code actually reads: `cfg.web.port` (prod = 80), `cfg.web.internalSecret`, `cfg.web.botPort` (8091), `cfg.spacetime.{uri,module,token}`, `cfg.owners` (array — `["1512241609448620032"]` is THE bot owner), `cfg.fluxerClientId/Secret`, `cfg.webBaseUrl`, `cfg.fluxerListServerId/ApiKey`. `cfg.mongodb.{uri,database}` is now read **only** by `scripts/migrate-to-stdb.mjs` (one-time migration) — the running app no longer touches Mongo. (`config_example.json` is partly stale — trust the code.)
 - **Watch for duplicate `const` in the same handler scope** — Bun fails to parse and PM2 crash-loops. This has bitten twice (`const now` declared twice). After editing `server.ts`, scan for it.
 - **Pages must NOT be cached.** `renderPage` sends `Cache-Control: private, no-cache, no-store, must-revalidate`. Page HTML carries per-user data AND inline `<script>` — without this, the browser/Cloudflare served a stale page and client-side fixes silently never reached users. Assets (`/assets/*.css|js`) get `?v=ASSET_VER` cache-bust separately; the page itself does not, hence the header.
 
@@ -176,7 +177,9 @@ Residual/accepted: `/logout` is GET (low-risk CSRF), transfers can create an acc
 
 Multi-tenant economy fully shipped (4 phases: guild-scoped login + selector; per-server bank + vote-gated tax + gate; owner Servers dashboard + stats; leaderboard + shop). Plus tax-holiday realtime/refund, realtime guild names, login-loop fix, and a security pass.
 
-Since then: Investing (NFT/FLX) + `&invest`; role shop (`&shop`); Card Games (Blackjack/Video Poker/Baccarat); Chicken Road house game; slots overhaul (dead-spin retune ~37–40%, multiplier-reveal fixes, **progressive global** Super/Hidden multiplier for far less buy variance); slots restart-safe pay-on-collect; page `no-cache` header; **owner bank tools** (bank→bank / withdraw 5%+50k-day / distribute-to-members).
+Since then: Investing (NFT/FLX) + `&invest`; role shop (`&shop`); Card Games (Blackjack/Video Poker/Baccarat); Chicken Road house game; slots overhaul (dead-spin retune ~18.6%, multiplier-reveal fixes, **progressive global** Super/Hidden multiplier for far less buy variance); slots restart-safe pay-on-collect; page `no-cache` header; **owner bank tools** (bank→bank / withdraw 5%+50k-day / distribute-to-members).
+
+**MongoDB fully migrated to SpacetimeDB** (latest): all 10 Mongo collections → 13 new STDB tables (+ the 3 original ledger tables). `Database.mjs` is now a thin facade over STDB (web) / `/internal/*` (bot); the bot runs no DB client; `stdbBridge.mjs` deleted. One-time data move via `scripts/migrate-to-stdb.mjs`. STDB is now the **single source of truth** for the whole app. Validated by `cargo check` + `node --check` (TS layers can't be compiled on the dev box — verify on first VPS deploy).
 
 **Deferred / known:** case-battle plays aren't taxed yet (slots+house only); server sessions are a fixed 2h (no inactivity expiry); the admin panel is still an iframe (CSS-isolation rework pending); leaderboard `bank` sort is approximate (top-100-by-wagered pool); slots pending win can be lost only in a ~3s window right after a web restart if the same user immediately re-spins (negligible).
 

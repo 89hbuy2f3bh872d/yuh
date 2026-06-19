@@ -33,14 +33,17 @@ const PORT = cfg.web?.port ?? cfg.webPort ?? 80;
 const INTERNAL_SECRET = cfg.web?.internalSecret ?? "";
 const ASSET_VER = Date.now().toString(36);
 
-// ── data layer ────────────────────────────────────────────────────────────
-const db = new Database(cfg.mongodb.uri, cfg.mongodb.database);
+// ── data layer (SpacetimeDB owns the ENTIRE datastore now — migrated off Mongo) ──
 // SpacetimeDB: connect in the BACKGROUND with auto-retry. The server must still
-// boot + listen even if STDB is briefly unreachable (balances read 0 until synced),
+// boot + listen even if STDB is briefly unreachable (reads return empty until synced),
 // so a connect failure can never take the whole website down.
 const ST = (cfg.spacetime || {}) as any;
 const stdb = new Stdb(ST.uri || "ws://127.0.0.1:3000", ST.module || "sirgreen-6ls47", ST.token);
 stdb.ready().then(() => console.log("[web] SpacetimeDB connected")).catch((e) => console.error("[web] SpacetimeDB connect failed (retrying in background):", e?.message));
+// Periodic session prune (STDB owns sessions now; the bot no longer does this).
+setInterval(() => stdb.pruneExpiredSessions().catch(() => {}), 30 * 60 * 1000);
+// The data layer is a thin facade over the STDB caches + reducers.
+const db = new Database({ stdb });
 const house = new HouseState();
 const cards = new CardGames();
 
@@ -744,9 +747,10 @@ const app = new Elysia()
     if (rl(rlMoney, uid, 1500)) { set.status = 429; return { error: "Slow down a moment" }; }
     const srv = await requireServer(request, uid);
     if (!srv) { set.status = 400; return { error: "Select a server to claim rakeback", needServer: true }; }
+    // claim_rakeback is atomic: it zeroes accrued AND credits the balance in one STDB
+    // txn, so the balance is ALREADY updated here — do NOT credit again (double-pay).
     const claimed = await (db as any).claimRakeback?.(uid, srv.gid).catch(() => 0) ?? 0;
     if (claimed > 0) {
-      await stdb.credit(uid, claimed).catch(() => {});
       stdb.addNotification(uid, "rakeback", claimed, "", "Rakeback claimed").catch(() => {});
     }
     return { ok: true, claimed, balance: stdb.getBalance(uid) };
@@ -1018,6 +1022,48 @@ const app = new Elysia()
       if (!/^\d{17,20}$/.test(uid)) return { error: "bad uid" };
       if (side === "buy") return investBuy(uid, asset, Math.floor(Number(b?.amount)));
       return investSell(uid, asset, b?.amount === "all" ? "all" : Number(b?.amount));
+    })
+    // ── data ops the bot used to do via Mongo directly — now proxied to STDB here ──
+    .post("/user", async ({ body }) => { const uid = String((body as any)?.uid || ""); if (!/^\d{17,20}$/.test(uid)) return { ok: false, error: "bad uid" }; const user = await db.getUser(uid).catch(() => null); return { ok: true, user }; })
+    .post("/game", async ({ body }) => { const b = body as any; try { const r = await db.atomicGame(String(b.uid), Math.floor(b.bet || 0), Math.floor(b.payout || 0)); return r.ok ? { ok: true, newBal: r.newBal } : { ok: false }; } catch (e: any) { return { ok: false, error: e?.message }; } })
+    .post("/record-game", async ({ body }) => { const b = body as any; await db.recordGame(String(b.uid), !!b.won, Math.floor(b.amount || 0)).catch(() => {}); return { ok: true }; })
+    .post("/last-daily", async ({ body }) => { const b = body as any; await db.setLastDaily(String(b.uid), Math.floor(b.ts || 0)).catch(() => {}); return { ok: true }; })
+    .post("/last-work", async ({ body }) => { const b = body as any; await db.setLastWork(String(b.uid), Math.floor(b.ts || 0)).catch(() => {}); return { ok: true }; })
+    .post("/profile", async ({ body }) => { const b = body as any; await db.setProfile(String(b.uid), { tag: b.tag, avatar: b.avatar }).catch(() => {}); return { ok: true }; })
+    .post("/pet-get", async ({ body }) => { const uid = String((body as any)?.uid || ""); const pet = await db.getPet(uid).catch(() => null); return { ok: true, pet }; })
+    .post("/pet-set", async ({ body }) => { const b = body as any; await db.savePet(String(b.uid), b.pet || null).catch(() => {}); return { ok: true }; })
+    .post("/role-shop", async ({ body }) => { const gid = String((body as any)?.gid || ""); const rows = await db.getRoleShop(gid).catch(() => []); return { ok: true, rows }; })
+    .post("/role-shop-set", async ({ body }) => { const b = body as any; await db.setRoleShop(String(b.gid), Array.isArray(b.rows) ? b.rows : []).catch(() => {}); return { ok: true }; })
+    .post("/login-token", async ({ body }) => { const b = body as any; await db.createLoginToken(String(b.token), String(b.uid), b.gid || null, Math.floor(b.ttlMs || 600000)).catch(() => {}); return { ok: true }; })
+    .post("/record-command", async ({ body }) => { await db.recordCommand(String((body as any)?.cmd || "")).catch(() => {}); return { ok: true }; })
+    .post("/guild-upsert", async ({ body }) => { const b = body as any; const { gid, ...data } = b; await db.upsertGuild(String(gid), data).catch(() => {}); return { ok: true }; })
+    .post("/user-guild-add", async ({ body }) => { const b = body as any; const added = await db.addUserGuild(String(b.uid), String(b.gid)).catch(() => false); return { ok: true, added }; })
+    .post("/leaderboard-sorted", async ({ body }) => { const b = body as any; const rows = await db.getLeaderboard(b.field || "bal", Math.floor(b.limit || 20)).catch(() => []); return { ok: true, rows }; })
+    // ── one-time Mongo→STDB migration sink (run scripts/migrate-to-stdb.mjs once) ──
+    .post("/migrate", async ({ body }) => {
+      const b = body as any; const table = String(b?.table || ""); const rows = Array.isArray(b?.rows) ? b.rows : [];
+      let n = 0;
+      try {
+        for (const r of rows) {
+          switch (table) {
+            case "profiles": await stdb.importProfile(r); break;
+            case "sessions": await stdb.createSession(String(r.owner), String(r.token), Number(r.expiryMs) || 0); break;
+            case "guilds": await stdb.importGuild(r); break;
+            case "serverstats": await stdb.importServerStats(r); break;
+            case "holdings": await stdb.importHolding(r); break;
+            case "assets": await stdb.saveAsset(r); break;
+            case "tickets": await stdb.createTicket(String(r.id), String(r.uid), r.tag || "", r.subject || "", r.messages || "[]", Number(r.createdAt) || Date.now()).catch(() => {}); if (r.status && r.status !== "open") await stdb.setTicketStatus(String(r.id), String(r.status), Number(r.updatedAt) || Date.now()); break;
+            case "rakeback": await stdb.importRakeback(r); break;
+            case "logintokens": await stdb.createLoginToken(String(r.token), String(r.uid), r.gid || "", Number(r.expAt) || 0).catch(() => {}); break;
+            case "statcounters": await stdb.importStatCounter(String(r.key), Number(r.count) || 0); break;
+            case "dailystats": await stdb.importDailyStat(String(r.date), Number(r.total) || 0); break;
+            case "kv": await stdb.kvSet(String(r.key), r.val || ""); break;
+            default: return { ok: false, error: "unknown table " + table };
+          }
+          n++;
+        }
+        return { ok: true, imported: n };
+      } catch (e: any) { return { ok: false, error: e?.message, imported: n }; }
     })
   )
 
@@ -1438,7 +1484,7 @@ app.get("/api/my-servers", async ({ request, set }) => {
       verified: !!g.verified,
       tax: Number.isFinite(g.taxBps) ? g.taxBps : DEFAULT_TAX_BPS,
       bank: stdb.getServerBank(g._id),
-      stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: Array.isArray(s.players) ? s.players.length : 0, lastPlay: s.lastPlay || 0 },
+      stats: { games: s.gp || 0, wagered: s.wagered || 0, payout: s.payout || 0, taxed: s.taxed || 0, big: s.big || 0, players: s.playerCount || 0, lastPlay: s.lastPlay || 0 },
       shop: { featuredUntil: shop.featuredUntil || 0, taxHolidayUntil: shop.taxHolidayUntil || 0, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null,
               featured: (shop.featuredUntil || 0) > now, taxHoliday: (shop.taxHolidayUntil || 0) > now },
     };
@@ -1723,7 +1769,7 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
     const holiday = (shop.taxHolidayUntil || 0) > now;
     return { id: r._id, name: g.name || "Server", members: g.memberCount ?? null,
       bank: stdb.getServerBank(r._id), wagered: r.wagered || 0, taxed: r.taxed || 0, games: r.gp || 0, payout: r.payout || 0,
-      players: Array.isArray(r.players) ? r.players.length : 0,
+      players: r.playerCount || 0,
       tax: holiday ? 0 : taxBps, taxHoliday: holiday, member: myGids.has(r._id),
       invite: typeof g.invite === "string" ? g.invite : null, verified: !!g.verified,
       featured: (shop.featuredUntil || 0) > now, accent: HEX_RE.test(shop.accent || "") ? shop.accent : null };
