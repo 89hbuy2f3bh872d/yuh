@@ -49,7 +49,10 @@
 .iv-chips button:hover{border-color:var(--accent);color:var(--accent)}
 .iv-go{width:100%;justify-content:center;padding:.65rem}
 .iv-go.sell{background:#e74c3c;color:#fff}
-.iv-est{font-size:.68rem;color:var(--text3);text-align:center;margin-top:.5rem;min-height:1rem}
+.iv-est{font-size:.68rem;color:var(--text3);text-align:center;margin-top:.5rem;min-height:1rem;line-height:1.5}
+.iv-est b{display:block;font-size:.82rem;color:var(--text);margin-bottom:.15rem}
+.iv-est .est-line{color:var(--text3)}
+.iv-est .est-loss{color:var(--red,#e74c3c)}
 .iv-pf{display:flex;flex-direction:column;gap:.4rem}
 .iv-pos{display:flex;align-items:center;gap:.5rem;font-size:.76rem;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:.45rem .6rem}
 .iv-pos .nm{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -211,10 +214,37 @@ function chip(v){
   else { var hold=curHolding(); var u=hold?hold.units:0; var pct=parseFloat(v)/100; $('amt').value=+(u*pct).toFixed(6); }
   estimate();
 }
+// Client-side mirror of the server's investSlippage — so the sell panel can show the
+// REAL payout (slippage + fee) before the user confirms. Must match server.ts exactly.
+function clientSlippage(side, spendFC){
+  if(!CUR)return 1;
+  var depth=CUR.price*Math.max(1,CUR.supply||0)+8000;
+  var impact=Math.min(0.03,(spendFC/depth)*0.25);
+  return side==='buy'?1+impact:1-impact;
+}
 function estimate(){
   var amt=parseFloat($('amt').value)||0, e=$('est'); if(!CUR||!amt){ e.textContent=''; return; }
-  if(SIDE==='buy'){ var net=amt*(1-FEE), units=net/CUR.price; e.textContent='≈ '+units.toFixed(4)+' units (after '+(FEE*100)+'% fee)'; }
-  else { var gross=amt*CUR.price, payout=Math.floor(gross*(1-FEE)); e.textContent='≈ '+fmt(payout)+' FC (after '+(FEE*100)+'% fee)'; }
+  if(SIDE==='buy'){
+    var slipMult=clientSlippage('buy',amt);
+    var execPrice=CUR.price*slipMult;
+    var net=amt*(1-FEE), units=net/execPrice;
+    var slipPct=slipMult>1?((slipMult-1)*100).toFixed(2):'0';
+    e.innerHTML='≈ '+units.toFixed(4)+' units · '+(FEE*100)+'% fee'+(slipPct!=='0'?' · '+slipPct+'% slippage':'');
+  } else {
+    // sell: amt = units to sell. Compute the real payout matching the server.
+    var mv=amt*CUR.price;                          // market value at spot
+    var sMult=clientSlippage('sell',mv);           // slippage multiplier
+    var execP=CUR.price*sMult;                      // effective price per unit
+    var gross=amt*execP;                            // gross after slippage
+    var fee=Math.floor(gross*FEE);                  // fee on gross
+    var payout=Math.max(0,Math.floor(gross-fee));
+    var slipLoss=Math.round(mv-gross);              // FC lost to slippage
+    var slipPct=sMult<1?((1-sMult)*100).toFixed(2):'0';
+    e.innerHTML='<b>You receive: '+fmt(payout)+' FC</b>'
+      +'<br><span class="est-line">Market value: '+fmt(mv)+' FC</span>'
+      +(slipLoss>0?'<br><span class="est-loss">Slippage ('+slipPct+'%): −'+fmt(slipLoss)+' FC</span>':'')
+      +'<br><span class="est-loss">Fee ('+(FEE*100)+'%): −'+fmt(fee)+' FC</span>';
+  }
 }
 function doTrade(){
   if(!CUR)return; var amt=parseFloat($('amt').value)||0; if(!(amt>0)){ $('est').textContent='Enter an amount.'; return; }

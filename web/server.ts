@@ -488,15 +488,16 @@ function investNudge(a: Asset, side: "buy" | "sell", spendFC: number) {
 }
 // Slippage: the effective price a trade executes at is shifted AGAINST the trader by a
 // spread proportional to trade size vs. market depth. Big buys pay more, big sells get
-// less — makes spamming buy→sell unprofitable. Returns the price multiplier to apply.
+// less — makes spamming buy→sell unprofitable. Capped at 3% (was 6% — too punitive on
+// large cash-outs like a 40k sell losing ~8%). Returns the price multiplier to apply.
 function investSlippage(a: Asset, side: "buy" | "sell", spendFC: number) {
   const depth = a.price * Math.max(1, a.supply) + 8000;
-  const impact = Math.min(0.06, (spendFC / depth) * 0.4);   // up to 6% adverse shift
+  const impact = Math.min(0.03, (spendFC / depth) * 0.25);   // up to 3% adverse shift (was 6%)
   return side === "buy" ? 1 + impact : 1 - impact;
 }
 function assetView(a: Asset) {
   const open = a.hist && a.hist.length ? a.hist[0][1] : a.price;
-  return { id: a._id, kind: a.kind, name: a.name, emoji: a.emoji, color: a.color, price: a.price, prev: a.prevPrice, open, change: open ? (a.price - open) / open : 0 };
+  return { id: a._id, kind: a.kind, name: a.name, emoji: a.emoji, color: a.color, price: a.price, prev: a.prevPrice, open, change: open ? (a.price - open) / open : 0, supply: a.supply || 0 };
 }
 async function investPortfolio(uid: string) {
   const h: any = await db.getHoldings(uid).catch(() => ({}));
@@ -534,7 +535,10 @@ async function investSell(uid: string, assetId: string, unitsArg: number | "all"
   const sellU = unitsArg === "all" ? cur.u : Math.min(cur.u, Number(unitsArg));
   if (!(sellU > 0)) return { error: "Invalid amount" };
   // slippage: big sells execute at a WORSE (lower) effective price.
-  const execPrice = a.price * investSlippage(a, "sell", sellU * a.price);
+  const slipMult = investSlippage(a, "sell", sellU * a.price);
+  const execPrice = a.price * slipMult;
+  const marketValue = sellU * a.price;                             // what it's worth at spot
+  const slipLoss = Math.floor(marketValue - sellU * execPrice);    // FC lost to slippage
   const gross = sellU * execPrice, fee = Math.floor(gross * INVEST_FEE), payout = Math.max(0, Math.floor(gross - fee));
   // ATOMIC deduction: guarded by `u >= sellU`. Returns null if the race was lost (another
   // concurrent sell already took the units). This makes double-selling impossible.
@@ -542,7 +546,7 @@ async function investSell(uid: string, assetId: string, unitsArg: number | "all"
   if (!res) return { error: "Insufficient holdings (they may have just been sold)" };
   if (payout > 0) await stdb.credit(uid, payout).catch(() => {});
   a.supply = r6(Math.max(0, (a.supply || 0) - res.soldUnits)); investNudge(a, "sell", gross);
-  return { ok: true, units: r6(res.soldUnits), price: a.price, execPrice: Math.round(execPrice * 100) / 100, payout, pnl: payout - res.costPortion, bal: stdb.getBalance(uid) };
+  return { ok: true, units: r6(res.soldUnits), price: a.price, execPrice: Math.round(execPrice * 100) / 100, marketValue, slipLoss, fee, payout, pnl: payout - res.costPortion, bal: stdb.getBalance(uid) };
 }
 
 // ── realtime WebSocket hub ───────────────────────────────────────────────────
