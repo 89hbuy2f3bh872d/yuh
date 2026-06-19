@@ -49,7 +49,7 @@ function esc(s) {
 }
 
 function fmt(n) {
-  return Number(n ?? 0).toLocaleString("en-US");
+  return Math.round(Number(n ?? 0)).toLocaleString("en-US");
 }
 
 function pct(value, max) {

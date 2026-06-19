@@ -107,6 +107,12 @@ export class Stdb {
     for (const bank of this.banks.values()) if (bank > 0) total += bank;
     return total;
   }
+  // Sum of all server bank balances only (for the admin circulation breakdown).
+  totalBanks(): number {
+    let total = 0;
+    for (const bank of this.banks.values()) if (bank > 0) total += bank;
+    return total;
+  }
 
   // Top-N holders by balance (for the &leaderboard command). Reads the in-memory cache
   // kept fresh by the `account` table subscription. Balances are authoritative in STDB,
