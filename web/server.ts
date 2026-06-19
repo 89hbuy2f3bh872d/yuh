@@ -418,7 +418,7 @@ async function investInit() {
   }
   if (backfilled) db.saveAssets([...INVEST.assets.values()]).catch(() => {}); // persist the seeded curves
   INVEST.ready = true;
-  setInterval(() => { try { investTick(); } catch (e: any) { console.error("[invest] tick", e?.message); } }, INVEST_TICK_MS);
+  setInterval(() => { investTick().catch((e: any) => console.error("[invest] tick", e?.message)); }, INVEST_TICK_MS);
   console.log(`[invest] ${INVEST.assets.size} assets live (${backfilled} backfilled)`);
 }
 // A more realistic, harder-to-game market model per tick:
@@ -429,7 +429,7 @@ async function investInit() {
 //  • a FIXED fair-value anchor (baseline does NOT rubber-band toward price) → genuine
 //    overvaluation/undervaluation, so prices correct hard when stretched
 //  • demand `bias` (from trades) is a transient shove that triggers mean-reversion
-function investTick() {
+async function investTick() {
   const now = Date.now();
   // global market factor: slow drift + occasional regime shifts
   const mktShock = (Math.random() * 2 - 1) * INVEST.mktVol;
