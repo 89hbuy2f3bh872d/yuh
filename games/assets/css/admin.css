@@ -76,7 +76,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .logout-btn:hover{color:var(--red);border-color:var(--red);background:rgba(239,68,68,.08)}
 
 /* ── Main content ─────────────────────────────────────────────────────── */
-.main{flex:1;max-width:1400px;width:100%;margin:0 auto;padding:2rem 1.6rem 3rem}
+.main{flex:1;width:100%;margin:0 auto;padding:2rem 1.6rem 3rem;max-width:1400px;overflow-x:hidden}
 
 /* ── Pages ────────────────────────────────────────────────────────────── */
 .page{display:none}
@@ -97,10 +97,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 
 /* ── KPI cards ────────────────────────────────────────────────────────── */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.85rem;margin-bottom:2rem}
-.kpi{position:relative;background:linear-gradient(155deg,var(--surface),var(--surface-2));border:1px solid var(--border);border-radius:var(--r-md);padding:1.15rem 1.25rem;overflow:hidden;transition:border-color 200ms ease,transform 200ms ease,box-shadow 240ms ease}
+.kpi{position:relative;background:linear-gradient(155deg,var(--surface),var(--surface-2));border:1px solid var(--border);border-radius:var(--r-md);padding:1.15rem 1.25rem;overflow:hidden;transition:border-color 200ms ease,box-shadow 240ms ease}
 .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc,var(--accent));opacity:.75}
 .kpi::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--kc,var(--accent)) 10%,transparent),transparent 60%);pointer-events:none}
-.kpi:hover{border-color:color-mix(in srgb,var(--kc,var(--accent)) 40%,var(--border));transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.kpi:hover{border-color:color-mix(in srgb,var(--kc,var(--accent)) 40%,var(--border));box-shadow:var(--shadow-md)}
 .kpi-label{font-size:.6rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.6rem}
 .kpi-value{font-size:1.75rem;font-weight:800;color:var(--kc,var(--text-bright));letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
 .kpi-sub{font-size:.63rem;color:var(--text-dim);margin-top:.5rem}
@@ -116,7 +116,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .stat-pill b{font-family:var(--font-mono);color:var(--text-bright);font-size:.9rem;margin-right:.35rem;font-weight:700}
 
 /* ── Table ────────────────────────────────────────────────────────────── */
-.tbl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-sm)}
+.tbl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:auto;box-shadow:var(--shadow-sm);max-width:100%}
 table{width:100%;border-collapse:collapse}
 thead tr{background:var(--surface-2)}
 th{padding:.75rem 1rem;font-size:.6rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
