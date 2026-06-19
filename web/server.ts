@@ -436,13 +436,20 @@ function investTick() {
   INVEST.mktDrift = 0.92 * INVEST.mktDrift + 0.08 * mktShock;       // market trends + reverts
   INVEST.mktVol = Math.max(0.004, 0.9 * INVEST.mktVol + 0.1 * Math.abs(mktShock) + 0.002);
 
+  // Total invested value (sum of all users' holdings × current price) — computed once per
+  // tick so FC-T's circulation count includes FC locked in investment positions, not just
+  // liquid balances + server banks. Fire-and-forget; defaults to 0 on first tick.
+  const holdingUnits = await (db as any).totalHoldingUnits?.().catch(() => new Map()) ?? new Map();
+  let investedValue = 0;
+  for (const [id, units] of holdingUnits) { const a = INVEST.assets.get(id); if (a) investedValue += units * a.price; }
+
   for (const a of INVEST.assets.values()) {
     a.prevPrice = a.price;
     // FC-T tracks total FC in circulation (like USD-T tracking reserves). Its "fair value"
-    // is the money supply normalized: supply / 1e6 (1M FC in circulation = 1.00 FC-T).
+    // is the money supply normalized: (liquid balances + server banks + invested value) / 1e6.
     // Smooth toward it so the price doesn't jerk each tick, plus a tiny noise wiggle.
     if (a.kind === "fct") {
-      const supply = stdb.totalSupply();
+      const supply = stdb.totalSupply() + investedValue;
       const fair = Math.max(0.01, supply / 1_000_000);
       a.price = Math.round((a.price + (fair - a.price) * 0.12 + (Math.random() * 2 - 1) * 0.002) * 1000) / 1000;
       a.price = Math.max(0.01, a.price);
@@ -475,7 +482,9 @@ function investTick() {
     a.updatedAt = now;
   }
   db.saveAssets([...INVEST.assets.values()]).catch(() => {});
-  const msg = JSON.stringify({ type: "prices", assets: [...INVEST.assets.values()].map(a => ({ id: a._id, price: a.price, prev: a.prevPrice })) });
+  // Include `open` (the day's opening price) so clients compute the % change consistently —
+  // without it they fell back to a stale/missing open and the badge desynced from the chart.
+  const msg = JSON.stringify({ type: "prices", assets: [...INVEST.assets.values()].map(a => { const open = (a.hist && a.hist.length) ? a.hist[0][1] : a.price; return { id: a._id, price: a.price, prev: a.prevPrice, open }; }) });
   for (const ws of wsClients) { try { ws.send(msg); } catch {} }
 }
 // A trade shoves demand into the asset's bias (transient) — bigger trades vs. the

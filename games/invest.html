@@ -183,7 +183,8 @@ function livePortfolio(priceMap){
   var pf=window.__PF; if(!pf||!pf.positions||!pf.positions.length) return;
   var value=0, cost=0;
   pf.positions.forEach(function(p){
-    var px=(priceMap&&priceMap[p.id]!=null)?priceMap[p.id]:p.price; p.price=px;
+    var entry=(priceMap&&priceMap[p.id]!=null)?priceMap[p.id]:null;
+    var px=entry?(entry.price!=null?entry.price:entry):p.price; p.price=px;
     var v=p.units*px; p.value=Math.round(v); p.pnl=Math.round(v-p.cost);
     value+=v; cost+=p.cost;
   });
@@ -274,9 +275,9 @@ $('amt').addEventListener('input',estimate);
 // Live price stream (WS). Registered once; pjax re-runs this file but the listener is guarded.
 if(!window.__ivWs){ window.__ivWs=1;
   window.addEventListener('sg:ws',function(e){ var d=e.detail; if(!d||d.type!=='prices')return;
-    var map={}; (d.assets||[]).forEach(function(p){map[p.id]=p.price;});
-    ASSETS.forEach(function(a){ if(map[a.id]!=null){ var open=a.open||a.price; a.price=map[a.id]; a.change=open?(a.price-open)/open:0; } });
-    if(CUR&&map[CUR.id]!=null){ CUR.price=map[CUR.id]; var op=CUR.open||CUR.price; CUR.change=op?(CUR.price-op)/op:0; (CUR.hist=CUR.hist||[]).push([Date.now(),CUR.price]); if(CUR.hist.length>720)CUR.hist=CUR.hist.slice(-720); drawChart(); renderHead(); }
+    var map={}; (d.assets||[]).forEach(function(p){map[p.id]={price:p.price,open:p.open};});
+    ASSETS.forEach(function(a){ if(map[a.id]!=null){ a.price=map[a.id].price; var op=map[a.id].open!=null?map[a.id].open:(a.open||a.price); a.open=op; a.change=op?(a.price-op)/op:0; } });
+    if(CUR&&map[CUR.id]!=null){ CUR.price=map[CUR.id].price; var op=map[CUR.id].open!=null?map[CUR.id].open:(CUR.open||CUR.price); CUR.open=op; CUR.change=op?(CUR.price-op)/op:0; (CUR.hist=CUR.hist||[]).push([Date.now(),CUR.price]); if(CUR.hist.length>720)CUR.hist=CUR.hist.slice(-720); drawChart(); renderHead(); }
     livePortfolio(map);
     renderList();
   });

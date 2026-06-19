@@ -562,6 +562,22 @@ export class Database {
     const ops = list.map(a => ({ updateOne: { filter: { _id: a._id }, update: { $set: a }, upsert: true } }));
     await this._assets.bulkWrite(ops, { ordered: false }).catch(() => {});
   }
+  // Sum the TOTAL units held across all users for each asset — used to compute the total
+  // invested value (units × price) so FC-T's circulation count includes invested FC.
+  // Returns a Map of assetId → total units.
+  async totalHoldingUnits() {
+    if (!this._holdings) return new Map();
+    // Aggregate: for each asset, sum h.<assetId>.u across all user docs.
+    // We use $objectToArray to dynamic-iterate the h sub-doc.
+    const rows = await this._holdings.aggregate([
+      { $project: { h: { $objectToArray: "$h" } } },
+      { $unwind: "$h" },
+      { $group: { _id: "$h.k", totalU: { $sum: "$h.v.u" } } },
+    ]).toArray().catch(() => []);
+    const m = new Map();
+    for (const r of rows) if (r._id && Number(r.totalU) > 0) m.set(r._id, Number(r.totalU));
+    return m;
+  }
   async getHoldings(uid) { if (!this._holdings) return {}; const d = await this._holdings.findOne({ _id: String(uid) }).catch(() => null); return (d && d.h) || {}; }
   async setHoldings(uid, h) { if (!this._holdings) return; await this._holdings.updateOne({ _id: String(uid) }, { $set: { h } }, { upsert: true }).catch(() => {}); }
   // Atomically ADD units + cost to a holding (buy). Race-free via $inc.

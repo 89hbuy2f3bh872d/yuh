@@ -97,12 +97,14 @@ export class Stdb {
 
   getBalance(owner: string): number { return this.balances.get(owner) ?? 0; }
 
-  // Total FC in circulation (sum of all positive balances) — the money supply. FC-T's
-  // price tracks this, so it reflects how many Fluxer coins exist (like USD-T tracking
-  // dollar reserves). Cheap to compute from the in-memory cache.
+  // Total FC in circulation (sum of all positive balances + server banks) — the money
+  // supply. FC-T's price tracks this, so it reflects how many Fluxer coins exist (like
+  // USD-T tracking dollar reserves). Includes server banks (tax accruals) since that FC
+  // exists too — it's just held by the server, not destroyed.
   totalSupply(): number {
     let total = 0;
     for (const balance of this.balances.values()) if (balance > 0) total += balance;
+    for (const bank of this.banks.values()) if (bank > 0) total += bank;
     return total;
   }
 
