@@ -466,10 +466,7 @@ function buildPage(data, prefix) {
   const firstId = shownPages.length ? shownPages[0].id : "";
 
   const navHtml = shownPages.map(
-    (p, i) => `
-    <button class="nav-item${i === 0 ? " active" : ""}" data-page="${p.id}" style="--pc:${p.color}" role="tab" aria-selected="${i === 0}">
-      ${esc(p.label)}
-    </button>`,
+    (p, i) => `<button class="nav-item${i === 0 ? " active" : ""}" data-page="${p.id}" style="--pc:${p.color}" role="tab" aria-selected="${i === 0}">${esc(p.label)}</button>`,
   ).join("");
 
   const pagesHtml = shownPages.map(
