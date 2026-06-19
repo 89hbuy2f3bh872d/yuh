@@ -205,6 +205,19 @@ function ckOpts(secure: boolean, httpOnly: boolean) {
     secure,
   };
 }
+// The selected-server cookie is long-lived (30d) independent of the 2h session,
+// so a refresh — even after a long idle — still remembers your server. The
+// persisted last-server (kv) is the source of truth; this cookie is the fast path.
+const SRV_COOKIE_MAXAGE = 30 * 24 * 60 * 60;
+function srvCookieOpts(secure: boolean) {
+  return {
+    httpOnly: false,
+    path: "/",
+    maxAge: SRV_COOKIE_MAXAGE,
+    sameSite: "lax" as const,
+    secure,
+  };
+}
 function setAuthCookies(
   cookie: any,
   secure: boolean,
@@ -216,7 +229,7 @@ function setAuthCookies(
     cookie.dtag.set({ value: v.tag, ...ckOpts(secure, false) });
   if (v.avatar != null)
     cookie.dav.set({ value: v.avatar, ...ckOpts(secure, false) });
-  if (v.srv != null) cookie.srv.set({ value: v.srv, ...ckOpts(secure, false) });
+  if (v.srv != null) cookie.srv.set({ value: v.srv, ...srvCookieOpts(secure) });
 }
 // Ask the Node bot (which holds the Fluxer client) to DM a user — used for ticket transcripts.
 const BOT_DM_URL = "http://127.0.0.1:" + (cfg.web?.botPort ?? 8091);
@@ -2090,6 +2103,22 @@ const app = new Elysia()
           .catch(() => []);
         return { ok: true, rows };
       })
+      // Remembered selected server (kv: srv:<uid>) — bot-facade parity.
+      .post("/last-server", async ({ body }) => {
+        await db
+          .setLastServer(
+            String((body as any)?.uid || ""),
+            String((body as any)?.gid || ""),
+          )
+          .catch(() => {});
+        return { ok: true };
+      })
+      .post("/last-server-get", async ({ body }) => {
+        const gid = await db
+          .getLastServer(String((body as any)?.uid || ""))
+          .catch(() => "");
+        return { ok: true, gid };
+      })
       // ── one-time Mongo→STDB migration sink (run scripts/migrate-to-stdb.mjs once) ──
       .post("/migrate", async ({ body }) => {
         const b = body as any;
@@ -2297,7 +2326,24 @@ app.get("/oauth/callback", async ({ query, set, request, cookie }) => {
       console.error("[oauth] createSession failed:", e?.message),
     );
   if (old && old !== sid) db.revokeSession(uid, old).catch(() => {});
-  setAuthCookies(cookie, isHttps(request), { sid, uid, tag, avatar });
+  // Restore the last selected server (persisted in kv) so re-login keeps your
+  // server. Validate membership; requireServer double-checks again at play time.
+  let restoreSrv = "";
+  try {
+    const ls = await db.getLastServer(uid).catch(() => "");
+    if (ls) {
+      const u = await db.getUser(uid).catch(() => null);
+      const gids: string[] = Array.isArray(u?.gids) ? u.gids : [];
+      if (!gids.length || gids.includes(ls)) restoreSrv = ls;
+    }
+  } catch {}
+  setAuthCookies(cookie, isHttps(request), {
+    sid,
+    uid,
+    tag,
+    avatar,
+    srv: restoreSrv || undefined,
+  });
   console.log("[oauth] login ok:", uid);
   return redir(set, "/lobby");
 });
@@ -2329,14 +2375,24 @@ app.get("/s/:token", async ({ params, set, cookie, request }) => {
   const user = await db.getUser(uid).catch(() => null);
   const tag = user?.tag || uid,
     avatar = user?.av || fluxerAvatarUrl(uid, null);
+  // The &web token targets a specific guild; select it and remember it. If the
+  // token has no guild, fall back to the last selected server.
+  let srv = r.gid || "";
+  if (!srv) {
+    try {
+      srv = await db.getLastServer(uid).catch(() => "");
+    } catch {}
+  } else {
+    db.setLastServer(uid, r.gid).catch(() => {});
+  }
   setAuthCookies(cookie, isHttps(request), {
     sid,
     uid,
     tag,
     avatar,
-    srv: r.gid || undefined,
+    srv: srv || undefined,
   });
-  console.log("[s] server login ok:", uid, "→ server", r.gid);
+  console.log("[s] server login ok:", uid, "→ server", srv || "(none)");
   return redir(set, "/lobby");
 });
 
@@ -2930,9 +2986,16 @@ app.get("/api/servers", async ({ request, set }) => {
     set.status = 401;
     return { error: "Not logged in" };
   }
-  const sel = parseCookies(request).srv || "";
   const user = await db.getUser(uid).catch(() => null);
   const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
+  // Resolve the selected server: cookie first (fast path), then the persisted
+  // last-server (kv) so a refresh after cookie-expiry, or a restart, still
+  // remembers it. Membership is validated so a server you left is dropped.
+  let sel = parseCookies(request).srv || "";
+  if (!sel) {
+    const ls = await db.getLastServer(uid).catch(() => "");
+    if (ls && (!gids.length || gids.includes(ls))) sel = ls;
+  }
   const ids = sel && !gids.includes(sel) ? gids.concat(sel) : gids;
   const guilds = await db.getGuildsByIds(ids).catch(() => []);
   const now = Date.now();
@@ -2964,7 +3027,9 @@ app.post("/api/select-server", async ({ request, body, set, cookie }) => {
   const gids: string[] = Array.isArray(user?.gids) ? user.gids : [];
   if (gids.length && !gids.includes(gid))
     return { error: "You're not in that server" };
-  cookie.srv.set({ value: gid, path: "/", maxAge: 7200, sameSite: "lax" });
+  cookie.srv.set({ value: gid, ...srvCookieOpts(isHttps(request)) });
+  // Persist as the last selected server so it survives logout/restart/re-login.
+  db.setLastServer(uid, gid).catch(() => {});
   return { ok: true, selected: gid };
 });
 
