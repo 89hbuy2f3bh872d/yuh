@@ -20,6 +20,9 @@ first**, then this.
 - Local dev box (Windows): **no `spacetime` CLI, no Bun, no `module_bindings/`** —
   validate with `node --check` (`.mjs`), `cargo check` (`spacetimedb/`), and
   `new Function(scriptText)` parse-checks on page `<script>` blocks.
+- **Setup/deploy guide: [`INSTALL.md`](./INSTALL.md)** — from-scratch VPS install, STDB
+  publish/generate, `config.json`, Cloudflare/nginx, and VPS-switch/backup. `README.md` is
+  stale (old Mongo setup); use `INSTALL.md` instead.
 
 ---
 
@@ -355,9 +358,10 @@ Rakeback tile. Default `rakebackPct = 5%` (per-guild, owner-configurable 0–20 
 `POST /api/server/rakeback`). **Halts during a tax holiday** (taxBps=0 → house earns nothing
 to rebate — matches Stake's model).
 
-- **Storage**: Mongo `rakeback` collection, keyed `{_id: uid+"@"+gid}` with `{accrued, wagered,
-  claimed}`. Methods in `Database.mjs`: `addRakeback`, `getRakeback`, `claimRakeback`,
-  `setGuildRakebackPct`, `getGuildRakebackPct`.
+- **Storage**: STDB `rakeback_ledger` table, PK `uid@gid` (composite as a single String),
+  cols `{accrued, wagered, claimed}`. Methods in `Database.mjs`: `addRakeback`, `getRakeback`,
+  `claimRakeback` (credits the balance INSIDE the reducer → route must NOT re-credit),
+  `setGuildRakebackPct`, `getGuildRakebackPct`. (Was a Mongo collection before the migration.)
 - **Accrual hooks**: `accrueRakeback(uid, gid, wager, taxBps)` in `server.ts` (fire-and-forget,
   resolves pct from a 60s `rakebackPctCache`). Called at slots spin, house `wager()`, cards
   `wager()`, and case-battle via the injected `onWager` callback (which also closes the gap
@@ -365,8 +369,12 @@ to rebate — matches Stake's model).
 - **Endpoints**: `GET /api/rakeback` (pending/claimed/pct for the selected server),
   `POST /api/rakeback/claim` (credits via `stdb.credit`, 1.5s rate-limit, notifies),
   `POST /api/server/rakeback` (owner/servers-admin sets pct, broadcasts via `server-econ`).
-- **UI**: lobby Rakeback tile (`games/lobby.html`) — shows pending FC + Claim button, per-server,
-  greys out with "Select a server" when no `srv` cookie. Refreshes on balance WS push.
+- **UI**: sidebar Rakeback widget (`games/partials/sidebar.html`, `.rb-widget`) — a single
+  compact row (icon + amount + Claim) sized to match the Selected Server picker above it.
+  Persists across pjax; reloads on `sg:server` and on a balance WS push. Shows `Select server`
+  (disabled) when no `srv` cookie; the pct text was removed — a `title` tooltip notes
+  "Tax holiday — rakeback paused" vs "Cash back on every bet". Claim-success feedback
+  (`+N FC`) shows on the Claim button itself.
 - **Math**: 1000 FC @ 15% tax, 5% rakeback → `1000×0.15×0.05 = 7 FC` accrued.
 
 ---
@@ -385,8 +393,28 @@ Message types: `init`, `balance`, `notification`, `ticket`, `bank`, `server-play
 - A page's inline `<script>` re-runs on **every** nav into it. Guard listener
   registration with a `window.__flag` (e.g. `if(!window.__ivWs)`), but let render/`load()`
   re-run.
-- Scripts matching `/__pjax|__bgHex|__notif|__srvSel/` are the persistent runtime and
+- Scripts matching `/__pjax|__bgHex|__notif|__srvSel|__rbW/` are the persistent runtime and
   are NOT re-executed.
+- **FOUC fix (no flash on first nav to a page):** `swap()` waits for any newly-injected
+  page-specific `<link>` stylesheets to `onload` BEFORE swapping `<main>`. Split into
+  `loadPageCss(doc)` (injects missing `<link>`s, returns a Promise that resolves when they
+  load, with a 1s timeout fallback) + `applyInlineCss(doc)` (mirrors the page's inline
+  `<style>` into `#pjax-style` AT swap time, not before, so it can't briefly restyle the
+  old page). A monotonic `navSeq` token guards against a rapid second click letting a stale
+  swap's .then overwrite a newer one. The old section stays visible + styled while the new
+  CSS loads; new content + CSS paint together — no unstyled frame. Root cause: a `<link>`
+  loads async, but the old code swapped `cur.innerHTML` right after appending the link, so
+  a first visit to a page painted unstyled for a frame (cached CSS on later visits hid it).
+- **Animated background** (`#bgHex`, in `sidebar.html`): a soft glowing **particle network**,
+  NOT the old flat hexagons. A pre-rendered green radial-gradient sprite is drawn per node
+  via `drawImage` + additive (`'lighter'`) blending — no hard stroke outlines. Each node has
+  a depth `z` (0=far..1=near) driving size/opacity/speed (parallax) + a gentle pulse. Links:
+  round caps, alpha by distance × nearer-node depth. Resize fix: `resizeCanvas()` syncs the
+  bitmap on every event (no stretch/smeared strokes), `fitNodes()` is debounced 140ms and
+  **preserves existing nodes** (wraps off-screen ones, adjusts count) — the old code
+  regenerated the whole field on every resize event → constant flash. A CSS `radial-gradient`
+  vignette on `#bgHex` fades the network into the corners. `prefers-reduced-motion` does one
+  static `draw()` (the old code accidentally still animated via the rAF loop).
 
 ---
 
@@ -396,11 +424,23 @@ Message types: `init`, `balance`, `notification`, `ticket`, `bank`, `server-play
 - Cookies: `sid` + `uid` (httpOnly), `dtag` + `dav`, `srv` (selected server).
   Set via `setAuthCookies(cookie, isHttps(request), {...})` — `Secure` only over HTTPS.
   Sessions = 2h TTL.
-- **Token must match `/^[a-f0-9]{24,128}$/`** before Mongo field-path use (`isSessionToken`).
+- **Remembered server (survives refresh / restart / re-login):** the `srv` cookie uses a
+  dedicated `srvCookieOpts(secure)` with a **30-day** maxAge (independent of the 2h session)
+  via `SRV_COOKIE_MAXAGE` — so a plain refresh always has it. The source of truth is
+  `db.setLastServer`/`getLastServer` (`src/Database.mjs`), persisted in the STDB `kv` table
+  under `srv:<uid>` (same pattern as `psl:<uid>` pending-slot recovery). On `/api/select-server`
+  the choice is written to kv. On OAuth callback + `/s/:token` login, the web reads
+  `getLastServer(uid)`, validates membership, and sets the `srv` cookie from it — so logging
+  out and back in keeps your last server. `/api/servers` falls back to `getLastServer` when
+  the cookie is absent (membership-checked), so a refresh after cookie-expiry or a restart
+  still restores it. `requireServer` still double-checks membership at play time, so a server
+  you left is dropped. Bot-facade parity via `/internal/last-server` + `/internal/last-server-get`.
+- **Token must match `/^[a-f0-9]{24,128}$/`** before field-path use (`isSessionToken`).
 - **LOGIN-LOOP LESSON:** never put the same field path in both `$set` and `$unset`
   (Mongo rejects the whole update). OAuth callback always `createSession` (upsert) +
   revokes the old session separately.
-- `&web` command mints a one-time login token → `/s/:token` logs in + selects that guild.
+- `&web` command mints a one-time login token → `/s/:token` logs in + selects that guild
+  (and persists it as the last server).
 
 ---
 
@@ -473,14 +513,22 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
 
 ## 12. Deploy
 
+- **Full from-scratch setup + VPS-switch guide: [`INSTALL.md`](./INSTALL.md)** — read that
+  for runtime installs, STDB host/publish/generate, `config.json`, Cloudflare/nginx, and
+  backup/restore. The quick-reference for ongoing deploys is below.
 - **Web/page/bot only** (no Rust): `pm2 restart sirgreen-web` (+ `sirgreen-bot` if
-  `index.mjs`/`CommandHandler.mjs`/`Database.mjs`/`stdbBridge.mjs` changed). Pages are
-  static — asset `?v=` cache-bust is automatic.
+  `index.mjs`/`CommandHandler.mjs`/`Database.mjs` changed). Pages are static — asset `?v=`
+  cache-bust is automatic.
 - **STDB module change**: `cd spacetimedb && spacetime publish -s local sirgreen-6ls47 &&
   spacetime generate --lang typescript --module-path . --out-dir ../web/src/module_bindings &&
   pm2 restart sirgreen-web`. Additive migrations (new table/reducer) don't wipe.
 - `module_bindings/` is generated **on the VPS only** — not in the repo, not on dev box.
 - Cloudflare fronts the origin (Bun on :80), passes WebSockets automatically.
+- **Removed from the repo:** the stale `Dockerfile`/`docker-compose.yml` (described the old
+  Mongo single-process bot), the fishslot integration (`scripts/{patch-fishslot,setup-fishslot,
+  fluxer-bridge}.*`, `src/FishslotAssets.mjs`, `commands/fishslot.mjs`, empty `public/fishslot/`),
+  and the dead `goldSlot*` keys from `config.json`. `README.md` is also stale (old Mongo setup) —
+  `INSTALL.md` supersedes it.
 
 ---
 
@@ -564,6 +612,41 @@ node --input-type=module -e "import {spin} from './src/SlotEngine.mjs'; const N=
     runtime-tested on the dev box (no Bun/STDB/`module_bindings`) — `cargo check` + `node --check`
     pass; the TS layers (`stdb.ts`, `server.ts`) verify on first VPS deploy. Biggest untested
     assumption: codegen camelCases reducer ARG names (matches the confirmed name/field casing).
+20. **Rakeback widget compacted**: was a two-row card (head + body) under the server picker,
+    taller than the picker and showing a `"5% rakeback · accrues on every bet"` sub line. Now a
+    single row (`.rb-widget`: icon + `.rb-info`(label+amt) + Claim) sized to match `.srv-btn`
+    (same padding/radius/26px icon). The pct sub-text removed; tax-holiday note moved to a
+    `title` tooltip; claim-success shows `+N FC` on the button. CSS: replaced `.rb-head`/
+    `.rb-body`/`.rb-title`/`.rb-sub` with `.rb-info`/`.rb-label`; mobile media query updated.
+21. **Support split into its own tab**: was a card buried in `/settings` (mixed with Audio).
+    Now a dedicated `/support` page (`games/support.html`, reusing `settings.css` for the
+    `.tk*` ticket styles) + a sidebar nav item under Account (life-buoy icon). Registered in
+    `PAGE_IDS` + `PAGES` (`["/support","support.html","support"]`) so `__ACTIVE_support__`
+    resolves. `settings.html` now holds only Audio; its subtitle → "Audio and sound effects."
+22. **Sidebar reorganized** (`games/partials/sidebar.html`): Games reordered to
+    Lobby → Slots → House → Cards → Case Battle → Invest (Case Battle was awkwardly 2nd);
+    "Misc" → **Community** (Leaderboard, Send Money); Account = Notifications → Support →
+    Settings, with `__SERVERS_NAV__` + `__ADMIN_NAV__` both injected at the END of Account
+    (Admin used to inject into Misc — inconsistent). Modern Stake-style grouping.
+23. **Pjax FOUC fix**: first nav to a page flashed unstyled for a frame because `<link>` CSS
+    loads async but `swap()` swapped `cur.innerHTML` immediately. Fix: wait for the new
+    stylesheet(s) to `onload` before swapping; keep the old section visible meanwhile. Details
+    + the `navSeq` race guard in §7 (pjax gotchas).
+24. **Animated background redesign**: replaced the flat hexagons-with-hard-strokes with a soft
+    glowing particle network (additive-blended radial sprite, depth parallax, pulsing). Fixed
+    the resize flash (old code regenerated all nodes on every resize event; now preserves them
+    + debounces). Added a CSS vignette. Details in §7.
+25. **Remembered selected server**: the `srv` cookie was 2h (expired with the session) and
+    nothing was persisted server-side, so refresh-after-idle / restart / re-login lost it. Now
+    a 30-day cookie + `db.setLastServer/getLastServer` in STDB `kv` (`srv:<uid>`), restored on
+    OAuth/token login and via an `/api/servers` fallback. Details in §8. No Rust change (kv
+    already existed). New `/internal/last-server[-get]` routes for bot-facade parity.
+26. **Repo cleanup + INSTALL.md**: deleted stale `Dockerfile`/`docker-compose.yml` (old Mongo
+    single-process), the dead fishslot integration (`scripts/{patch-fishslot,setup-fishslot,
+    fluxer-bridge}.*`, `src/FishslotAssets.mjs`, `commands/fishslot.mjs`, empty `public/fishslot/`),
+    and the unused `goldSlot*` keys from `config.json`. Wrote `INSTALL.md` — a full from-scratch
+    setup + VPS-switch/backup guide (runtimes, STDB publish/generate, config, Cloudflare/nginx,
+    deploy, troubleshooting). `README.md` is now stale; `INSTALL.md` supersedes it.
 
 ---
 

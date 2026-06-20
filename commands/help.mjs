@@ -48,9 +48,9 @@ export default {
               value:
                 `**\`${prefix}web\`** — Get the website link (sent to your DMs)\n` +
                 `Link: **https://sirgreen.online**\n` +
-                `Case Battles · Slots (Candy Cascade, Thunder Gods, Wild Bandit) · ` +
-                `House Games (Plinko, Mines, Coinflip, HiLo, Double or Nothing)`
-            }
+                `Case Battles · Slots (Candy Cascade, Thunder Gods, Fruit Frenzy, Gem Galaxy, Ocean Odyssey, Cosmic Clusters, Lucky Lanterns) · ` +
+                `House Games (Plinko, Mines, Coinflip, HiLo, Double or Nothing)`,
+            },
           )
           .setFooter({ text: `Use ${prefix}help to see this again` }),
       ],
