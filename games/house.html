@@ -2120,19 +2120,25 @@
                 RK_AX = 66,
                 RK_AY = 22,
                 RK_DX = 46,
-                RK_DY = 54,
+                RK_CY = 68,
+                RK_U0 = 8,
+                RK_U1 = 46,
                 RK_DCAP = 1.1,
                 RK_PX = 240,
                 RK_BOOST_AT = 20;
             function rkPos(d) {
-                // Quadratic Bézier: launch upward from (SX,SY), curve right to (AX,AY),
-                // control at (SX,AY) so it rises first then arcs right (natural pitch-over).
+                // Quadratic Bézier from (SX,SY) to (AX,AY) with control (SX,CY): launches
+                // upward, then arcs toward the top-right corner. The tangent (the rocket's
+                // heading) rotates monotonically up (0°) → up-right (45°) — toward the corner,
+                // never sideways, no overshoot.
                 var t01 = Math.min(1, d / RK_DCAP),
                     it = 1 - t01;
                 var x = RK_SX * (1 - t01 * t01) + RK_AX * t01 * t01;
-                var y = RK_SY * it * it + RK_AY * (1 - it * it);
-                // Rotate the rocket to follow the path tangent (up → up-right → right).
-                var ang = (Math.atan2(t01 * RK_DX, it * RK_DY) * 180) / Math.PI;
+                var y =
+                    RK_SY * it * it + 2 * RK_CY * it * t01 + RK_AY * t01 * t01;
+                var ang =
+                    (Math.atan2(t01 * RK_DX, it * RK_U0 + t01 * RK_U1) * 180) /
+                    Math.PI;
                 return { x: x, y: y, ang: ang, over: Math.max(0, d - RK_DCAP) };
             }
             function rkReset() {
