@@ -604,6 +604,124 @@
                 color: #04210d !important;
                 font-weight: 800;
             }
+            .rk-phase {
+                position: absolute;
+                top: 3.4rem;
+                left: 1.1rem;
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: var(--text2);
+                z-index: 5;
+            }
+            .rk-history {
+                position: absolute;
+                top: 1rem;
+                right: 1rem;
+                display: flex;
+                gap: 0.25rem;
+                flex-wrap: wrap;
+                max-width: 55%;
+                justify-content: flex-end;
+                z-index: 5;
+            }
+            .rk-h {
+                font-size: 0.62rem;
+                font-weight: 800;
+                padding: 0.12rem 0.35rem;
+                border-radius: 6px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text2);
+            }
+            .rk-h-win {
+                color: #37e07a;
+                border-color: color-mix(in srgb, #37e07a 40%, transparent);
+            }
+            .rk-h-lose {
+                color: #ff5c5c;
+                border-color: color-mix(in srgb, #ff5c5c 40%, transparent);
+            }
+            .rk-bettors {
+                margin-top: 0.6rem;
+                max-height: 220px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+                padding-right: 0.2rem;
+            }
+            .rk-empty {
+                color: var(--text3);
+                font-size: 0.78rem;
+                text-align: center;
+                padding: 1rem;
+            }
+            .rk-brow {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.4rem 0.55rem;
+            }
+            .rk-brow.rk-you {
+                border-color: var(--gc, #f43f5e);
+                background: color-mix(
+                    in srgb,
+                    var(--gc, #f43f5e) 8%,
+                    var(--surface)
+                );
+            }
+            .rk-bav {
+                width: 24px;
+                height: 24px;
+                border-radius: 6px;
+                flex: none;
+                object-fit: cover;
+            }
+            .rk-binit {
+                display: grid;
+                place-items: center;
+                background: var(--surface2);
+                color: var(--text2);
+                font-weight: 800;
+                font-size: 0.7rem;
+            }
+            .rk-btag {
+                flex: 1;
+                min-width: 0;
+                font-size: 0.78rem;
+                font-weight: 600;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .rk-bbet {
+                font-size: 0.74rem;
+                font-weight: 700;
+                color: var(--text2);
+                font-variant-numeric: tabular-nums;
+            }
+            .rk-st {
+                font-size: 0.66rem;
+                font-weight: 800;
+                padding: 0.12rem 0.4rem;
+                border-radius: 99px;
+                white-space: nowrap;
+            }
+            .rk-st-in {
+                color: var(--text2);
+                background: var(--surface2);
+            }
+            .rk-st-cashed {
+                color: #04210d;
+                background: #22c55e;
+            }
+            .rk-st-busted {
+                color: #fff;
+                background: #ef4444;
+            }
         </style>
     </head>
     <body>
@@ -2106,15 +2224,16 @@
                     });
             }
 
-            // ── Crash (rocket) ─────────────────────────────────────────────────────────
-            // Trajectory: the rocket creeps from bottom-left toward the top-right corner
-            // (camera fixed). Once it passes RK_DCAP (~3×, “out of frame”), the camera follows —
-            // the rocket pins at the anchor and the starfield scrolls down-left, accelerating
-            // with the multiplier. Flame shows only while flying; a blue boost flame kicks in
-            // at high multiplier.
+            // ── Crash (global, multiplayer) ──────────────────────────────────────────
+            // One shared round runs continuously (waiting → running → crashed). State arrives
+            // over WS as {type:'crash',...}; the rocket animation is driven by the server's
+            // current multiplier, smoothed locally for smooth 60fps motion. Bets are placed
+            // during the waiting window and locked in for the upcoming round; cash out during
+            // running. Auto-cashout is server-side.
             var rkRaf = 0,
-                rkPollT = 0,
-                rkLocalStart = 0;
+                rkS = null,
+                rkMe = null,
+                rkDispM = 1;
             var RK_SX = 20,
                 RK_SY = 76,
                 RK_AX = 66,
@@ -2126,11 +2245,23 @@
                 RK_DCAP = 1.1,
                 RK_PX = 240,
                 RK_BOOST_AT = 20;
+            function rkEsc(s) {
+                return String(s == null ? "" : s).replace(
+                    /[&<>"']/g,
+                    function (c) {
+                        return {
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                            "'": "&#39;",
+                        }[c];
+                    },
+                );
+            }
             function rkPos(d) {
                 // Quadratic Bézier from (SX,SY) to (AX,AY) with control (SX,CY): launches
-                // upward, then arcs toward the top-right corner. The tangent (the rocket's
-                // heading) rotates monotonically up (0°) → up-right (45°) — toward the corner,
-                // never sideways, no overshoot.
+                // upward, then arcs toward the top-right corner. Heading rotates up → up-right.
                 var t01 = Math.min(1, d / RK_DCAP),
                     it = 1 - t01;
                 var x = RK_SX * (1 - t01 * t01) + RK_AX * t01 * t01;
@@ -2141,245 +2272,227 @@
                     Math.PI;
                 return { x: x, y: y, ang: ang, over: Math.max(0, d - RK_DCAP) };
             }
-            function rkReset() {
-                GAME._flying = false;
-                if (rkRaf) {
-                    cancelAnimationFrame(rkRaf);
-                    rkRaf = 0;
-                }
-                if (rkPollT) {
-                    clearInterval(rkPollT);
-                    rkPollT = 0;
-                }
-                var st = $("rkStart"),
-                    ca = $("rkCash"),
-                    r = $("rkRocket"),
-                    m = $("rkMult"),
-                    b = $("rkBurst"),
-                    rg = $("rkRing"),
-                    s = $("rkStars");
-                if (st) st.classList.remove("hidden");
-                if (ca) ca.classList.add("hidden");
-                if (r) {
-                    r.style.transition = "none";
-                    r.style.left = RK_SX + "%";
-                    r.style.top = RK_SY + "%";
-                    r.style.opacity = "1";
-                    r.style.transform = "";
-                    r.classList.remove("flying");
-                }
-                var bf = $("rkBoost");
-                if (bf) {
-                    bf.style.opacity = "0";
-                    bf.style.height = "44px";
-                }
-                if (s) s.style.backgroundPosition = "0 0";
-                if (m) {
-                    m.textContent = "1.00×";
-                    m.className = "rk-mult";
-                }
-                if (b) b.classList.remove("go");
-                if (rg) rg.classList.remove("go");
+            function rkMyBet() {
+                if (!rkS || !rkMe) return null;
+                return (rkS.bets || []).find(function (b) {
+                    return b.uid === rkMe;
+                });
             }
-            RENDER.crash = function () {
-                GAME._flying = false;
-                GAME._auto = 0;
-                GAME._autoOn = false;
-                $("hgBoard").innerHTML =
-                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame boost" id="rkBoost"></div><div class="rk-flame oj"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div>';
-                $("hgControls").innerHTML =
-                    '<div class="rk-auto"><label><input type="checkbox" id="rkAutoOn" onchange="rkAutoToggle()"> Auto cash out at</label> <input class="rk-auto-in" id="rkAutoIn" type="number" min="1.01" step="0.01" value="2.00"> ×</div>' +
-                    '<button class="play-btn" id="rkStart" onclick="rkStart()">Start 🚀</button>' +
-                    '<button class="play-btn cash rk-cash hidden" id="rkCash" onclick="rkCashout()">Cash Out <span id="rkCashVal">0</span> FC</button>';
-                rkReset();
-            };
-            function rkAutoToggle() {
-                GAME._autoOn = $("rkAutoOn").checked;
+            function rkAv(b) {
+                return (
+                    '<span class="rk-bav rk-binit">' +
+                    rkEsc(((b && b.tag) || "?").slice(0, 1).toUpperCase()) +
+                    "</span>"
+                );
             }
-            function rkStart() {
-                if (busy) return;
-                if (bet() > bal) {
-                    msg("Not enough balance", "bad");
+            function rkBettors() {
+                var el = $("rkBettors");
+                if (!el || !rkS) return;
+                var bets = (rkS.bets || []).slice().sort(function (a, b) {
+                    var ra =
+                        a.status === "cashed" ? 0 : a.status === "in" ? 1 : 2;
+                    var rb =
+                        b.status === "cashed" ? 0 : b.status === "in" ? 1 : 2;
+                    if (ra !== rb) return ra - rb;
+                    return a.status === "cashed"
+                        ? b.cashedMult - a.cashedMult
+                        : b.bet - a.bet;
+                });
+                if (!bets.length) {
+                    el.innerHTML =
+                        '<div class="rk-empty">No bets yet for this round.</div>';
                     return;
                 }
-                var auto = GAME._autoOn ? Number($("rkAutoIn").value) : 0;
-                busy = true;
-                msg("");
-                sfx("spin");
-                post("crash/start", { bet: bet(), auto: auto })
-                    .then(function (d) {
-                        busy = false;
-                        if (d.error) {
-                            msg(d.error, "bad");
-                            return;
-                        }
-                        bal = d.balance;
-                        setBal();
-                        GAME._flying = true;
-                        GAME._k = d.k;
-                        GAME._p = d.p;
-                        GAME._auto = d.auto || 0;
-                        rkLocalStart = Date.now();
-                        var m = $("rkMult");
-                        m.textContent = "1.00×";
-                        m.className = "rk-mult";
-                        var r = $("rkRocket");
-                        if (r) {
-                            r.style.transition = "";
-                            r.style.left = RK_SX + "%";
-                            r.style.top = RK_SY + "%";
-                            r.style.opacity = "1";
-                            r.style.transform = "";
-                            r.classList.add("flying");
-                        }
-                        var bf = $("rkBoost");
-                        if (bf) {
-                            bf.style.opacity = "0";
-                            bf.style.height = "44px";
-                        }
-                        var s = $("rkStars");
-                        if (s) s.style.backgroundPosition = "0 0";
-                        $("rkStart").classList.add("hidden");
-                        $("rkCash").classList.remove("hidden");
-                        if (rkRaf) cancelAnimationFrame(rkRaf);
-                        rkRaf = requestAnimationFrame(rkLoop);
-                        if (rkPollT) clearInterval(rkPollT);
-                        rkPollT = setInterval(rkPoll, 120);
+                var ph = rkS.phase,
+                    h = "";
+                bets.forEach(function (b) {
+                    var mine = b.uid === rkMe ? " rk-you" : "";
+                    var st;
+                    if (b.status === "cashed")
+                        st =
+                            '<span class="rk-st rk-st-cashed">+' +
+                            fmt(b.payout) +
+                            " · " +
+                            b.cashedMult.toFixed(2) +
+                            "×</span>";
+                    else if (b.status === "busted")
+                        st =
+                            '<span class="rk-st rk-st-busted">-' +
+                            fmt(b.bet) +
+                            "</span>";
+                    else
+                        st =
+                            '<span class="rk-st rk-st-in">' +
+                            (ph === "running" ? "IN" : "queued") +
+                            "</span>";
+                    h +=
+                        '<div class="rk-brow' +
+                        mine +
+                        '">' +
+                        rkAv(b) +
+                        '<span class="rk-btag">' +
+                        rkEsc(b.tag) +
+                        (mine ? " (you)" : "") +
+                        "</span>" +
+                        '<span class="rk-bbet">' +
+                        fmt(b.bet) +
+                        " FC</span>" +
+                        st +
+                        "</div>";
+                });
+                el.innerHTML = h;
+            }
+            function rkHistory() {
+                var el = $("rkHistory");
+                if (!el || !rkS) return;
+                el.innerHTML = (rkS.history || [])
+                    .map(function (c) {
+                        return (
+                            '<span class="rk-h ' +
+                            (c >= 2 ? "rk-h-win" : "rk-h-lose") +
+                            '">' +
+                            c.toFixed(2) +
+                            "×</span>"
+                        );
                     })
-                    .catch(function () {
-                        busy = false;
-                    });
+                    .join("");
+            }
+            function rkButtons() {
+                var place = $("rkPlace"),
+                    cancel = $("rkCancel"),
+                    cash = $("rkCashBtn");
+                var mine = rkMyBet();
+                var ph = rkS ? rkS.phase : "waiting";
+                if (ph === "running") {
+                    if (place) place.classList.add("hidden");
+                    if (cancel) cancel.classList.add("hidden");
+                    if (cash) {
+                        var can = !!(mine && mine.status === "in");
+                        cash.classList.toggle("hidden", !can);
+                        if (can)
+                            cash.textContent =
+                                "Cash Out " +
+                                fmt(Math.round(mine.bet * rkDispM)) +
+                                " FC";
+                    }
+                } else if (ph === "waiting") {
+                    if (cash) cash.classList.add("hidden");
+                    if (place) {
+                        place.classList.remove("hidden");
+                        place.textContent = mine ? "Update Bet" : "Place Bet";
+                    }
+                    if (cancel) cancel.classList.toggle("hidden", !mine);
+                } else {
+                    if (place) place.classList.add("hidden");
+                    if (cancel) cancel.classList.add("hidden");
+                    if (cash) cash.classList.add("hidden");
+                }
+            }
+            function rkRender() {
+                if (!rkS) return;
+                var ph = rkS.phase,
+                    mult = $("rkMult"),
+                    phase = $("rkPhase");
+                if (ph === "running") {
+                    rkDispM += (rkS.m - rkDispM) * 0.35;
+                    if (rkDispM < 1) rkDispM = 1;
+                    var d = Math.log(rkDispM),
+                        p = rkPos(d);
+                    var r = $("rkRocket");
+                    if (r) {
+                        r.style.left = p.x + "%";
+                        r.style.top = p.y + "%";
+                        r.style.transform =
+                            "translate(-50%,-50%) rotate(" +
+                            p.ang.toFixed(2) +
+                            "deg)";
+                        r.style.opacity = "1";
+                        r.classList.add("flying");
+                    }
+                    var bf = $("rkBoost");
+                    if (bf) {
+                        var bg =
+                            rkDispM >= RK_BOOST_AT
+                                ? Math.min(
+                                      1,
+                                      (Math.log(rkDispM) -
+                                          Math.log(RK_BOOST_AT)) /
+                                          (Math.log(1000) -
+                                              Math.log(RK_BOOST_AT)),
+                                  )
+                                : 0;
+                        bf.style.opacity = (bg * 0.9).toFixed(3);
+                        bf.style.height = 44 + bg * 80 + "px";
+                    }
+                    var s = $("rkStars");
+                    if (s)
+                        s.style.backgroundPosition =
+                            -p.over * RK_PX + "px " + p.over * RK_PX + "px";
+                    if (mult) {
+                        mult.textContent = rkDispM.toFixed(2) + "×";
+                        mult.className = "rk-mult";
+                    }
+                    if (phase) phase.textContent = "🚀 Flying";
+                } else if (ph === "waiting") {
+                    rkDispM = 1;
+                    var r2 = $("rkRocket");
+                    if (r2) {
+                        r2.style.transition = "none";
+                        r2.style.left = RK_SX + "%";
+                        r2.style.top = RK_SY + "%";
+                        r2.style.opacity = "1";
+                        r2.style.transform = "";
+                        r2.classList.remove("flying");
+                    }
+                    var bf2 = $("rkBoost");
+                    if (bf2) {
+                        bf2.style.opacity = "0";
+                        bf2.style.height = "44px";
+                    }
+                    var s2 = $("rkStars");
+                    if (s2) s2.style.backgroundPosition = "0 0";
+                    if (mult) {
+                        mult.textContent = "1.00×";
+                        mult.className = "rk-mult";
+                    }
+                    var left = Math.max(
+                        0,
+                        Math.ceil((rkS.bettingUntil - Date.now()) / 1000),
+                    );
+                    if (phase)
+                        phase.textContent = "⏳ Next round in " + left + "s";
+                } else if (ph === "crashed") {
+                    var c = rkS.crash || 1;
+                    if (mult) {
+                        mult.textContent = c.toFixed(2) + "×";
+                        mult.className = "rk-mult crash";
+                    }
+                    if (phase)
+                        phase.textContent =
+                            "💥 Crashed at " + c.toFixed(2) + "×";
+                }
+                rkButtons();
             }
             function rkLoop() {
-                if (!GAME._flying) return;
-                var el = (Date.now() - rkLocalStart) / 1000;
-                var m = Math.max(1, Math.exp(GAME._k * Math.pow(el, GAME._p)));
-                m = Math.floor(m * 100) / 100;
-                var d = Math.log(m),
-                    p = rkPos(d);
-                var r = $("rkRocket");
-                if (r) {
-                    r.style.left = p.x + "%";
-                    r.style.top = p.y + "%";
-                    r.style.transform =
-                        "translate(-50%,-50%) rotate(" +
-                        p.ang.toFixed(2) +
-                        "deg)";
-                }
-                // Blue boost flame: fades in slowly once the multiplier passes ~20× and
-                // grows as it climbs — a trailing boost jet, not a hard on/off.
-                var bf = $("rkBoost");
-                if (bf) {
-                    var bg =
-                        m >= RK_BOOST_AT
-                            ? Math.min(
-                                  1,
-                                  (Math.log(m) - Math.log(RK_BOOST_AT)) /
-                                      (Math.log(1000) - Math.log(RK_BOOST_AT)),
-                              )
-                            : 0;
-                    bf.style.opacity = (bg * 0.9).toFixed(3);
-                    bf.style.height = 44 + bg * 80 + "px";
-                }
-                // Camera follow: once past the anchor, pin the rocket and scroll the starfield
-                // down-left. The scroll rate tracks dm/dt, so stars accelerate with the rocket.
-                var s = $("rkStars");
-                if (s)
-                    s.style.backgroundPosition =
-                        -p.over * RK_PX + "px " + p.over * RK_PX + "px";
-                var mult = $("rkMult");
-                if (mult) mult.textContent = m.toFixed(2) + "×";
-                var cv = $("rkCashVal");
-                if (cv) cv.textContent = fmt(Math.round(bet() * m));
-                // Auto cash out: the client triggers it at the target mult; the server still
-                // validates against the (hidden) crash point, so this is display-only timing.
-                if (GAME._auto && GAME._auto > 1 && m >= GAME._auto) {
-                    rkCashout();
+                var vg = $("view-game");
+                if (!$("rkSky") || (vg && vg.classList.contains("hidden"))) {
+                    rkRaf = 0;
                     return;
                 }
+                rkRender();
                 rkRaf = requestAnimationFrame(rkLoop);
             }
-            function rkPoll() {
-                if (!GAME._flying) return;
-                post("crash/status", {})
-                    .then(function (d) {
-                        if (GAME._flying && d.crashed) rkCrash(d);
-                    })
-                    .catch(function () {});
-            }
-            function rkCashout() {
-                if (!GAME._flying || busy) return;
-                busy = true;
-                post("crash/cashout", {})
-                    .then(function (d) {
-                        busy = false;
-                        if (d.error) return;
-                        if (d.cashed) rkWin(d);
-                        else if (d.crashed) rkCrash(d);
-                    })
-                    .catch(function () {
-                        busy = false;
-                    });
-            }
-            function rkWin(d) {
-                GAME._flying = false;
-                if (rkPollT) {
-                    clearInterval(rkPollT);
-                    rkPollT = 0;
-                }
-                if (rkRaf) {
-                    cancelAnimationFrame(rkRaf);
-                    rkRaf = 0;
-                }
-                bal = d.balance;
-                setBal();
-                var mult = $("rkMult");
-                mult.textContent = d.mult.toFixed(2) + "×";
-                mult.className = "rk-mult win";
-                var r = $("rkRocket");
-                if (r) {
-                    r.style.transition =
-                        "left .6s ease-in, top .6s ease-in, opacity .6s ease-in";
-                    r.style.left = "112%";
-                    r.style.top = "-12%";
-                    r.style.opacity = "0";
-                }
-                var bf = $("rkBoost");
-                if (bf) bf.style.opacity = "0";
-                sfx("win");
-                msg(
-                    "Cashed out +" +
-                        fmt(d.payout) +
-                        " FC (" +
-                        d.mult.toFixed(2) +
-                        "×)",
-                    "good",
-                );
-                setTimeout(rkReset, 800);
-            }
-            function rkCrash(d) {
-                GAME._flying = false;
-                if (rkPollT) {
-                    clearInterval(rkPollT);
-                    rkPollT = 0;
-                }
-                if (rkRaf) {
-                    cancelAnimationFrame(rkRaf);
-                    rkRaf = 0;
-                }
-                if (d.balance !== undefined) {
-                    bal = d.balance;
-                    setBal();
-                }
-                var c = d.crash || 1;
-                var mult = $("rkMult");
-                mult.textContent = c.toFixed(2) + "×";
-                mult.className = "rk-mult crash";
+            function rkOnCrash() {
+                var c = (rkS && rkS.crash) || 1;
                 var pc = rkPos(Math.log(c));
-                var b = $("rkBurst"),
+                var r = $("rkRocket"),
+                    b = $("rkBurst"),
                     rg = $("rkRing"),
-                    r = $("rkRocket"),
                     sky = $("rkSky");
+                if (r) {
+                    r.style.opacity = "0";
+                    r.classList.remove("flying");
+                }
                 if (b) {
                     b.style.left = pc.x + "%";
                     b.style.top = pc.y + "%";
@@ -2394,28 +2507,159 @@
                     void rg.offsetWidth;
                     rg.classList.add("go");
                 }
-                if (r) {
-                    r.style.opacity = "0";
-                    r.classList.remove("flying");
-                }
-                var bf = $("rkBoost");
-                if (bf) bf.style.opacity = "0";
                 if (sky) {
                     sky.classList.remove("shake");
                     void sky.offsetWidth;
                     sky.classList.add("shake");
                 }
                 sfx("lose");
-                msg(
-                    "💥 Crashed at " +
-                        c.toFixed(2) +
-                        "× — lost " +
-                        fmt(bet()) +
-                        " FC",
-                    "bad",
-                );
-                setTimeout(rkReset, 950);
             }
+            function rkUpdate(s) {
+                if (!s || s.type !== "crash") return;
+                var prev = rkS ? rkS.phase : null;
+                rkS = s;
+                if (s.me) rkMe = s.me;
+                rkBettors();
+                rkHistory();
+                if (prev !== s.phase) {
+                    if (s.phase === "crashed") rkOnCrash();
+                    else if (s.phase === "running") sfx("spin");
+                    else if (s.phase === "waiting") {
+                        var r = $("rkRocket");
+                        if (r) {
+                            r.style.transition = "none";
+                            r.style.opacity = "1";
+                            r.style.left = RK_SX + "%";
+                            r.style.top = RK_SY + "%";
+                            r.style.transform = "";
+                            r.classList.remove("flying");
+                        }
+                        var bf = $("rkBoost");
+                        if (bf) bf.style.opacity = "0";
+                        var b = $("rkBurst"),
+                            rg = $("rkRing");
+                        if (b) b.classList.remove("go");
+                        if (rg) rg.classList.remove("go");
+                    }
+                }
+            }
+            function rkPost(url, body) {
+                return fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body || {}),
+                    credentials: "same-origin",
+                }).then(function (r) {
+                    return r.json();
+                });
+            }
+            function rkPlace() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                var auto =
+                    $("rkAutoOn") && $("rkAutoOn").checked
+                        ? Number($("rkAutoIn").value)
+                        : 0;
+                busy = true;
+                msg("");
+                rkPost("/api/crash/bet", { bet: bet(), auto: auto })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        if (d.balance !== undefined) {
+                            bal = d.balance;
+                            setBal();
+                        }
+                        msg("Bet placed for the next round", "good");
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function rkCancel() {
+                if (busy) return;
+                busy = true;
+                rkPost("/api/crash/cancel", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        if (d.balance !== undefined) {
+                            bal = d.balance;
+                            setBal();
+                        }
+                        msg("Bet cancelled", "good");
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function rkCashout() {
+                if (busy) return;
+                busy = true;
+                rkPost("/api/crash/cashout", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        if (d.balance !== undefined) {
+                            bal = d.balance;
+                            setBal();
+                        }
+                        if (d.ok) {
+                            sfx("win");
+                            msg(
+                                "Cashed out +" +
+                                    fmt(d.payout) +
+                                    " FC (" +
+                                    Number(d.mult).toFixed(2) +
+                                    "×)",
+                                "good",
+                            );
+                        }
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            RENDER.crash = function () {
+                $("hgBoard").innerHTML =
+                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-history" id="rkHistory"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-phase" id="rkPhase">⏳ Next round…</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame boost" id="rkBoost"></div><div class="rk-flame oj"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div><div class="rk-bettors" id="rkBettors"></div>';
+                $("hgControls").innerHTML =
+                    '<div class="rk-auto"><label><input type="checkbox" id="rkAutoOn"> Auto cash out at</label> <input class="rk-auto-in" id="rkAutoIn" type="number" min="1.01" step="0.01" value="2.00"> ×</div>' +
+                    '<button class="play-btn" id="rkPlace" onclick="rkPlace()">Place Bet</button>' +
+                    '<button class="play-btn cash hidden" id="rkCancel" onclick="rkCancel()">Cancel Bet</button>' +
+                    '<button class="play-btn cash rk-cash hidden" id="rkCashBtn" onclick="rkCashout()">Cash Out</button>';
+                rkS = null;
+                rkDispM = 1;
+                if (window.__rkWs)
+                    window.removeEventListener("sg:ws", window.__rkWs);
+                window.__rkWs = function (e) {
+                    var d = e.detail;
+                    if (d && d.type === "crash") rkUpdate(d);
+                };
+                window.addEventListener("sg:ws", window.__rkWs);
+                fetch("/api/crash/state", { credentials: "same-origin" })
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (s) {
+                        if (s && !s.error) rkUpdate(s);
+                    })
+                    .catch(function () {});
+                if (rkRaf) cancelAnimationFrame(rkRaf);
+                rkRaf = requestAnimationFrame(rkLoop);
+            };
             window.sgPaintTax && window.sgPaintTax(); // show the active server's tax cut
         </script>
     </body>

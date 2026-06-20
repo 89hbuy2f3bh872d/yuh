@@ -27,6 +27,7 @@ import {
   coinflip,
   doubleOrNothing,
   dice,
+  CRASH,
   HOUSE_GAMES,
   PLINKO,
 } from "../src/HouseGames.mjs";
@@ -1182,6 +1183,169 @@ function rateLimited(request: Request): boolean {
   return false;
 }
 
+// ── Global multiplayer Crash ──────────────────────────────────────────────
+// One continuously-running crash round shared by ALL players. Phases:
+//   waiting (BET_MS) → running (until m ≥ crash point) → crashed (RESULT_MS) → waiting…
+// Bets are placed during the waiting window and locked in for the upcoming round. During
+// running each player cashes out individually (wins bet·m if m < crash); auto-cashout is
+// server-side. The crash point is drawn at round start and hidden until the crash. State is
+// broadcast over the existing WS hub so every open Crash tab sees the same live round.
+const CRASH_G = {
+  k: CRASH.k,
+  p: CRASH.p,
+  BET_MS: 10000,
+  RESULT_MS: 5000,
+  TICK: 100,
+  MIN_BET: 1,
+  MAX_BET: 1_000_000,
+  EDGE: 0.97,
+};
+type CrashBet = {
+  uid: string;
+  tag: string;
+  av: string;
+  gid: string;
+  bet: number;
+  auto: number;
+  status: "in" | "cashed" | "busted";
+  cashedMult: number;
+  payout: number;
+};
+const crashState = {
+  phase: "waiting" as "waiting" | "running" | "crashed",
+  round: 1,
+  bettingUntil: Date.now() + CRASH_G.BET_MS,
+  startAt: 0,
+  crash: 0,
+  crashedAt: 0,
+  m: 1,
+  bets: [] as CrashBet[],
+  history: [] as number[],
+};
+function crashMultMs(elapsedMs: number): number {
+  if (elapsedMs <= 0) return 1;
+  return (
+    Math.floor(
+      Math.exp(CRASH_G.k * Math.pow(elapsedMs / 1000, CRASH_G.p)) * 100,
+    ) / 100
+  );
+}
+function crashDrawPoint(): number {
+  const u = Math.random();
+  let c = u > 0 ? CRASH_G.EDGE / u : 1e6;
+  if (c < 1) c = 1;
+  return Math.floor(c * 100) / 100;
+}
+function crashSnapshot() {
+  return {
+    type: "crash",
+    phase: crashState.phase,
+    round: crashState.round,
+    bettingUntil: crashState.bettingUntil,
+    startAt: crashState.startAt,
+    k: CRASH_G.k,
+    p: CRASH_G.p,
+    m: crashState.m,
+    crash: crashState.crash,
+    crashedAt: crashState.crashedAt,
+    bets: crashState.bets.map((b) => ({
+      uid: b.uid,
+      tag: b.tag,
+      av: b.av,
+      bet: b.bet,
+      auto: b.auto,
+      status: b.status,
+      cashedMult: b.cashedMult,
+      payout: b.payout,
+    })),
+    history: crashState.history,
+  };
+}
+function crashBroadcast() {
+  const msg = JSON.stringify(crashSnapshot());
+  for (const ws of wsClients) {
+    try {
+      ws.send(msg);
+    } catch {}
+  }
+}
+async function crashCashoutPlayer(b: CrashBet, mult: number) {
+  if (b.status !== "in") return;
+  const payout = Math.round(b.bet * mult);
+  b.status = "cashed";
+  b.cashedMult = mult;
+  b.payout = payout;
+  const taxBps = await guildTax(b.gid).catch(() => 0);
+  const tax = taxOnProfit(payout - b.bet, taxBps);
+  await stdb.creditWin(b.uid, payout, b.gid, tax).catch(() => {});
+  (db as any).recordServerPayout?.(b.gid, payout, tax).catch(() => {});
+  (db as any).recordGame?.(b.uid, true, b.bet).catch(() => {});
+  accrueRakeback(b.uid, b.gid, b.bet, HOUSE_EDGE_BPS.house);
+  broadcastServerPlay(b.gid, { dPayout: payout, dTax: tax, big: payout });
+}
+function crashStartRunning() {
+  crashState.crash = crashDrawPoint();
+  crashState.startAt = Date.now();
+  crashState.m = 1;
+  crashState.phase = "running";
+  crashBroadcast();
+}
+function crashExplode() {
+  crashState.phase = "crashed";
+  crashState.crashedAt = Date.now();
+  crashState.m = crashState.crash;
+  for (const b of crashState.bets) {
+    if (b.status === "in") {
+      b.status = "busted";
+      (db as any).recordGame?.(b.uid, false, b.bet).catch(() => {});
+    }
+  }
+  crashState.history.unshift(crashState.crash);
+  if (crashState.history.length > 24) crashState.history.pop();
+  crashBroadcast();
+}
+function crashStartBetting() {
+  crashState.round++;
+  crashState.phase = "waiting";
+  crashState.bettingUntil = Date.now() + CRASH_G.BET_MS;
+  crashState.startAt = 0;
+  crashState.crash = 0;
+  crashState.m = 1;
+  crashState.bets = [];
+  crashBroadcast();
+}
+let crashTickBusy = false;
+async function crashTick() {
+  if (crashTickBusy) return;
+  crashTickBusy = true;
+  try {
+    const now = Date.now();
+    if (crashState.phase === "waiting") {
+      if (now >= crashState.bettingUntil) crashStartRunning();
+    } else if (crashState.phase === "running") {
+      const m = crashMultMs(now - crashState.startAt);
+      crashState.m = m;
+      for (const b of crashState.bets) {
+        if (
+          b.status === "in" &&
+          b.auto > 1 &&
+          m >= b.auto &&
+          m < crashState.crash
+        ) {
+          await crashCashoutPlayer(b, b.auto);
+        }
+      }
+      if (m >= crashState.crash) crashExplode();
+      else crashBroadcast();
+    } else if (crashState.phase === "crashed") {
+      if (now >= crashState.crashedAt + CRASH_G.RESULT_MS) crashStartBetting();
+    }
+  } finally {
+    crashTickBusy = false;
+  }
+}
+setInterval(crashTick, CRASH_G.TICK);
+
 const app = new Elysia()
   .onRequest(({ request, set }) => {
     if (rateLimited(request)) {
@@ -1609,40 +1773,6 @@ const app = new Elysia()
       db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
-    if (sub === "crash/start") {
-      if (!goodBet) return { error: "Invalid bet" };
-      const stranded = house.crashRefundIfOpen(uid);
-      if (stranded > 0) await stdb.credit(uid, stranded).catch(() => {});
-      try {
-        await stdb.deduct(uid, bet);
-      } catch {
-        return { error: "Insufficient balance" };
-      }
-      wager(bet);
-      return Object.assign(house.startCrash(uid, bet, d?.auto), {
-        ok: true,
-        balance: bal(),
-      });
-    }
-    if (sub === "crash/status") {
-      const r = house.crashStatus(uid);
-      if ((r as any).crashed) {
-        db.recordGame?.(uid, false, 0).catch(() => {});
-        return Object.assign(r, { balance: bal() });
-      }
-      return r;
-    }
-    if (sub === "crash/cashout") {
-      const r: any = house.crashCashout(uid);
-      if (r.error) return r;
-      if (r.crashed) {
-        db.recordGame?.(uid, false, 0).catch(() => {});
-        return Object.assign(r, { balance: bal() });
-      }
-      await payWin(r.payout, r.bet ?? 0);
-      db.recordGame?.(uid, true, 0).catch(() => {});
-      return Object.assign(r, { balance: bal() });
-    }
     if (sub === "mines/start") {
       if (!goodBet) return { error: "Invalid bet" };
       const stranded = house.minesRefundIfOpen(uid);
@@ -1754,6 +1884,104 @@ const app = new Elysia()
       return { error: "Not logged in" };
     }
     return { games: HOUSE_GAMES, plinko: PLINKO }; // board needs the bucket tables
+  })
+  // ── global multiplayer Crash ──────────────────────────────────────────────
+  .get("/api/crash/state", async ({ request, set }) => {
+    const uid = await resolveSession(request);
+    if (!uid) {
+      set.status = 401;
+      return { error: "Not logged in" };
+    }
+    return Object.assign(crashSnapshot(), { me: uid });
+  })
+  .post("/api/crash/bet", async ({ request, body, set }) => {
+    const uid = await resolveSession(request);
+    if (!uid) {
+      set.status = 401;
+      return { error: "Not logged in" };
+    }
+    if (rl(rlMoney, uid, 400)) {
+      set.status = 429;
+      return { error: "Slow down a moment" };
+    }
+    if (crashState.phase !== "waiting")
+      return { error: "Betting closed — wait for the next round" };
+    const srv = await requireServer(request, uid);
+    if (!srv) {
+      set.status = 400;
+      return { error: "Select a server to play on", needServer: true };
+    }
+    const b = body as any;
+    const bet = Math.floor(Number(b?.bet) || 0);
+    if (!(bet >= CRASH_G.MIN_BET) || bet > CRASH_G.MAX_BET)
+      return { error: "Invalid bet" };
+    let auto = Number(b?.auto);
+    if (!Number.isFinite(auto) || auto < CRASH.minAuto) auto = 0;
+    if (auto > CRASH.maxTarget) auto = CRASH.maxTarget;
+    // Replacing an existing bet refunds the old stake first.
+    const existing = crashState.bets.find((x) => x.uid === uid);
+    if (existing) {
+      await stdb.credit(uid, existing.bet).catch(() => {});
+      crashState.bets = crashState.bets.filter((x) => x.uid !== uid);
+    }
+    if (bet > stdb.getBalance(uid)) return { error: "Insufficient balance" };
+    try {
+      await stdb.deduct(uid, bet);
+    } catch {
+      return { error: "Insufficient balance" };
+    }
+    const c = parseCookies(request);
+    crashState.bets.push({
+      uid,
+      tag: c.dtag || uid,
+      av: c.dav || "",
+      gid: srv.gid,
+      bet,
+      auto,
+      status: "in",
+      cashedMult: 0,
+      payout: 0,
+    });
+    (db as any).recordServerWager?.(srv.gid, bet, uid).catch(() => {});
+    accrueRakeback(uid, srv.gid, bet, HOUSE_EDGE_BPS.house);
+    broadcastServerPlay(srv.gid, { dGames: 1, dWager: bet });
+    crashBroadcast();
+    return { ok: true, balance: stdb.getBalance(uid) };
+  })
+  .post("/api/crash/cancel", async ({ request, set }) => {
+    const uid = await resolveSession(request);
+    if (!uid) {
+      set.status = 401;
+      return { error: "Not logged in" };
+    }
+    if (crashState.phase !== "waiting")
+      return { error: "Round already started" };
+    const existing = crashState.bets.find((x) => x.uid === uid);
+    if (!existing) return { error: "No bet to cancel" };
+    await stdb.credit(uid, existing.bet).catch(() => {});
+    crashState.bets = crashState.bets.filter((x) => x.uid !== uid);
+    crashBroadcast();
+    return { ok: true, balance: stdb.getBalance(uid) };
+  })
+  .post("/api/crash/cashout", async ({ request, set }) => {
+    const uid = await resolveSession(request);
+    if (!uid) {
+      set.status = 401;
+      return { error: "Not logged in" };
+    }
+    if (crashState.phase !== "running") return { error: "Round not running" };
+    const b = crashState.bets.find((x) => x.uid === uid);
+    if (!b || b.status !== "in") return { error: "No active bet" };
+    const m = crashMultMs(Date.now() - crashState.startAt);
+    if (m >= crashState.crash) return { error: "Already crashed" };
+    await crashCashoutPlayer(b, m);
+    crashBroadcast();
+    return {
+      ok: true,
+      mult: m,
+      payout: b.payout,
+      balance: stdb.getBalance(uid),
+    };
   })
   .get("/api/cards/games", async ({ request, set }) => {
     const uid = await resolveSession(request);
