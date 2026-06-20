@@ -26,6 +26,8 @@ import {
   plinko,
   coinflip,
   doubleOrNothing,
+  dice,
+  limbo,
   HOUSE_GAMES,
   PLINKO,
 } from "../src/HouseGames.mjs";
@@ -99,9 +101,7 @@ const cb = new CaseBattle({
     if (!gid || !uid || !(cost > 0)) return;
     (db as any).recordServerWager?.(gid, cost, uid).catch(() => {});
     broadcastServerPlay(gid, { dGames: 1, dWager: cost });
-    guildTax(gid)
-      .then((taxBps) => accrueRakeback(uid, gid, cost, taxBps))
-      .catch(() => {});
+    accrueRakeback(uid, gid, cost, HOUSE_EDGE_BPS.cases);
   },
 });
 // Real circulation = STDB balances + server banks + invested holdings value. Mongo's
@@ -567,9 +567,17 @@ function taxOnProfit(profit: number, bps: number): number {
   if (!(profit > 0) || !(bps > 0)) return 0;
   return Math.min(profit, Math.floor((profit * bps) / 10000));
 }
-// ── Rakeback: Stake-style cashback on the theoretical house edge ──────────
-// Accrual = wager × (effectiveTaxBps/10000) × rakebackPct. Accrues on ALL play, halts
-// during a tax holiday (taxBps=0 → nothing to rebate). Pct is per-guild (default 5%).
+// ── Rakeback: Stake-style cashback on the theoretical HOUSE EDGE (not server tax).
+// Accrual = wager × (edgeBps/10000) × rakebackPct. Decoupled from the selected server's
+// tax rate: accrues identically on every server, even during a tax holiday. Each game
+// feeds its own edge (slots ~4%, house ~3%, cards ~1%, cases ~3%); default 3%.
+const HOUSE_EDGE_BPS = {
+  slots: 400,
+  house: 300,
+  cards: 100,
+  cases: 300,
+  default: 300,
+};
 const rakebackPctCache = new Map<string, { pct: number; until: number }>();
 async function guildRakebackPct(gid: string): Promise<number> {
   if (!gid) return 5;
@@ -580,17 +588,17 @@ async function guildRakebackPct(gid: string): Promise<number> {
   rakebackPctCache.set(gid, { pct, until: Date.now() + 60_000 });
   return pct;
 }
-// Fire-and-forget: accrue rakeback on a wager. taxBps=0 (holiday) → no-op.
+// Fire-and-forget: accrue rakeback on a wager, based on that game's house edge.
 function accrueRakeback(
   uid: string,
   gid: string,
   wager: number,
-  taxBps: number,
+  edgeBps: number = HOUSE_EDGE_BPS.default,
 ) {
-  if (!(taxBps > 0) || !(wager > 0) || !gid || !uid) return;
+  if (!(wager > 0) || !gid || !uid) return;
   guildRakebackPct(gid)
     .then((pct) =>
-      (db as any).addRakeback?.(uid, gid, wager, taxBps, pct).catch(() => {}),
+      (db as any).addRakeback?.(uid, gid, wager, edgeBps, pct).catch(() => {}),
     )
     .catch(() => {});
 }
@@ -1471,7 +1479,7 @@ const app = new Elysia()
     const tax = taxOnProfit(result.totalWin - cost, srv.taxBps);
     db.recordGame?.(uid, result.totalWin >= cost, cost).catch(() => {});
     (db as any).recordServerWager?.(srv.gid, cost, uid).catch(() => {});
-    accrueRakeback(uid, srv.gid, cost, srv.taxBps);
+    accrueRakeback(uid, srv.gid, cost, HOUSE_EDGE_BPS.slots);
     broadcastServerPlay(srv.gid, { dGames: 1, dWager: cost });
     if (result.totalWin > 0) {
       const p = { gid: srv.gid, win: result.totalWin, tax, at: Date.now() };
@@ -1533,7 +1541,7 @@ const app = new Elysia()
     const bal = () => stdb.getBalance(uid);
     const wager = (amt: number) => {
       (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {});
-      accrueRakeback(uid, srv.gid, amt, srv.taxBps);
+      accrueRakeback(uid, srv.gid, amt, HOUSE_EDGE_BPS.house);
       broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt });
     };
     // Credit a payout, routing the server's tax on profit (payout − stake) to its bank.
@@ -1585,6 +1593,32 @@ const app = new Elysia()
       }
       wager(bet);
       const r = doubleOrNothing(bet);
+      await payWin(r.payout, bet);
+      db.recordGame?.(uid, r.win, bet).catch(() => {});
+      return Object.assign(r, { balance: bal() });
+    }
+    if (sub === "dice") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try {
+        await stdb.deduct(uid, bet);
+      } catch {
+        return { error: "Insufficient balance" };
+      }
+      wager(bet);
+      const r = dice(bet, d?.target, d?.mode);
+      await payWin(r.payout, bet);
+      db.recordGame?.(uid, r.win, bet).catch(() => {});
+      return Object.assign(r, { balance: bal() });
+    }
+    if (sub === "limbo") {
+      if (!goodBet) return { error: "Invalid bet" };
+      try {
+        await stdb.deduct(uid, bet);
+      } catch {
+        return { error: "Insufficient balance" };
+      }
+      wager(bet);
+      const r = limbo(bet, d?.target);
       await payWin(r.payout, bet);
       db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
@@ -1732,7 +1766,7 @@ const app = new Elysia()
     const bal = () => stdb.getBalance(uid);
     const wager = (amt: number) => {
       (db as any).recordServerWager?.(srv.gid, amt, uid).catch(() => {});
-      accrueRakeback(uid, srv.gid, amt, srv.taxBps);
+      accrueRakeback(uid, srv.gid, amt, HOUSE_EDGE_BPS.cards);
       broadcastServerPlay(srv.gid, { dGames: 1, dWager: amt });
     };
     const payWin = (payout: number, stake: number) => {
@@ -3799,6 +3833,7 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
   }
   const sort = String((query as any)?.sort || "wagered");
   const byBank = sort === "bank";
+  const byMembers = sort === "members";
   // Filters
   const q = String((query as any)?.q || "")
     .trim()
@@ -3814,8 +3849,8 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
   // Pull a wider pool when filtering or bank-sorting so post-filter results still fill the board.
   const rows: any[] = await (db as any)
     .getTopServerStats(
-      byBank ? "wagered" : sort,
-      hasFilter || byBank ? 200 : 50,
+      byBank || byMembers ? "wagered" : sort,
+      hasFilter || byBank || byMembers ? 200 : 50,
     )
     .catch(() => []);
   const guilds = await db
@@ -3859,11 +3894,13 @@ app.get("/api/leaderboard", async ({ request, query, set }) => {
     });
   const metric = byBank
     ? "bank"
-    : sort === "taxed"
-      ? "taxed"
-      : sort === "games"
-        ? "games"
-        : "wagered";
+    : byMembers
+      ? "members"
+      : sort === "taxed"
+        ? "taxed"
+        : sort === "games"
+          ? "games"
+          : "wagered";
   // Featured servers float to the top; then by the chosen metric.
   entries.sort(
     (a: any, b: any) =>

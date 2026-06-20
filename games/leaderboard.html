@@ -1,161 +1,577 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Leaderboard — SirGreen Casino</title>
-<link rel="stylesheet" href="/assets/css/app.css">
-<style>
-.lb-tabs{display:flex;gap:.4rem;margin-bottom:1rem;flex-wrap:wrap}
-.lb-tab{padding:.4rem .8rem;border-radius:99px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:.74rem;font-weight:600;transition:all .15s}
-.lb-tab:hover{border-color:var(--accent);color:var(--text)}
-.lb-tab.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}
-.lb-list{display:flex;flex-direction:column;gap:.5rem}
-.lb-row{display:flex;align-items:center;gap:.9rem;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent,var(--border));border-radius:11px;padding:.7rem .9rem}
-.lb-row.feat{background:color-mix(in srgb,var(--gold) 7%,var(--surface));border-color:color-mix(in srgb,var(--gold) 30%,var(--border))}
-.lb-rank{font-size:1.05rem;font-weight:800;color:var(--text3);width:2.1rem;text-align:center;flex:none}
-.lb-row:nth-child(1) .lb-rank{color:#ffd34d}.lb-row:nth-child(2) .lb-rank{color:#d4dae6}.lb-row:nth-child(3) .lb-rank{color:#e3a15b}
-.lb-av{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-weight:800;font-size:1.05rem;flex:none;background:var(--accent-soft);color:var(--accent)}
-.lb-meta{min-width:0;flex:1}
-.lb-name{font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:.4rem}
-.lb-feat-badge{font-size:.54rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);border-radius:99px;padding:.05rem .35rem;flex:none}
-.lb-sub{font-size:.64rem;color:var(--text3);margin-top:.1rem}
-.lb-metric{text-align:right;flex:none}
-.lb-metric .v{font-size:1.05rem;font-weight:800;color:var(--gold)}
-.lb-metric .k{font-size:.56rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text3)}
-.lb-mini{display:flex;gap:1rem;margin-right:.4rem}
-.lb-mini .mi{text-align:right}
-.lb-mini .mi .v{font-size:.82rem;font-weight:700}
-.lb-mini .mi .k{font-size:.54rem;text-transform:uppercase;color:var(--text3)}
-.lb-tax{font-size:.56rem;font-weight:700;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:.05rem .4rem;white-space:nowrap}
-.lb-tax.hol{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
-.lb-actions{flex:none;margin-left:.2rem}
-.lb-join{display:inline-block;font-size:.7rem;font-weight:700;color:var(--bg);background:var(--accent);border-radius:8px;padding:.4rem .7rem;white-space:nowrap;text-decoration:none;transition:filter .15s}
-.lb-join:hover{filter:brightness(1.08)}
-.lb-verified{display:inline-flex;color:#3b9dff;flex:none}
-.lb-verified .icon{width:15px;height:15px;stroke-width:2.4}
-/* filters */
-.lb-filters{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-bottom:1rem}
-.lb-f-search{display:flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.35rem .6rem;flex:1;min-width:160px}
-.lb-f-search .icon{width:15px;height:15px;color:var(--text3);flex:none}
-.lb-f-search input{flex:1;background:transparent;border:0;color:var(--text);font-size:.78rem;outline:none}
-.lb-chk{display:flex;align-items:center;gap:.4rem;font-size:.74rem;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.4rem .6rem;cursor:pointer;white-space:nowrap}
-.lb-chk input{accent-color:var(--accent)}
-.lb-num{width:120px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.4rem .6rem;color:var(--text);font-size:.76rem;outline:none}
-.lb-num:focus,.lb-f-search:focus-within{border-color:var(--accent)}
-.lb-clear{font-size:.74rem;color:var(--text3);background:transparent;border:1px solid var(--border);border-radius:9px;padding:.4rem .7rem}
-.lb-clear:hover{color:var(--text);border-color:var(--border2,var(--border))}
-@media(max-width:560px){.lb-num{width:calc(50% - .25rem)}}
-@media(max-width:680px){.lb-mini{display:none}}
-@media(max-width:520px){.lb-join{padding:.4rem .55rem;font-size:.64rem}}
-</style>
-</head>
-<body>
-<div class="app">
-__SIDEBAR__
-<main class="main">
-  <div class="page-head">
-    <div>
-      <h1 class="page-title">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-        Server Leaderboard
-      </h1>
-      <div class="page-sub">Top servers across SirGreen — by their players' action.</div>
-    </div>
-  </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Leaderboard — SirGreen Casino</title>
+        <link rel="stylesheet" href="/assets/css/app.css" />
+        <style>
+            .lb-tabs {
+                display: flex;
+                gap: 0.4rem;
+                margin-bottom: 1rem;
+                flex-wrap: wrap;
+            }
+            .lb-tab {
+                padding: 0.4rem 0.8rem;
+                border-radius: 99px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text2);
+                font-size: 0.74rem;
+                font-weight: 600;
+                transition: all 0.15s;
+            }
+            .lb-tab:hover {
+                border-color: var(--accent);
+                color: var(--text);
+            }
+            .lb-tab.on {
+                background: var(--accent);
+                border-color: var(--accent);
+                color: var(--bg);
+            }
+            .lb-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .lb-row {
+                display: flex;
+                align-items: center;
+                gap: 0.9rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-left: 3px solid var(--accent, var(--border));
+                border-radius: 11px;
+                padding: 0.7rem 0.9rem;
+            }
+            .lb-row.feat {
+                background: color-mix(in srgb, var(--gold) 7%, var(--surface));
+                border-color: color-mix(
+                    in srgb,
+                    var(--gold) 30%,
+                    var(--border)
+                );
+            }
+            .lb-rank {
+                font-size: 1.05rem;
+                font-weight: 800;
+                color: var(--text3);
+                width: 2.1rem;
+                text-align: center;
+                flex: none;
+            }
+            .lb-row:nth-child(1) .lb-rank {
+                color: #ffd34d;
+            }
+            .lb-row:nth-child(2) .lb-rank {
+                color: #d4dae6;
+            }
+            .lb-row:nth-child(3) .lb-rank {
+                color: #e3a15b;
+            }
+            .lb-av {
+                width: 40px;
+                height: 40px;
+                border-radius: 11px;
+                display: grid;
+                place-items: center;
+                font-weight: 800;
+                font-size: 1.05rem;
+                flex: none;
+                background: var(--accent-soft);
+                color: var(--accent);
+            }
+            .lb-meta {
+                min-width: 0;
+                flex: 1;
+            }
+            .lb-name {
+                font-weight: 700;
+                font-size: 0.92rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+            }
+            .lb-feat-badge {
+                font-size: 0.54rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: var(--gold);
+                border: 1px solid
+                    color-mix(in srgb, var(--gold) 40%, transparent);
+                border-radius: 99px;
+                padding: 0.05rem 0.35rem;
+                flex: none;
+            }
+            .lb-sub {
+                font-size: 0.64rem;
+                color: var(--text3);
+                margin-top: 0.1rem;
+            }
+            .lb-metric {
+                text-align: right;
+                flex: none;
+            }
+            .lb-metric .v {
+                font-size: 1.05rem;
+                font-weight: 800;
+                color: var(--gold);
+            }
+            .lb-metric .k {
+                font-size: 0.56rem;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                color: var(--text3);
+            }
+            .lb-mini {
+                display: flex;
+                gap: 1rem;
+                margin-right: 0.4rem;
+            }
+            .lb-mini .mi {
+                text-align: right;
+            }
+            .lb-mini .mi .v {
+                font-size: 0.82rem;
+                font-weight: 700;
+            }
+            .lb-mini .mi .k {
+                font-size: 0.54rem;
+                text-transform: uppercase;
+                color: var(--text3);
+            }
+            .lb-tax {
+                font-size: 0.56rem;
+                font-weight: 700;
+                color: var(--text3);
+                background: var(--surface2);
+                border: 1px solid var(--border);
+                border-radius: 99px;
+                padding: 0.05rem 0.4rem;
+                white-space: nowrap;
+            }
+            .lb-tax.hol {
+                color: var(--accent);
+                background: var(--accent-soft);
+                border-color: color-mix(
+                    in srgb,
+                    var(--accent) 35%,
+                    transparent
+                );
+            }
+            .lb-actions {
+                flex: none;
+                margin-left: 0.2rem;
+            }
+            .lb-join {
+                display: inline-block;
+                font-size: 0.7rem;
+                font-weight: 700;
+                color: var(--bg);
+                background: var(--accent);
+                border-radius: 8px;
+                padding: 0.4rem 0.7rem;
+                white-space: nowrap;
+                text-decoration: none;
+                transition: filter 0.15s;
+            }
+            .lb-join:hover {
+                filter: brightness(1.08);
+            }
+            .lb-verified {
+                display: inline-flex;
+                color: #3b9dff;
+                flex: none;
+            }
+            .lb-verified .icon {
+                width: 15px;
+                height: 15px;
+                stroke-width: 2.4;
+            }
+            /* filters */
+            .lb-filters {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.5rem;
+                margin-bottom: 1rem;
+            }
+            .lb-f-search {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.35rem 0.6rem;
+                flex: 1;
+                min-width: 160px;
+            }
+            .lb-f-search .icon {
+                width: 15px;
+                height: 15px;
+                color: var(--text3);
+                flex: none;
+            }
+            .lb-f-search input {
+                flex: 1;
+                background: transparent;
+                border: 0;
+                color: var(--text);
+                font-size: 0.78rem;
+                outline: none;
+            }
+            .lb-chk {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                font-size: 0.74rem;
+                color: var(--text2);
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.4rem 0.6rem;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            .lb-chk input {
+                accent-color: var(--accent);
+            }
+            .lb-num {
+                width: 120px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.4rem 0.6rem;
+                color: var(--text);
+                font-size: 0.76rem;
+                outline: none;
+            }
+            .lb-num:focus,
+            .lb-f-search:focus-within {
+                border-color: var(--accent);
+            }
+            .lb-clear {
+                font-size: 0.74rem;
+                color: var(--text3);
+                background: transparent;
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.4rem 0.7rem;
+            }
+            .lb-clear:hover {
+                color: var(--text);
+                border-color: var(--border2, var(--border));
+            }
+            @media (max-width: 560px) {
+                .lb-num {
+                    width: calc(50% - 0.25rem);
+                }
+            }
+            @media (max-width: 680px) {
+                .lb-mini {
+                    display: none;
+                }
+            }
+            @media (max-width: 520px) {
+                .lb-join {
+                    padding: 0.4rem 0.55rem;
+                    font-size: 0.64rem;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            __SIDEBAR__
+            <main class="main">
+                <div class="page-head">
+                    <div>
+                        <h1 class="page-title">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                                <path d="M4 22h16" />
+                                <path
+                                    d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"
+                                />
+                                <path
+                                    d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"
+                                />
+                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                            </svg>
+                            Server Leaderboard
+                        </h1>
+                        <div class="page-sub">
+                            Top servers across SirGreen — by their players'
+                            action.
+                        </div>
+                    </div>
+                </div>
 
-  <div class="lb-tabs" id="lbTabs">
-    <button class="lb-tab on" data-sort="wagered">Most Wagered</button>
-    <button class="lb-tab" data-sort="bank">Richest Bank</button>
-    <button class="lb-tab" data-sort="taxed">Tax Earned</button>
-    <button class="lb-tab" data-sort="games">Most Games</button>
-  </div>
+                <div class="lb-tabs" id="lbTabs">
+                    <button class="lb-tab on" data-sort="wagered">
+                        Most Wagered
+                    </button>
+                    <button class="lb-tab" data-sort="bank">
+                        Richest Bank
+                    </button>
+                    <button class="lb-tab" data-sort="taxed">Tax Earned</button>
+                    <button class="lb-tab" data-sort="games">Most Games</button>
+                    <button class="lb-tab" data-sort="members">
+                        Most Members
+                    </button>
+                </div>
 
-  <div class="lb-filters" id="lbFilters">
-    <div class="lb-f-search">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="lbQ" type="text" placeholder="Search servers…" autocomplete="off">
-    </div>
-    <label class="lb-chk"><input type="checkbox" id="lbVerified"> Verified only</label>
-    <input class="lb-num" id="lbMin" type="number" min="0" placeholder="Min members">
-    <input class="lb-num" id="lbMax" type="number" min="0" placeholder="Max members">
-    <button class="lb-clear" id="lbClear" type="button">Clear</button>
-  </div>
+                <div class="lb-filters" id="lbFilters">
+                    <div class="lb-f-search">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.3-4.3" />
+                        </svg>
+                        <input
+                            id="lbQ"
+                            type="text"
+                            placeholder="Search servers…"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <label class="lb-chk"
+                        ><input type="checkbox" id="lbVerified" /> Verified
+                        only</label
+                    >
+                    <input
+                        class="lb-num"
+                        id="lbMin"
+                        type="number"
+                        min="0"
+                        placeholder="Min members"
+                    />
+                    <input
+                        class="lb-num"
+                        id="lbMax"
+                        type="number"
+                        min="0"
+                        placeholder="Max members"
+                    />
+                    <button class="lb-clear" id="lbClear" type="button">
+                        Clear
+                    </button>
+                </div>
 
-  <div class="lb-list" id="lbList"><div class="empty">Loading…</div></div>
-</main>
-</div>
+                <div class="lb-list" id="lbList">
+                    <div class="empty">Loading…</div>
+                </div>
+            </main>
+        </div>
 
-<script>
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function fmt(n){return Number(n||0).toLocaleString()}
-function initials(n){return String(n||'?').trim().slice(0,1).toUpperCase();}
-var SORT='wagered';
-var METRIC_LABEL={wagered:'Wagered',bank:'Bank',taxed:'Tax Earned',games:'Games'};
-var VERIFIED='<span class="lb-verified" title="Verified server"><svg class="icon" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></span>';
+        <script>
+            function esc(s) {
+                return String(s == null ? "" : s).replace(
+                    /[&<>"']/g,
+                    function (c) {
+                        return {
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                            "'": "&#39;",
+                        }[c];
+                    },
+                );
+            }
+            function fmt(n) {
+                return Number(n || 0).toLocaleString();
+            }
+            function initials(n) {
+                return String(n || "?")
+                    .trim()
+                    .slice(0, 1)
+                    .toUpperCase();
+            }
+            var SORT = "wagered";
+            var METRIC_LABEL = {
+                wagered: "Wagered",
+                bank: "Bank",
+                taxed: "Tax Earned",
+                games: "Games",
+                members: "Members",
+            };
+            var VERIFIED =
+                '<span class="lb-verified" title="Verified server"><svg class="icon" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></span>';
 
-function rowHtml(s,i){
-  var accent = s.accent ? 'style="--accent:'+esc(s.accent)+'"' : '';
-  var mainVal = s[SORT]!=null ? s[SORT] : s.wagered;
-  var taxBadge = s.taxHoliday ? '<span class="lb-tax hol">0% 🎉</span>' : '<span class="lb-tax">'+((s.tax||0)/100)+'% tax</span>';
-  // Join only shows when the owner set a fluxer.gg invite (validated server-side).
-  var join = (s.invite && /^https:\/\/(www\.)?fluxer\.gg\//i.test(s.invite))
-    ? '<a class="lb-join" href="'+esc(s.invite)+'" target="_blank" rel="noopener noreferrer">Join</a>'
-    : '';
-  return '<div class="lb-row'+(s.featured?' feat':'')+'" '+accent+'>'
-    + '<div class="lb-rank">'+(i+1)+'</div>'
-    + '<div class="lb-av">'+esc(initials(s.name))+'</div>'
-    + '<div class="lb-meta"><div class="lb-name">'+esc(s.name)+(s.verified?VERIFIED:'')+(s.featured?'<span class="lb-feat-badge">✨ Featured</span>':'')+taxBadge+'</div>'
-      + '<div class="lb-sub">'+(s.members!=null?fmt(s.members)+' members · ':'')+fmt(s.players)+' players · '+fmt(s.games)+' games</div></div>'
-    + '<div class="lb-mini">'
-      + '<div class="mi"><div class="v">'+fmt(s.bank)+'</div><div class="k">Bank</div></div>'
-      + '<div class="mi"><div class="v">'+fmt(s.taxed)+'</div><div class="k">Tax</div></div>'
-    + '</div>'
-    + '<div class="lb-metric"><div class="v">'+fmt(mainVal)+'</div><div class="k">'+esc(METRIC_LABEL[SORT]||'')+'</div></div>'
-    + '<div class="lb-actions">'+join+'</div>'
-  + '</div>';
-}
+            function rowHtml(s, i) {
+                var accent = s.accent
+                    ? 'style="--accent:' + esc(s.accent) + '"'
+                    : "";
+                var mainVal = s[SORT] != null ? s[SORT] : s.wagered;
+                var taxBadge = s.taxHoliday
+                    ? '<span class="lb-tax hol">0% 🎉</span>'
+                    : '<span class="lb-tax">' +
+                      (s.tax || 0) / 100 +
+                      "% tax</span>";
+                // Join only shows when the owner set a fluxer.gg invite (validated server-side).
+                var join =
+                    s.invite &&
+                    /^https:\/\/(www\.)?fluxer\.gg\//i.test(s.invite)
+                        ? '<a class="lb-join" href="' +
+                          esc(s.invite) +
+                          '" target="_blank" rel="noopener noreferrer">Join</a>'
+                        : "";
+                return (
+                    '<div class="lb-row' +
+                    (s.featured ? " feat" : "") +
+                    '" ' +
+                    accent +
+                    ">" +
+                    '<div class="lb-rank">' +
+                    (i + 1) +
+                    "</div>" +
+                    '<div class="lb-av">' +
+                    esc(initials(s.name)) +
+                    "</div>" +
+                    '<div class="lb-meta"><div class="lb-name">' +
+                    esc(s.name) +
+                    (s.verified ? VERIFIED : "") +
+                    (s.featured
+                        ? '<span class="lb-feat-badge">✨ Featured</span>'
+                        : "") +
+                    taxBadge +
+                    "</div>" +
+                    '<div class="lb-sub">' +
+                    fmt(s.members || 0) +
+                    " members · " +
+                    fmt(s.players) +
+                    " players · " +
+                    fmt(s.games) +
+                    " games</div></div>" +
+                    '<div class="lb-mini">' +
+                    '<div class="mi"><div class="v">' +
+                    fmt(s.bank) +
+                    '</div><div class="k">Bank</div></div>' +
+                    '<div class="mi"><div class="v">' +
+                    fmt(s.taxed) +
+                    '</div><div class="k">Tax</div></div>' +
+                    "</div>" +
+                    '<div class="lb-metric"><div class="v">' +
+                    fmt(mainVal) +
+                    '</div><div class="k">' +
+                    esc(METRIC_LABEL[SORT] || "") +
+                    "</div></div>" +
+                    '<div class="lb-actions">' +
+                    join +
+                    "</div>" +
+                    "</div>"
+                );
+            }
 
-function val(id){ var el=document.getElementById(id); return el?el.value:''; }
-function filterQuery(){
-  var p='sort='+encodeURIComponent(SORT);
-  var q=val('lbQ').trim(); if(q) p+='&q='+encodeURIComponent(q);
-  var vc=document.getElementById('lbVerified'); if(vc&&vc.checked) p+='&verified=1';
-  var mn=val('lbMin'); if(mn!=='') p+='&minMembers='+encodeURIComponent(mn);
-  var mx=val('lbMax'); if(mx!=='') p+='&maxMembers='+encodeURIComponent(mx);
-  return p;
-}
-function load(){
-  var listEl=document.getElementById('lbList');
-  fetch('/api/leaderboard?'+filterQuery(),{credentials:'same-origin'})
-    .then(function(r){return r.ok?r.json():null}).then(function(d){
-      if(!d){ listEl.innerHTML='<div class="empty">Failed to load.</div>'; return; }
-      var list=d.servers||[];
-      if(!list.length){ listEl.innerHTML='<div class="empty">No servers match your filters.</div>'; return; }
-      listEl.innerHTML=list.map(rowHtml).join('');
-    }).catch(function(){ listEl.innerHTML='<div class="empty">Failed to load.</div>'; });
-}
+            function val(id) {
+                var el = document.getElementById(id);
+                return el ? el.value : "";
+            }
+            function filterQuery() {
+                var p = "sort=" + encodeURIComponent(SORT);
+                var q = val("lbQ").trim();
+                if (q) p += "&q=" + encodeURIComponent(q);
+                var vc = document.getElementById("lbVerified");
+                if (vc && vc.checked) p += "&verified=1";
+                var mn = val("lbMin");
+                if (mn !== "") p += "&minMembers=" + encodeURIComponent(mn);
+                var mx = val("lbMax");
+                if (mx !== "") p += "&maxMembers=" + encodeURIComponent(mx);
+                return p;
+            }
+            function load() {
+                var listEl = document.getElementById("lbList");
+                fetch("/api/leaderboard?" + filterQuery(), {
+                    credentials: "same-origin",
+                })
+                    .then(function (r) {
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(function (d) {
+                        if (!d) {
+                            listEl.innerHTML =
+                                '<div class="empty">Failed to load.</div>';
+                            return;
+                        }
+                        var list = d.servers || [];
+                        if (!list.length) {
+                            listEl.innerHTML =
+                                '<div class="empty">No servers match your filters.</div>';
+                            return;
+                        }
+                        listEl.innerHTML = list.map(rowHtml).join("");
+                    })
+                    .catch(function () {
+                        listEl.innerHTML =
+                            '<div class="empty">Failed to load.</div>';
+                    });
+            }
 
-Array.prototype.forEach.call(document.querySelectorAll('#lbTabs .lb-tab'),function(t){
-  t.addEventListener('click',function(){
-    SORT=t.dataset.sort;
-    Array.prototype.forEach.call(document.querySelectorAll('#lbTabs .lb-tab'),function(x){x.classList.toggle('on',x===t);});
-    load();
-  });
-});
-// Filter controls (debounced text/number inputs; instant checkbox).
-var fT=null; function deb(){ if(fT)clearTimeout(fT); fT=setTimeout(load,300); }
-['lbQ','lbMin','lbMax'].forEach(function(id){ var el=document.getElementById(id); if(el)el.addEventListener('input',deb); });
-var vEl=document.getElementById('lbVerified'); if(vEl)vEl.addEventListener('change',load);
-var clr=document.getElementById('lbClear'); if(clr)clr.addEventListener('click',function(){
-  ['lbQ','lbMin','lbMax'].forEach(function(id){ var el=document.getElementById(id); if(el)el.value=''; });
-  if(vEl)vEl.checked=false; load();
-});
-// Live: a tax/bank change anywhere refreshes the board (debounced, WS-driven — no polling).
-if(!window.__lbWs){ window.__lbWs=1; var lbT=null;
-  window.addEventListener('sg:ws', function(e){ var d=e.detail; if(!d)return; if(d.type==='server-econ'||d.type==='bank'||d.type==='guild'){ if(lbT)clearTimeout(lbT); lbT=setTimeout(function(){ load(); }, 1200); } });
-}
-load();
-</script>
-</body>
+            Array.prototype.forEach.call(
+                document.querySelectorAll("#lbTabs .lb-tab"),
+                function (t) {
+                    t.addEventListener("click", function () {
+                        SORT = t.dataset.sort;
+                        Array.prototype.forEach.call(
+                            document.querySelectorAll("#lbTabs .lb-tab"),
+                            function (x) {
+                                x.classList.toggle("on", x === t);
+                            },
+                        );
+                        load();
+                    });
+                },
+            );
+            // Filter controls (debounced text/number inputs; instant checkbox).
+            var fT = null;
+            function deb() {
+                if (fT) clearTimeout(fT);
+                fT = setTimeout(load, 300);
+            }
+            ["lbQ", "lbMin", "lbMax"].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener("input", deb);
+            });
+            var vEl = document.getElementById("lbVerified");
+            if (vEl) vEl.addEventListener("change", load);
+            var clr = document.getElementById("lbClear");
+            if (clr)
+                clr.addEventListener("click", function () {
+                    ["lbQ", "lbMin", "lbMax"].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) el.value = "";
+                    });
+                    if (vEl) vEl.checked = false;
+                    load();
+                });
+            // Live: a tax/bank change anywhere refreshes the board (debounced, WS-driven — no polling).
+            if (!window.__lbWs) {
+                window.__lbWs = 1;
+                var lbT = null;
+                window.addEventListener("sg:ws", function (e) {
+                    var d = e.detail;
+                    if (!d) return;
+                    if (
+                        d.type === "server-econ" ||
+                        d.type === "bank" ||
+                        d.type === "guild"
+                    ) {
+                        if (lbT) clearTimeout(lbT);
+                        lbT = setTimeout(function () {
+                            load();
+                        }, 1200);
+                    }
+                });
+            }
+            load();
+        </script>
+    </body>
 </html>

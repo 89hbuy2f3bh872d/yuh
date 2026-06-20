@@ -1,529 +1,2000 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>House Games — SirGreen Casino</title>
-<link rel="stylesheet" href="/assets/css/app.css">
-<link rel="stylesheet" href="/assets/css/house.css">
-<style>
-/* Chicken Road — fixed viewport, the road slides under the chicken (no scrollbar) */
-.cr-view{position:relative;width:100%;height:312px;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#10141f,#0a0d15);border:1px solid var(--border)}
-.cr-track{display:flex;height:100%;transition:transform .34s cubic-bezier(.3,1,.4,1);will-change:transform}
-.cr-empty{margin:auto;color:var(--text3);font-size:.84rem;padding:2rem;text-align:center;align-self:center}
-.cr-lane{flex:0 0 92px;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:linear-gradient(180deg,#23272f,#181b22);border-right:3px dashed rgba(255,221,0,.16);padding-top:.55rem}
-.cr-lane.curb,.cr-lane.finish{background:linear-gradient(180deg,#1c3a25,#13291b)}
-.cr-lane.curb{border-right:4px solid rgba(255,255,255,.12)}.cr-lane.finish{border-right:0}
-.cr-mult{font-size:.72rem;font-weight:800;color:#cfd6e4;background:rgba(0,0,0,.42);border-radius:99px;padding:.12rem .5rem;white-space:nowrap;z-index:2}
-.cr-zone{flex:1;width:100%;position:relative;display:flex;align-items:center;justify-content:center}
-.cr-line{position:absolute;left:50%;top:4px;bottom:22px;width:0;border-left:3px dashed rgba(255,221,0,.2);transform:translateX(-50%)}
-.cr-foot{font-size:.55rem;font-weight:800;letter-spacing:.07em;color:var(--text3);padding-bottom:.4rem}
-.cr-lane.done{background:linear-gradient(180deg,#1c3a25,#13291b)}
-.cr-lane.done .cr-mult{color:#37e07a;background:rgba(34,197,94,.2)}
-.cr-lane.dead{background:linear-gradient(180deg,#3b1d1d,#281313)}
-.cr-lane.cashed .cr-mult{color:#ffd34d;background:rgba(241,196,15,.2)}
-.cr-lane.next{background:linear-gradient(180deg,#2b303d,#21252f)}
-.cr-lane.next .cr-mult{color:#fff;background:var(--gc,#f97316);box-shadow:0 0 14px -2px var(--gc,#f97316)}
-.cr-risk{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:.6rem;font-weight:800;color:#fff;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.16);border-radius:99px;padding:.12rem .45rem;white-space:nowrap;z-index:2}
-.cr-chk{font-size:2.2rem;line-height:1;filter:drop-shadow(0 5px 7px rgba(0,0,0,.6));z-index:4}
-.cr-block{position:absolute;bottom:24px;font-size:1.05rem;z-index:1}
-.cr-car{position:absolute;top:0;font-size:2rem;z-index:3;animation:crCar .42s ease forwards}
-@keyframes crCar{from{transform:translateY(-64px);opacity:0}60%{opacity:1}to{transform:translateY(46px);opacity:1}}
-.cr-flag{font-size:2rem}
-@keyframes crHop{0%{transform:translateY(0)}45%{transform:translateY(-26px) scale(1.08)}100%{transform:translateY(0)}}
-.cr-hop{animation:crHop .3s ease}
-.cr-fade{position:absolute;top:0;bottom:0;width:36px;pointer-events:none;z-index:5}
-.cr-fade.l{left:0;background:linear-gradient(90deg,rgba(10,13,21,.95),transparent)}
-.cr-fade.r{right:0;background:linear-gradient(270deg,rgba(10,13,21,.95),transparent)}
-.cr-hud{position:absolute;top:.5rem;right:.6rem;text-align:right;z-index:6;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:11px;padding:.35rem .7rem}
-.cr-hud b{font-size:1.4rem;font-weight:900;color:#fff;display:block;line-height:1}
-.cr-hud small{font-size:.62rem;color:var(--text2)}
-.cr-cross{background:var(--gc,#f97316)!important;color:#1a0d00!important}
-</style>
-</head>
-<body>
-<div class="app">
-__SIDEBAR__
-<main class="main">
-  <div id="view-list">
-    <div class="page-head"><div>
-      <h1 class="page-title"><svg class="icon" viewBox="0 0 24 24"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg> House Games</h1>
-      <div class="page-sub">Quick games vs the house — provably resolved server-side.</div>
-    </div><span class="srv-tax-note" hidden></span></div>
-    <div class="slot-grid" id="hgGrid"><div class="empty">Loading…</div></div>
-  </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>House Games — SirGreen Casino</title>
+        <link rel="stylesheet" href="/assets/css/app.css" />
+        <link rel="stylesheet" href="/assets/css/house.css" />
+        <style>
+            /* Chicken Road — fixed viewport, the road slides under the chicken (no scrollbar) */
+            .cr-view {
+                position: relative;
+                width: 100%;
+                height: 312px;
+                border-radius: 16px;
+                overflow: hidden;
+                background: linear-gradient(180deg, #10141f, #0a0d15);
+                border: 1px solid var(--border);
+            }
+            .cr-track {
+                display: flex;
+                height: 100%;
+                transition: transform 0.34s cubic-bezier(0.3, 1, 0.4, 1);
+                will-change: transform;
+            }
+            .cr-empty {
+                margin: auto;
+                color: var(--text3);
+                font-size: 0.84rem;
+                padding: 2rem;
+                text-align: center;
+                align-self: center;
+            }
+            .cr-lane {
+                flex: 0 0 92px;
+                box-sizing: border-box;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                background: linear-gradient(180deg, #23272f, #181b22);
+                border-right: 3px dashed rgba(255, 221, 0, 0.16);
+                padding-top: 0.55rem;
+            }
+            .cr-lane.curb,
+            .cr-lane.finish {
+                background: linear-gradient(180deg, #1c3a25, #13291b);
+            }
+            .cr-lane.curb {
+                border-right: 4px solid rgba(255, 255, 255, 0.12);
+            }
+            .cr-lane.finish {
+                border-right: 0;
+            }
+            .cr-mult {
+                font-size: 0.72rem;
+                font-weight: 800;
+                color: #cfd6e4;
+                background: rgba(0, 0, 0, 0.42);
+                border-radius: 99px;
+                padding: 0.12rem 0.5rem;
+                white-space: nowrap;
+                z-index: 2;
+            }
+            .cr-zone {
+                flex: 1;
+                width: 100%;
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .cr-line {
+                position: absolute;
+                left: 50%;
+                top: 4px;
+                bottom: 22px;
+                width: 0;
+                border-left: 3px dashed rgba(255, 221, 0, 0.2);
+                transform: translateX(-50%);
+            }
+            .cr-foot {
+                font-size: 0.55rem;
+                font-weight: 800;
+                letter-spacing: 0.07em;
+                color: var(--text3);
+                padding-bottom: 0.4rem;
+            }
+            .cr-lane.done {
+                background: linear-gradient(180deg, #1c3a25, #13291b);
+            }
+            .cr-lane.done .cr-mult {
+                color: #37e07a;
+                background: rgba(34, 197, 94, 0.2);
+            }
+            .cr-lane.dead {
+                background: linear-gradient(180deg, #3b1d1d, #281313);
+            }
+            .cr-lane.cashed .cr-mult {
+                color: #ffd34d;
+                background: rgba(241, 196, 15, 0.2);
+            }
+            .cr-lane.next {
+                background: linear-gradient(180deg, #2b303d, #21252f);
+            }
+            .cr-lane.next .cr-mult {
+                color: #fff;
+                background: var(--gc, #f97316);
+                box-shadow: 0 0 14px -2px var(--gc, #f97316);
+            }
+            .cr-risk {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                font-size: 0.6rem;
+                font-weight: 800;
+                color: #fff;
+                background: rgba(0, 0, 0, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 99px;
+                padding: 0.12rem 0.45rem;
+                white-space: nowrap;
+                z-index: 2;
+            }
+            .cr-chk {
+                font-size: 2.2rem;
+                line-height: 1;
+                filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.6));
+                z-index: 4;
+            }
+            .cr-block {
+                position: absolute;
+                bottom: 24px;
+                font-size: 1.05rem;
+                z-index: 1;
+            }
+            .cr-car {
+                position: absolute;
+                top: 0;
+                font-size: 2rem;
+                z-index: 3;
+                animation: crCar 0.42s ease forwards;
+            }
+            @keyframes crCar {
+                from {
+                    transform: translateY(-64px);
+                    opacity: 0;
+                }
+                60% {
+                    opacity: 1;
+                }
+                to {
+                    transform: translateY(46px);
+                    opacity: 1;
+                }
+            }
+            .cr-flag {
+                font-size: 2rem;
+            }
+            @keyframes crHop {
+                0% {
+                    transform: translateY(0);
+                }
+                45% {
+                    transform: translateY(-26px) scale(1.08);
+                }
+                100% {
+                    transform: translateY(0);
+                }
+            }
+            .cr-hop {
+                animation: crHop 0.3s ease;
+            }
+            .cr-fade {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 36px;
+                pointer-events: none;
+                z-index: 5;
+            }
+            .cr-fade.l {
+                left: 0;
+                background: linear-gradient(
+                    90deg,
+                    rgba(10, 13, 21, 0.95),
+                    transparent
+                );
+            }
+            .cr-fade.r {
+                right: 0;
+                background: linear-gradient(
+                    270deg,
+                    rgba(10, 13, 21, 0.95),
+                    transparent
+                );
+            }
+            .cr-hud {
+                position: absolute;
+                top: 0.5rem;
+                right: 0.6rem;
+                text-align: right;
+                z-index: 6;
+                background: rgba(0, 0, 0, 0.45);
+                border: 1px solid var(--border);
+                border-radius: 11px;
+                padding: 0.35rem 0.7rem;
+            }
+            .cr-hud b {
+                font-size: 1.4rem;
+                font-weight: 900;
+                color: #fff;
+                display: block;
+                line-height: 1;
+            }
+            .cr-hud small {
+                font-size: 0.62rem;
+                color: var(--text2);
+            }
+            .cr-cross {
+                background: var(--gc, #f97316) !important;
+                color: #1a0d00 !important;
+            }
+            /* ── Dice ── */
+            .dc-wrap {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 1.1rem;
+                padding: 1rem;
+            }
+            .dc-num {
+                font-size: 2.6rem;
+                font-weight: 800;
+                color: var(--text);
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.02em;
+            }
+            .dc-num.win {
+                color: var(--gold);
+            }
+            .dc-num.lose {
+                color: var(--text3);
+            }
+            .dc-track {
+                position: relative;
+                width: 100%;
+                max-width: 440px;
+                height: 36px;
+                border-radius: 99px;
+                background: var(--surface2);
+                border: 1px solid var(--border);
+                overflow: hidden;
+            }
+            .dc-win {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                background: color-mix(
+                    in srgb,
+                    var(--gc, #14b8a6) 26%,
+                    transparent
+                );
+                border-right: 2px solid var(--gc, #14b8a6);
+                transition: width 0.12s;
+            }
+            .dc-win.over {
+                left: auto;
+                right: 0;
+                border-right: 0;
+                border-left: 2px solid var(--gc, #14b8a6);
+            }
+            .dc-marker {
+                position: absolute;
+                top: -3px;
+                bottom: -3px;
+                width: 3px;
+                background: var(--text);
+                border-radius: 2px;
+                transform: translateX(-50%);
+                transition: left 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+            .dc-slider {
+                width: 100%;
+                max-width: 440px;
+                -webkit-appearance: none;
+                appearance: none;
+                height: 6px;
+                border-radius: 99px;
+                background: var(--border);
+                outline: none;
+                cursor: pointer;
+            }
+            .dc-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                background: var(--gc, #14b8a6);
+                border: 2px solid var(--bg);
+                box-shadow: 0 2px 8px -2px #000;
+            }
+            .dc-slider::-moz-range-thumb {
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                background: var(--gc, #14b8a6);
+                border: 2px solid var(--bg);
+            }
+            .dc-read {
+                font-size: 0.74rem;
+                color: var(--text2);
+                text-align: center;
+            }
+            .dc-read b {
+                color: var(--text);
+            }
+            /* ── Limbo ── */
+            .lm-wrap {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.9rem;
+                padding: 1.4rem 1rem;
+            }
+            .lm-num {
+                font-size: 3rem;
+                font-weight: 800;
+                color: var(--text);
+                font-variant-numeric: tabular-nums;
+            }
+            .lm-num.win {
+                color: var(--gold);
+            }
+            .lm-num.lose {
+                color: #ff5c5c;
+            }
+            .lm-quick {
+                display: flex;
+                gap: 0.35rem;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .lm-quick button {
+                padding: 0.35rem 0.65rem;
+                border-radius: 8px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text2);
+                font-size: 0.72rem;
+                font-weight: 700;
+                cursor: pointer;
+            }
+            .lm-quick button.on {
+                background: var(--gc, #f43f5e);
+                color: #fff;
+                border-color: var(--gc, #f43f5e);
+            }
+            .lm-in {
+                width: 100%;
+                max-width: 220px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 9px;
+                padding: 0.5rem 0.7rem;
+                color: var(--text);
+                font-size: 0.9rem;
+                text-align: center;
+                outline: none;
+            }
+            .lm-in:focus {
+                border-color: var(--gc, #f43f5e);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            __SIDEBAR__
+            <main class="main">
+                <div id="view-list">
+                    <div class="page-head">
+                        <div>
+                            <h1 class="page-title">
+                                <svg class="icon" viewBox="0 0 24 24">
+                                    <rect
+                                        width="12"
+                                        height="12"
+                                        x="2"
+                                        y="10"
+                                        rx="2"
+                                        ry="2"
+                                    />
+                                    <path
+                                        d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"
+                                    />
+                                    <path d="M6 18h.01" />
+                                    <path d="M10 14h.01" />
+                                    <path d="M15 6h.01" />
+                                    <path d="M18 9h.01" />
+                                </svg>
+                                House Games
+                            </h1>
+                            <div class="page-sub">
+                                Quick games vs the house — provably resolved
+                                server-side.
+                            </div>
+                        </div>
+                        <span class="srv-tax-note" hidden></span>
+                    </div>
+                    <div class="slot-grid" id="hgGrid">
+                        <div class="empty">Loading…</div>
+                    </div>
+                </div>
 
-  <div id="view-game" class="hidden">
-    <div class="page-head">
-      <div><h1 class="page-title" id="hgTitle"></h1><div class="page-sub" id="hgTag"></div></div>
-      <span class="srv-tax-note" hidden></span>
-      <div class="page-actions">
-        <div class="hg-bal">Balance <b id="balMeter">0</b> FC</div>
-        <button class="btn btn-ghost" onclick="backHouse()"><svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Back</button>
-      </div>
-    </div>
-    <div class="hg-stage">
-      <div class="hg-board" id="hgBoard"></div>
-      <div class="hg-side">
-        <div class="bet-box"><span class="bet-lbl">Bet</span><button class="step-btn" onclick="adjustBet(-1)">−</button><span class="bet-val" id="betVal">20</span><button class="step-btn" onclick="adjustBet(1)">+</button></div>
-        <div id="hgControls"></div>
-        <div class="hg-msg" id="hgMsg"></div>
-      </div>
-    </div>
-  </div>
-</main>
-</div>
+                <div id="view-game" class="hidden">
+                    <div class="page-head">
+                        <div>
+                            <h1 class="page-title" id="hgTitle"></h1>
+                            <div class="page-sub" id="hgTag"></div>
+                        </div>
+                        <span class="srv-tax-note" hidden></span>
+                        <div class="page-actions">
+                            <div class="hg-bal">
+                                Balance <b id="balMeter">0</b> FC
+                            </div>
+                            <button class="btn btn-ghost" onclick="backHouse()">
+                                <svg class="icon" viewBox="0 0 24 24">
+                                    <path d="M15 18l-6-6 6-6" />
+                                </svg>
+                                Back
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hg-stage">
+                        <div class="hg-board" id="hgBoard"></div>
+                        <div class="hg-side">
+                            <div class="bet-box">
+                                <span class="bet-lbl">Bet</span
+                                ><button
+                                    class="step-btn"
+                                    onclick="adjustBet(-1)"
+                                >
+                                    −</button
+                                ><span class="bet-val" id="betVal">20</span
+                                ><button
+                                    class="step-btn"
+                                    onclick="adjustBet(1)"
+                                >
+                                    +
+                                </button>
+                            </div>
+                            <div id="hgControls"></div>
+                            <div class="hg-msg" id="hgMsg"></div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
 
-<script>
-function $(id){return document.getElementById(id);}
-function fmt(n){return Number(Math.round(n||0)).toLocaleString();}
-function sfx(n){ if(window.SG)SG.sfx(n); }
-var GAMES=[], PLINKO=null, GAME=null, bal=0, busy=false;
-var BET=[1,2,5,10,20,40,80,150,300,600,1000,2000], bi=4;
-function bet(){return BET[bi];}
-function adjustBet(d){ bi=Math.max(0,Math.min(BET.length-1,bi+d)); $('betVal').textContent=fmt(bet()); }
-function refreshBal(){return fetch('/api/balance').then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.bal!==undefined){bal=Number(d.bal);setBal();}});}
-function setBal(){var e=$('sbBal');if(e)e.textContent=fmt(bal);var b=$('balMeter');if(b)b.textContent=fmt(bal);}
-function msg(t,cls){var m=$('hgMsg');m.textContent=t||'';m.className='hg-msg'+(cls?' '+cls:'');}
-refreshBal(); /* balance kept live via WS */
+        <script>
+            function $(id) {
+                return document.getElementById(id);
+            }
+            function fmt(n) {
+                return Number(Math.round(n || 0)).toLocaleString();
+            }
+            function sfx(n) {
+                if (window.SG) SG.sfx(n);
+            }
+            var GAMES = [],
+                PLINKO = null,
+                GAME = null,
+                bal = 0,
+                busy = false;
+            var BET = [1, 2, 5, 10, 20, 40, 80, 150, 300, 600, 1000, 2000],
+                bi = 4;
+            function bet() {
+                return BET[bi];
+            }
+            function adjustBet(d) {
+                bi = Math.max(0, Math.min(BET.length - 1, bi + d));
+                $("betVal").textContent = fmt(bet());
+            }
+            function refreshBal() {
+                return fetch("/api/balance")
+                    .then(function (r) {
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(function (d) {
+                        if (d && d.bal !== undefined) {
+                            bal = Number(d.bal);
+                            setBal();
+                        }
+                    });
+            }
+            function setBal() {
+                var e = $("sbBal");
+                if (e) e.textContent = fmt(bal);
+                var b = $("balMeter");
+                if (b) b.textContent = fmt(bal);
+            }
+            function msg(t, cls) {
+                var m = $("hgMsg");
+                m.textContent = t || "";
+                m.className = "hg-msg" + (cls ? " " + cls : "");
+            }
+            refreshBal(); /* balance kept live via WS */
 
-fetch('/api/house/games').then(function(r){return r.json()}).then(function(d){GAMES=d.games||[];PLINKO=d.plinko;renderLobby();}).catch(function(){$('hgGrid').innerHTML='<div class="empty">Failed to load.</div>';});
+            fetch("/api/house/games")
+                .then(function (r) {
+                    return r.json();
+                })
+                .then(function (d) {
+                    GAMES = d.games || [];
+                    PLINKO = d.plinko;
+                    renderLobby();
+                })
+                .catch(function () {
+                    $("hgGrid").innerHTML =
+                        '<div class="empty">Failed to load.</div>';
+                });
 
-function renderLobby(){
-  var el=$('hgGrid'); el.innerHTML='';
-  function ic(p){ return '<svg class="icon hg-card-ic" viewBox="0 0 24 24">'+p+'</svg>'; }
-  var icons={
-    plinko: ic('<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>'),
-    mines:  ic('<circle cx="11" cy="13" r="9"/><path d="m19.5 9.5 1.8-1.8a2.4 2.4 0 0 0 0-3.4l-1.6-1.6a2.41 2.41 0 0 0-3.4 0l-1.8 1.8"/><path d="m22 2-1.5 1.5"/>'),
-    coinflip: ic('<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>'),
-    hilo:   ic('<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>'),
-    double: ic('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
-    chicken: ic('<path d="M15.45 15.4c-2.13.65-4.3.32-5.7-1.1-2.29-2.27-1.76-6.5 1.17-9.42 2.93-2.93 7.15-3.46 9.43-1.18 1.41 1.41 1.74 3.57 1.1 5.71-1.4-.51-3.26-.02-4.64 1.36-1.38 1.38-1.87 3.23-1.36 4.63z"/><path d="m11.25 15.6-2.16 2.16a2.5 2.5 0 1 1-4.56 1.73 2.49 2.49 0 0 1-1.41-4.24 2.5 2.5 0 0 1 3.14-.32l2.16-2.16"/>'),
-  };
-  GAMES.forEach(function(g){
-    var c=document.createElement('div'); c.className='slot-card'; c.style.setProperty('--gc',g.color);
-    c.innerHTML='<div class="slot-card-art">'+(icons[g.id]||icons.double)+'</div><div class="slot-card-body"><div class="slot-card-name">'+g.name+'</div><div class="slot-card-tag">'+g.tag+'</div></div><button class="btn btn-primary slot-play">Play</button>';
-    c.querySelector('.slot-play').onclick=function(){openGame(g.id);};
-    el.appendChild(c);
-  });
-}
-function openGame(id){
-  GAME=GAMES.filter(function(g){return g.id===id;})[0]; if(!GAME)return;
-  $('view-list').classList.add('hidden'); $('view-game').classList.remove('hidden');
-  $('hgTitle').textContent=GAME.name; $('hgTag').textContent=GAME.tag;
-  document.querySelector('.hg-stage').style.setProperty('--gc',GAME.color);
-  $('betVal').textContent=fmt(bet()); msg('');
-  RENDER[id]();
-}
-function backHouse(){ if(busy)return; $('view-game').classList.add('hidden'); $('view-list').classList.remove('hidden'); }
-function post(url,body){ return fetch('/api/house/'+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json();}); }
+            function renderLobby() {
+                var el = $("hgGrid");
+                el.innerHTML = "";
+                function ic(p) {
+                    return (
+                        '<svg class="icon hg-card-ic" viewBox="0 0 24 24">' +
+                        p +
+                        "</svg>"
+                    );
+                }
+                var icons = {
+                    plinko: ic(
+                        '<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>',
+                    ),
+                    mines: ic(
+                        '<circle cx="11" cy="13" r="9"/><path d="m19.5 9.5 1.8-1.8a2.4 2.4 0 0 0 0-3.4l-1.6-1.6a2.41 2.41 0 0 0-3.4 0l-1.8 1.8"/><path d="m22 2-1.5 1.5"/>',
+                    ),
+                    coinflip: ic(
+                        '<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>',
+                    ),
+                    hilo: ic(
+                        '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
+                    ),
+                    double: ic(
+                        '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+                    ),
+                    chicken: ic(
+                        '<path d="M15.45 15.4c-2.13.65-4.3.32-5.7-1.1-2.29-2.27-1.76-6.5 1.17-9.42 2.93-2.93 7.15-3.46 9.43-1.18 1.41 1.41 1.74 3.57 1.1 5.71-1.4-.51-3.26-.02-4.64 1.36-1.38 1.38-1.87 3.23-1.36 4.63z"/><path d="m11.25 15.6-2.16 2.16a2.5 2.5 0 1 1-4.56 1.73 2.49 2.49 0 0 1-1.41-4.24 2.5 2.5 0 0 1 3.14-.32l2.16-2.16"/>',
+                    ),
+                    dice: ic(
+                        '<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
+                    ),
+                    limbo: ic(
+                        '<path d="M3 17l6-6 4 4 8-8"/><path d="M21 9V3h-6"/>',
+                    ),
+                };
+                GAMES.forEach(function (g) {
+                    var c = document.createElement("div");
+                    c.className = "slot-card";
+                    c.style.setProperty("--gc", g.color);
+                    c.innerHTML =
+                        '<div class="slot-card-art">' +
+                        (icons[g.id] || icons.double) +
+                        '</div><div class="slot-card-body"><div class="slot-card-name">' +
+                        g.name +
+                        '</div><div class="slot-card-tag">' +
+                        g.tag +
+                        '</div></div><button class="btn btn-primary slot-play">Play</button>';
+                    c.querySelector(".slot-play").onclick = function () {
+                        openGame(g.id);
+                    };
+                    el.appendChild(c);
+                });
+            }
+            function openGame(id) {
+                GAME = GAMES.filter(function (g) {
+                    return g.id === id;
+                })[0];
+                if (!GAME) return;
+                $("view-list").classList.add("hidden");
+                $("view-game").classList.remove("hidden");
+                $("hgTitle").textContent = GAME.name;
+                $("hgTag").textContent = GAME.tag;
+                document
+                    .querySelector(".hg-stage")
+                    .style.setProperty("--gc", GAME.color);
+                $("betVal").textContent = fmt(bet());
+                msg("");
+                RENDER[id]();
+            }
+            function backHouse() {
+                if (busy) return;
+                $("view-game").classList.add("hidden");
+                $("view-list").classList.remove("hidden");
+            }
+            function post(url, body) {
+                return fetch("/api/house/" + url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body || {}),
+                }).then(function (r) {
+                    return r.json();
+                });
+            }
 
-var RENDER={};
+            var RENDER = {};
 
-// ── Coinflip ────────────────────────────────────────────────────────────
-RENDER.coinflip=function(){
-  $('hgBoard').innerHTML='<div class="coin-wrap"><div class="coin3d" id="coin3d"><div class="coin-face heads">H</div><div class="coin-face tails">T</div></div></div>';
-  $('hgControls').innerHTML=
-    '<div class="seg"><button class="seg-b on" id="cf-h" onclick="cfPick(\'heads\')">Heads</button><button class="seg-b" id="cf-t" onclick="cfPick(\'tails\')">Tails</button></div>'+
-    '<button class="play-btn" id="cfGo" onclick="cfPlay()">Flip · win 1.96×</button>';
-  GAME._side='heads'; GAME._rot=0;
-};
-function cfPick(s){ GAME._side=s; $('cf-h').classList.toggle('on',s==='heads'); $('cf-t').classList.toggle('on',s==='tails'); }
-function cfPlay(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true; msg(''); sfx('coin');
-  post('coinflip',{bet:bet(),side:GAME._side}).then(function(d){
-    if(d.error){msg(d.error,'bad');busy=false;return;}
-    bal=d.balance;
-    var coin=$('coin3d');
-    // random spin count + duration so the landing can't be read mid-flight
-    var spins=6+Math.floor(Math.random()*6);                 // 6–11 full turns
-    var full=Math.floor((GAME._rot||0)/360)+spins;
-    var target=full*360 + (d.roll==='tails'?180:0);
-    if(target<=(GAME._rot||0)+720) target+=360;
-    GAME._rot=target;
-    var dur=2.4+Math.random()*0.9;                           // 2.4–3.3s
-    coin.style.transition='transform '+dur.toFixed(2)+'s cubic-bezier(.18,.62,.16,1)';
-    coin.style.transform='rotateY('+target+'deg)';
-    setTimeout(function(){
-      setBal();
-      if(d.win){msg('+'+fmt(d.payout)+' FC — '+d.roll,'good');sfx('win');} else {msg('Lost — '+d.roll,'bad');sfx('lose');}
-      busy=false;
-    }, dur*1000+60);
-  }).catch(function(){msg('Network error','bad');busy=false;});
-}
+            // ── Coinflip ────────────────────────────────────────────────────────────
+            RENDER.coinflip = function () {
+                $("hgBoard").innerHTML =
+                    '<div class="coin-wrap"><div class="coin3d" id="coin3d"><div class="coin-face heads">H</div><div class="coin-face tails">T</div></div></div>';
+                $("hgControls").innerHTML =
+                    '<div class="seg"><button class="seg-b on" id="cf-h" onclick="cfPick(\'heads\')">Heads</button><button class="seg-b" id="cf-t" onclick="cfPick(\'tails\')">Tails</button></div>' +
+                    '<button class="play-btn" id="cfGo" onclick="cfPlay()">Flip · win 1.96×</button>';
+                GAME._side = "heads";
+                GAME._rot = 0;
+            };
+            function cfPick(s) {
+                GAME._side = s;
+                $("cf-h").classList.toggle("on", s === "heads");
+                $("cf-t").classList.toggle("on", s === "tails");
+            }
+            function cfPlay() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                msg("");
+                sfx("coin");
+                post("coinflip", { bet: bet(), side: GAME._side })
+                    .then(function (d) {
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            busy = false;
+                            return;
+                        }
+                        bal = d.balance;
+                        var coin = $("coin3d");
+                        // random spin count + duration so the landing can't be read mid-flight
+                        var spins = 6 + Math.floor(Math.random() * 6); // 6–11 full turns
+                        var full = Math.floor((GAME._rot || 0) / 360) + spins;
+                        var target =
+                            full * 360 + (d.roll === "tails" ? 180 : 0);
+                        if (target <= (GAME._rot || 0) + 720) target += 360;
+                        GAME._rot = target;
+                        var dur = 2.4 + Math.random() * 0.9; // 2.4–3.3s
+                        coin.style.transition =
+                            "transform " +
+                            dur.toFixed(2) +
+                            "s cubic-bezier(.18,.62,.16,1)";
+                        coin.style.transform = "rotateY(" + target + "deg)";
+                        setTimeout(
+                            function () {
+                                setBal();
+                                if (d.win) {
+                                    msg(
+                                        "+" + fmt(d.payout) + " FC — " + d.roll,
+                                        "good",
+                                    );
+                                    sfx("win");
+                                } else {
+                                    msg("Lost — " + d.roll, "bad");
+                                    sfx("lose");
+                                }
+                                busy = false;
+                            },
+                            dur * 1000 + 60,
+                        );
+                    })
+                    .catch(function () {
+                        msg("Network error", "bad");
+                        busy = false;
+                    });
+            }
 
-// ── Double or Nothing ───────────────────────────────────────────────────
-RENDER.double=function(){
-  $('hgBoard').innerHTML='<div class="don">2×</div>';
-  $('hgControls').innerHTML='<button class="play-btn" onclick="donPlay()">Go · 49% to double</button>';
-};
-function donPlay(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true; sfx('spin');
-  post('double',{bet:bet()}).then(function(d){
-    if(d.error){msg(d.error,'bad');busy=false;return;}
-    bal=d.balance; setBal();
-    var b=$('hgBoard').firstChild;
-    if(d.win){b.textContent='+'+fmt(d.payout);b.className='don win';msg('Doubled!','good');sfx('win');}
-    else{b.textContent='✗';b.className='don lose';msg('Nothing','bad');sfx('lose');}
-    setTimeout(function(){b.className='don';b.textContent='2×';},1200);
-    busy=false;
-  }).catch(function(){busy=false;});
-}
+            // ── Double or Nothing ───────────────────────────────────────────────────
+            RENDER.double = function () {
+                $("hgBoard").innerHTML = '<div class="don">2×</div>';
+                $("hgControls").innerHTML =
+                    '<button class="play-btn" onclick="donPlay()">Go · 49% to double</button>';
+            };
+            function donPlay() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                sfx("spin");
+                post("double", { bet: bet() })
+                    .then(function (d) {
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            busy = false;
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        var b = $("hgBoard").firstChild;
+                        if (d.win) {
+                            b.textContent = "+" + fmt(d.payout);
+                            b.className = "don win";
+                            msg("Doubled!", "good");
+                            sfx("win");
+                        } else {
+                            b.textContent = "✗";
+                            b.className = "don lose";
+                            msg("Nothing", "bad");
+                            sfx("lose");
+                        }
+                        setTimeout(function () {
+                            b.className = "don";
+                            b.textContent = "2×";
+                        }, 1200);
+                        busy = false;
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
 
-// ── Plinko — Stake-style board, smooth physics, multi-ball (max 10) ───────
-var PK=null, ROWS=12, MAXBALLS=10;
-RENDER.plinko=function(){
-  GAME._risk='med';
-  $('hgBoard').innerHTML='<canvas id="pkCanvas" class="pk-canvas"></canvas>';
-  $('hgControls').innerHTML=
-    '<div class="seg"><button class="seg-b" onclick="pkRisk(\'low\',this)">Low</button><button class="seg-b on" onclick="pkRisk(\'med\',this)">Med</button><button class="seg-b" onclick="pkRisk(\'high\',this)">High</button></div>'+
-    '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>'+
-    '<div class="pk-count" id="pkCount" style="text-align:center;font-size:.66rem;color:var(--text3);margin-top:.3rem">0 / '+MAXBALLS+' balls</div>';
-  // Gate on the live canvas, not the closed-over GAME (this listener is bound once).
-  if(!window._pkResize){ window._pkResize=true; window.addEventListener('resize',function(){ if(document.getElementById('pkCanvas'))pkInit(); }); }
-  setTimeout(pkInit,30);
-};
-function pkColor(m){ return m>=20?'#ff3b3b':m>=8?'#ff6b1a':m>=3?'#ff9d1a':m>=1.5?'#ffc933':m>=1?'#ffe14d':'#6b7280'; }
-function pkInit(){
-  var cv=$('pkCanvas'); if(!cv)return;
-  var w=cv.parentNode.clientWidth-4; if(w<260)w=260; if(w>620)w=620;
-  var h=Math.min(480,Math.round(w*0.92));
-  var dpr=Math.min(window.devicePixelRatio||1,2);
-  cv.width=w*dpr; cv.height=h*dpr; cv.style.width=w+'px'; cv.style.height=h+'px';
-  var ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
-  var pad=26, topY=26, bottomPegY=h-58, bucketY=h-30;
-  var gx=(w-2*pad)/(ROWS+1);            // horizontal peg/bucket spacing (13 gaps)
-  var ry=(bottomPegY-topY)/(ROWS-1);
-  var balls=(PK&&PK.balls)||[];
-  PK={cv:cv,ctx:ctx,w:w,h:h,cx:w/2,gx:gx,ry:ry,topY:topY,bottomPegY:bottomPegY,bucketY:bucketY,
-      table:PLINKO[GAME._risk||'med'],balls:balls,flash:{},pegHits:{},raf:PK&&PK.raf,last:0,lastActivity:0};
-  PK.pegList=pkBuildPegs(PK);   // cache the peg array once (was recomputed every frame)
-  if(!PK.raf) pkDraw(); else {}
-  pkDraw();
-}
-function pkBuildPegs(P){ var a=[]; for(var r=0;r<ROWS;r++){ var n=r+3; for(var j=0;j<n;j++){ a.push({x:P.cx+(j-(n-1)/2)*P.gx, y:P.topY+r*P.ry}); } } return a; }
-function pkPegs(P){ return P.pegList || (P.pegList=pkBuildPegs(P)); }
-function pkDraw(){
-  var P=PK; if(!P)return; var ctx=P.ctx, now=performance.now(); ctx.clearRect(0,0,P.w,P.h);
-  // pegs — glow when recently hit by a ball
-  var pr=Math.max(2.5,P.gx*0.135);
-  pkPegs(P).forEach(function(p){
-    // glow lookup: match the EXACT peg (row + x). A hit key is row+'_'+round(x*10).
-    var row = Math.round((p.y - P.topY) / P.ry);
-    var key = row + '_' + Math.round(p.x * 10);
-    var glow = 0;
-    if(P.pegHits[key] != null){ var age = now - P.pegHits[key]; if(age < 350) glow = 1 - age/350; }
-    if(glow>0){ ctx.shadowColor='rgba(255,200,120,'+(0.85*glow)+')'; ctx.shadowBlur=12*glow; }
-    ctx.beginPath(); ctx.arc(p.x,p.y,pr*(1+glow*0.45),0,6.28);
-    ctx.fillStyle = glow>0 ? 'rgba(255,215,145,'+(0.7+0.3*glow)+')' : 'rgba(180,190,205,.6)';
-    ctx.fill(); ctx.shadowBlur=0;
-  });
-  // buckets
-  var bw=P.gx*0.88, bh=20;
-  for(var i=0;i<P.table.length;i++){ var m=P.table[i]; var bx=P.cx+(i-6)*P.gx; var col=pkColor(m);
-    var fl=P.flash[i]&&(now-P.flash[i]<450)?(1-(now-P.flash[i])/450):0;
-    ctx.save(); ctx.translate(bx,P.bucketY+ (fl?fl*3:0)); var s=1+fl*0.18; ctx.scale(s,s);
-    ctx.fillStyle=col; ctx.globalAlpha=m<1?0.65:1; roundRect(ctx,-bw/2,-bh/2,bw,bh,4); ctx.fill(); ctx.globalAlpha=1;
-    ctx.fillStyle=m<1?'#1a1a1a':'#221500'; ctx.font='700 '+Math.max(8,Math.min(11,P.gx*0.34))+'px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText((m>=10?Math.round(m):m)+'×',0,0); ctx.restore();
-  }
-  // balls — with a fading motion trail
-  var br=Math.max(5,Math.min(9,P.gx*0.26));
-  P.balls.forEach(function(b){
-    if(b.trail&&b.trail.length>1){
-      for(var t=0;t<b.trail.length;t++){ var tp=b.trail[t], a=t/b.trail.length*0.4;
-        ctx.beginPath(); ctx.arc(tp.x,tp.y,br*(0.4+0.6*t/b.trail.length),0,6.28);
-        ctx.fillStyle='rgba(255,120,80,'+a+')'; ctx.fill(); }
-    }
-    var g=ctx.createRadialGradient(b.x-br*0.3,b.y-br*0.3,1,b.x,b.y,br); g.addColorStop(0,'#fff'); g.addColorStop(1,'#ff5a3c');
-    ctx.beginPath(); ctx.arc(b.x,b.y,br,0,6.28); ctx.fillStyle=g; ctx.shadowColor='rgba(255,90,60,.7)'; ctx.shadowBlur=8; ctx.fill(); ctx.shadowBlur=0;
-  });
-}
-function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-// Physics tick: time-based fall. The ball's vertical progress is driven by an accumulator
-// that ALWAYS increases (gravity-accelerated), so it can NEVER stall. At each peg row it
-// deflects left/right per the server path. x eases toward the target peg. Simple, robust,
-// deterministic — no velocity-integration edge cases.
-function pkTick(now){
-  var P=PK; if(!P)return;
-  if(!P.cv||!document.body.contains(P.cv)){ P.raf=0; if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; } // left plinko
-  if(!P.last)P.last=now; var dt=Math.min(0.05,(now-P.last)/1000); P.last=now;
-  var minX=P.cx-P.gx*6.5, maxX=P.cx+P.gx*6.5;
-  for(var i=P.balls.length-1;i>=0;i--){
-    var b=P.balls[i];
-    // advance the fall timer — ALWAYS increases (the ball never stops moving down)
-    b.fall += dt;
-    // y = start + ½·g·t² (accelerating fall). Pegs are at topY + row*ry.
-    var g=520;   // px/s² gravity (constant, board-independent so it always feels right)
-    b.y = b.startY + 0.5*g*b.fall*b.fall;
-    // check peg rows we've passed
-    while(b.hitIdx<b.hits.length && b.y >= b.hits[b.hitIdx].y){
-      var h=b.hits[b.hitIdx];
-      b.targetX = b.hitIdx+1<b.hits.length ? b.hits[b.hitIdx+1].x : b.landX;
-      // small visual pop: nudge the ball slightly above the peg row so it reads as a bounce.
-      // Capped so it can never push the ball back above the PREVIOUS peg (no stall).
-      var prevY = b.hitIdx>0 ? b.hits[b.hitIdx-1].y : b.startY;
-      b.y = Math.max(h.y - P.ry*0.15, prevY + P.ry*0.1);
-      P.pegHits[h.row+'_'+Math.round(h.x*10)]=now;
-      b.hitIdx++;
-      if(window.SG)SG.sfx('tick');
-    }
-    // ease x toward the current target peg (clean lateral motion, no drift)
-    b.x += (b.targetX - b.x) * Math.min(1, 14*dt);
-    // hard clamp to board bounds
-    if(b.x<minX){b.x=minX;}
-    if(b.x>maxX){b.x=maxX;}
-    b.trail.push({x:b.x,y:b.y}); if(b.trail.length>9)b.trail.shift();
-    if(b.y>=P.bucketY-6){
-      b.x=b.landX;
-      pkLand(b); P.balls.splice(i,1);
-    }
-  }
-  pkDraw();
-  var anyFlash=false, t2=performance.now(); for(var k in P.flash){ if(t2-P.flash[k]<500)anyFlash=true; }
-  var anyHit=false; for(var k in P.pegHits){ if(t2-P.pegHits[k]<350)anyHit=true; else delete P.pegHits[k]; }
-  if(P.balls.length||anyFlash||anyHit){ P.raf=requestAnimationFrame(pkTick); } else { P.raf=0; P.last=0; }
-}
-function pkLand(b){
-  var P=PK; P.flash[b.slot]=performance.now();
-  sfx(b.mult>=1?'win':'pop');
-  msg((b.payout>0?'+':'')+fmt(b.payout)+' FC · '+b.mult+'×', b.mult>=1?'good':'bad');
-}
-function pkRisk(r,b){ GAME._risk=r; document.querySelectorAll('#hgControls .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on'); if(PK){PK.table=PLINKO[r]; pkDraw();} }
-function pkActive(){ return PK?(PK.balls.length+pkInFlight):0; }
-var pkInFlight=0, pkPending=0, pkPumpT=null;
-function pkDrop(){
-  if(!PK){pkInit();}
-  if(pkActive()+pkPending>=MAXBALLS){ msg('Max '+MAXBALLS+' balls at once','bad'); return; }
-  if(bet()>bal){ msg('Not enough balance','bad'); return; }
-  pkPending++; updateCount();
-  if(!pkPumpT) pkPumpT=setInterval(pkPump,170);
-  pkPump();
-}
-function pkPump(){
-  if(pkPending<=0){ if(pkPumpT){clearInterval(pkPumpT);pkPumpT=null;} return; }
-  if(PK.balls.length+pkInFlight>=MAXBALLS) return;     // wait for a ball to land
-  pkPending--; pkInFlight++; updateCount();
-  post('plinko',{bet:bet(),risk:GAME._risk}).then(function(d){
-    pkInFlight--; updateCount();
-    if(d.error){ msg(d.error,'bad'); return; }
-    bal=d.balance; setBal();
-    pkSpawn(d);
-  }).catch(function(){ pkInFlight--; updateCount(); });
-}
-function updateCount(){ var e=$('pkCount'); if(e)e.textContent=(PK?PK.balls.length:0)+pkInFlight+' / '+MAXBALLS+' balls'; }
-function pkSpawn(d){
-  var P=PK; if(!P){pkInit();P=PK;}
-  // Build the peg-hit sequence from the server's path. The ball hits one peg per row;
-  // each hit deflects it left/right per path[r]. Peg x in a triangular field moves ±0.5gx
-  // per deflection, so we track netRight (= rights − lefts) and place the peg at
-  // cx + netRight*gx/2. After 12 rows the ball sits at cx + (d.slot*2-12)*gx/2... but the
-  // bucket index d.slot maps to bucket x = cx + (d.slot-6)*gx, which equals the netRight
-  // position only if netRight = 2*(d.slot-6). Track rights directly to match the server.
-  var hits=[], rights=0;
-  for(var r=0;r<ROWS;r++){
-    var netR = rights - (r-rights);              // rights - lefts so far
-    var hx = P.cx + netR*P.gx/2;                 // triangular-field peg x
-    var hy = P.topY + r*P.ry;
-    hits.push({x:hx, y:hy, row:r});
-    if(d.path[r]) rights++;
-  }
-  // landing bucket x — matches the server's slot directly
-  var landX=P.cx + (d.slot-6)*P.gx;
-  var startY=P.topY-P.ry*0.6;
-  P.balls.push({
-    x:P.cx, y:startY,              // start just above the first peg
-    startY:startY, fall:0,         // time-based fall accumulator (always increases)
-    targetX: hits.length ? hits[0].x : landX,   // x eases toward this
-    hits:hits, hitIdx:0,
-    slot:d.slot, mult:d.mult, payout:d.payout,
-    landX:landX, trail:[]
-  });
-  if(window.SG)SG.sfx('coin'); updateCount();
-  if(!P.raf) P.raf=requestAnimationFrame(pkTick);
-}
+            // ── Plinko — Stake-style board, smooth physics, multi-ball (max 10) ───────
+            var PK = null,
+                ROWS = 12,
+                MAXBALLS = 10;
+            RENDER.plinko = function () {
+                GAME._risk = "med";
+                $("hgBoard").innerHTML =
+                    '<canvas id="pkCanvas" class="pk-canvas"></canvas>';
+                $("hgControls").innerHTML =
+                    '<div class="seg"><button class="seg-b" onclick="pkRisk(\'low\',this)">Low</button><button class="seg-b on" onclick="pkRisk(\'med\',this)">Med</button><button class="seg-b" onclick="pkRisk(\'high\',this)">High</button></div>' +
+                    '<button class="play-btn" id="pkGo" onclick="pkDrop()">Drop ball</button>' +
+                    '<div class="pk-count" id="pkCount" style="text-align:center;font-size:.66rem;color:var(--text3);margin-top:.3rem">0 / ' +
+                    MAXBALLS +
+                    " balls</div>";
+                // Gate on the live canvas, not the closed-over GAME (this listener is bound once).
+                if (!window._pkResize) {
+                    window._pkResize = true;
+                    window.addEventListener("resize", function () {
+                        if (document.getElementById("pkCanvas")) pkInit();
+                    });
+                }
+                setTimeout(pkInit, 30);
+            };
+            function pkColor(m) {
+                return m >= 20
+                    ? "#ff3b3b"
+                    : m >= 8
+                      ? "#ff6b1a"
+                      : m >= 3
+                        ? "#ff9d1a"
+                        : m >= 1.5
+                          ? "#ffc933"
+                          : m >= 1
+                            ? "#ffe14d"
+                            : "#6b7280";
+            }
+            function pkInit() {
+                var cv = $("pkCanvas");
+                if (!cv) return;
+                var w = cv.parentNode.clientWidth - 4;
+                if (w < 260) w = 260;
+                if (w > 620) w = 620;
+                var h = Math.min(480, Math.round(w * 0.92));
+                var dpr = Math.min(window.devicePixelRatio || 1, 2);
+                cv.width = w * dpr;
+                cv.height = h * dpr;
+                cv.style.width = w + "px";
+                cv.style.height = h + "px";
+                var ctx = cv.getContext("2d");
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                var pad = 26,
+                    topY = 26,
+                    bottomPegY = h - 58,
+                    bucketY = h - 30;
+                var gx = (w - 2 * pad) / (ROWS + 1); // horizontal peg/bucket spacing (13 gaps)
+                var ry = (bottomPegY - topY) / (ROWS - 1);
+                var balls = (PK && PK.balls) || [];
+                PK = {
+                    cv: cv,
+                    ctx: ctx,
+                    w: w,
+                    h: h,
+                    cx: w / 2,
+                    gx: gx,
+                    ry: ry,
+                    topY: topY,
+                    bottomPegY: bottomPegY,
+                    bucketY: bucketY,
+                    table: PLINKO[GAME._risk || "med"],
+                    balls: balls,
+                    flash: {},
+                    pegHits: {},
+                    raf: PK && PK.raf,
+                    last: 0,
+                    lastActivity: 0,
+                };
+                PK.pegList = pkBuildPegs(PK); // cache the peg array once (was recomputed every frame)
+                if (!PK.raf) pkDraw();
+                else {
+                }
+                pkDraw();
+            }
+            function pkBuildPegs(P) {
+                var a = [];
+                for (var r = 0; r < ROWS; r++) {
+                    var n = r + 3;
+                    for (var j = 0; j < n; j++) {
+                        a.push({
+                            x: P.cx + (j - (n - 1) / 2) * P.gx,
+                            y: P.topY + r * P.ry,
+                        });
+                    }
+                }
+                return a;
+            }
+            function pkPegs(P) {
+                return P.pegList || (P.pegList = pkBuildPegs(P));
+            }
+            function pkDraw() {
+                var P = PK;
+                if (!P) return;
+                var ctx = P.ctx,
+                    now = performance.now();
+                ctx.clearRect(0, 0, P.w, P.h);
+                // pegs — glow when recently hit by a ball
+                var pr = Math.max(2.5, P.gx * 0.135);
+                pkPegs(P).forEach(function (p) {
+                    // glow lookup: match the EXACT peg (row + x). A hit key is row+'_'+round(x*10).
+                    var row = Math.round((p.y - P.topY) / P.ry);
+                    var key = row + "_" + Math.round(p.x * 10);
+                    var glow = 0;
+                    if (P.pegHits[key] != null) {
+                        var age = now - P.pegHits[key];
+                        if (age < 350) glow = 1 - age / 350;
+                    }
+                    if (glow > 0) {
+                        ctx.shadowColor =
+                            "rgba(255,200,120," + 0.85 * glow + ")";
+                        ctx.shadowBlur = 12 * glow;
+                    }
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, pr * (1 + glow * 0.45), 0, 6.28);
+                    ctx.fillStyle =
+                        glow > 0
+                            ? "rgba(255,215,145," + (0.7 + 0.3 * glow) + ")"
+                            : "rgba(180,190,205,.6)";
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+                // buckets
+                var bw = P.gx * 0.88,
+                    bh = 20;
+                for (var i = 0; i < P.table.length; i++) {
+                    var m = P.table[i];
+                    var bx = P.cx + (i - 6) * P.gx;
+                    var col = pkColor(m);
+                    var fl =
+                        P.flash[i] && now - P.flash[i] < 450
+                            ? 1 - (now - P.flash[i]) / 450
+                            : 0;
+                    ctx.save();
+                    ctx.translate(bx, P.bucketY + (fl ? fl * 3 : 0));
+                    var s = 1 + fl * 0.18;
+                    ctx.scale(s, s);
+                    ctx.fillStyle = col;
+                    ctx.globalAlpha = m < 1 ? 0.65 : 1;
+                    roundRect(ctx, -bw / 2, -bh / 2, bw, bh, 4);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = m < 1 ? "#1a1a1a" : "#221500";
+                    ctx.font =
+                        "700 " +
+                        Math.max(8, Math.min(11, P.gx * 0.34)) +
+                        "px Inter,sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText((m >= 10 ? Math.round(m) : m) + "×", 0, 0);
+                    ctx.restore();
+                }
+                // balls — with a fading motion trail
+                var br = Math.max(5, Math.min(9, P.gx * 0.26));
+                P.balls.forEach(function (b) {
+                    if (b.trail && b.trail.length > 1) {
+                        for (var t = 0; t < b.trail.length; t++) {
+                            var tp = b.trail[t],
+                                a = (t / b.trail.length) * 0.4;
+                            ctx.beginPath();
+                            ctx.arc(
+                                tp.x,
+                                tp.y,
+                                br * (0.4 + (0.6 * t) / b.trail.length),
+                                0,
+                                6.28,
+                            );
+                            ctx.fillStyle = "rgba(255,120,80," + a + ")";
+                            ctx.fill();
+                        }
+                    }
+                    var g = ctx.createRadialGradient(
+                        b.x - br * 0.3,
+                        b.y - br * 0.3,
+                        1,
+                        b.x,
+                        b.y,
+                        br,
+                    );
+                    g.addColorStop(0, "#fff");
+                    g.addColorStop(1, "#ff5a3c");
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, br, 0, 6.28);
+                    ctx.fillStyle = g;
+                    ctx.shadowColor = "rgba(255,90,60,.7)";
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+            }
+            function roundRect(c, x, y, w, h, r) {
+                c.beginPath();
+                c.moveTo(x + r, y);
+                c.arcTo(x + w, y, x + w, y + h, r);
+                c.arcTo(x + w, y + h, x, y + h, r);
+                c.arcTo(x, y + h, x, y, r);
+                c.arcTo(x, y, x + w, y, r);
+                c.closePath();
+            }
+            // Physics tick: time-based fall. The ball's vertical progress is driven by an accumulator
+            // that ALWAYS increases (gravity-accelerated), so it can NEVER stall. At each peg row it
+            // deflects left/right per the server path. x eases toward the target peg. Simple, robust,
+            // deterministic — no velocity-integration edge cases.
+            function pkTick(now) {
+                var P = PK;
+                if (!P) return;
+                if (!P.cv || !document.body.contains(P.cv)) {
+                    P.raf = 0;
+                    if (pkPumpT) {
+                        clearInterval(pkPumpT);
+                        pkPumpT = null;
+                    }
+                    return;
+                } // left plinko
+                if (!P.last) P.last = now;
+                var dt = Math.min(0.05, (now - P.last) / 1000);
+                P.last = now;
+                var minX = P.cx - P.gx * 6.5,
+                    maxX = P.cx + P.gx * 6.5;
+                for (var i = P.balls.length - 1; i >= 0; i--) {
+                    var b = P.balls[i];
+                    // advance the fall timer — ALWAYS increases (the ball never stops moving down)
+                    b.fall += dt;
+                    // y = start + ½·g·t² (accelerating fall). Pegs are at topY + row*ry.
+                    var g = 520; // px/s² gravity (constant, board-independent so it always feels right)
+                    b.y = b.startY + 0.5 * g * b.fall * b.fall;
+                    // check peg rows we've passed
+                    while (
+                        b.hitIdx < b.hits.length &&
+                        b.y >= b.hits[b.hitIdx].y
+                    ) {
+                        var h = b.hits[b.hitIdx];
+                        b.targetX =
+                            b.hitIdx + 1 < b.hits.length
+                                ? b.hits[b.hitIdx + 1].x
+                                : b.landX;
+                        // small visual pop: nudge the ball slightly above the peg row so it reads as a bounce.
+                        // Capped so it can never push the ball back above the PREVIOUS peg (no stall).
+                        var prevY =
+                            b.hitIdx > 0 ? b.hits[b.hitIdx - 1].y : b.startY;
+                        b.y = Math.max(h.y - P.ry * 0.15, prevY + P.ry * 0.1);
+                        P.pegHits[h.row + "_" + Math.round(h.x * 10)] = now;
+                        b.hitIdx++;
+                        if (window.SG) SG.sfx("tick");
+                    }
+                    // ease x toward the current target peg (clean lateral motion, no drift)
+                    b.x += (b.targetX - b.x) * Math.min(1, 14 * dt);
+                    // hard clamp to board bounds
+                    if (b.x < minX) {
+                        b.x = minX;
+                    }
+                    if (b.x > maxX) {
+                        b.x = maxX;
+                    }
+                    b.trail.push({ x: b.x, y: b.y });
+                    if (b.trail.length > 9) b.trail.shift();
+                    if (b.y >= P.bucketY - 6) {
+                        b.x = b.landX;
+                        pkLand(b);
+                        P.balls.splice(i, 1);
+                    }
+                }
+                pkDraw();
+                var anyFlash = false,
+                    t2 = performance.now();
+                for (var k in P.flash) {
+                    if (t2 - P.flash[k] < 500) anyFlash = true;
+                }
+                var anyHit = false;
+                for (var k in P.pegHits) {
+                    if (t2 - P.pegHits[k] < 350) anyHit = true;
+                    else delete P.pegHits[k];
+                }
+                if (P.balls.length || anyFlash || anyHit) {
+                    P.raf = requestAnimationFrame(pkTick);
+                } else {
+                    P.raf = 0;
+                    P.last = 0;
+                }
+            }
+            function pkLand(b) {
+                var P = PK;
+                P.flash[b.slot] = performance.now();
+                sfx(b.mult >= 1 ? "win" : "pop");
+                msg(
+                    (b.payout > 0 ? "+" : "") +
+                        fmt(b.payout) +
+                        " FC · " +
+                        b.mult +
+                        "×",
+                    b.mult >= 1 ? "good" : "bad",
+                );
+            }
+            function pkRisk(r, b) {
+                GAME._risk = r;
+                document
+                    .querySelectorAll("#hgControls .seg-b")
+                    .forEach(function (x) {
+                        x.classList.remove("on");
+                    });
+                b.classList.add("on");
+                if (PK) {
+                    PK.table = PLINKO[r];
+                    pkDraw();
+                }
+            }
+            function pkActive() {
+                return PK ? PK.balls.length + pkInFlight : 0;
+            }
+            var pkInFlight = 0,
+                pkPending = 0,
+                pkPumpT = null;
+            function pkDrop() {
+                if (!PK) {
+                    pkInit();
+                }
+                if (pkActive() + pkPending >= MAXBALLS) {
+                    msg("Max " + MAXBALLS + " balls at once", "bad");
+                    return;
+                }
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                pkPending++;
+                updateCount();
+                if (!pkPumpT) pkPumpT = setInterval(pkPump, 170);
+                pkPump();
+            }
+            function pkPump() {
+                if (pkPending <= 0) {
+                    if (pkPumpT) {
+                        clearInterval(pkPumpT);
+                        pkPumpT = null;
+                    }
+                    return;
+                }
+                if (PK.balls.length + pkInFlight >= MAXBALLS) return; // wait for a ball to land
+                pkPending--;
+                pkInFlight++;
+                updateCount();
+                post("plinko", { bet: bet(), risk: GAME._risk })
+                    .then(function (d) {
+                        pkInFlight--;
+                        updateCount();
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        pkSpawn(d);
+                    })
+                    .catch(function () {
+                        pkInFlight--;
+                        updateCount();
+                    });
+            }
+            function updateCount() {
+                var e = $("pkCount");
+                if (e)
+                    e.textContent =
+                        (PK ? PK.balls.length : 0) +
+                        pkInFlight +
+                        " / " +
+                        MAXBALLS +
+                        " balls";
+            }
+            function pkSpawn(d) {
+                var P = PK;
+                if (!P) {
+                    pkInit();
+                    P = PK;
+                }
+                // Build the peg-hit sequence from the server's path. The ball hits one peg per row;
+                // each hit deflects it left/right per path[r]. Peg x in a triangular field moves ±0.5gx
+                // per deflection, so we track netRight (= rights − lefts) and place the peg at
+                // cx + netRight*gx/2. After 12 rows the ball sits at cx + (d.slot*2-12)*gx/2... but the
+                // bucket index d.slot maps to bucket x = cx + (d.slot-6)*gx, which equals the netRight
+                // position only if netRight = 2*(d.slot-6). Track rights directly to match the server.
+                var hits = [],
+                    rights = 0;
+                for (var r = 0; r < ROWS; r++) {
+                    var netR = rights - (r - rights); // rights - lefts so far
+                    var hx = P.cx + (netR * P.gx) / 2; // triangular-field peg x
+                    var hy = P.topY + r * P.ry;
+                    hits.push({ x: hx, y: hy, row: r });
+                    if (d.path[r]) rights++;
+                }
+                // landing bucket x — matches the server's slot directly
+                var landX = P.cx + (d.slot - 6) * P.gx;
+                var startY = P.topY - P.ry * 0.6;
+                P.balls.push({
+                    x: P.cx,
+                    y: startY, // start just above the first peg
+                    startY: startY,
+                    fall: 0, // time-based fall accumulator (always increases)
+                    targetX: hits.length ? hits[0].x : landX, // x eases toward this
+                    hits: hits,
+                    hitIdx: 0,
+                    slot: d.slot,
+                    mult: d.mult,
+                    payout: d.payout,
+                    landX: landX,
+                    trail: [],
+                });
+                if (window.SG) SG.sfx("coin");
+                updateCount();
+                if (!P.raf) P.raf = requestAnimationFrame(pkTick);
+            }
 
-// ── Mines ───────────────────────────────────────────────────────────────
-RENDER.mines=function(){
-  GAME._mines=3; GAME._active=false; GAME._mult=1;
-  var grid='<div class="mn-grid" id="mnGrid">';
-  for(var i=0;i<25;i++) grid+='<button class="mn-tile" id="mn-'+i+'" onclick="mnReveal('+i+')"></button>';
-  grid+='</div>';
-  $('hgBoard').innerHTML=grid;
-  $('hgControls').innerHTML=
-    '<div class="seg" id="mnCount"><button class="seg-b" onclick="mnSet(1,this)">1</button><button class="seg-b on" onclick="mnSet(3,this)">3</button><button class="seg-b" onclick="mnSet(5,this)">5</button><button class="seg-b" onclick="mnSet(10,this)">10</button></div>'+
-    '<button class="play-btn" id="mnStart" onclick="mnStart()">Start</button>'+
-    '<button class="play-btn cash hidden" id="mnCash" onclick="mnCash()">Cash out</button>';
-};
-function mnSet(n,b){ if(GAME._active)return; GAME._mines=n; document.querySelectorAll('#mnCount .seg-b').forEach(function(x){x.classList.remove('on');}); b.classList.add('on'); }
-function mnStart(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true;
-  post('mines/start',{bet:bet(),mines:GAME._mines}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    bal=d.balance; setBal(); GAME._active=true; GAME._mult=1;
-    for(var i=0;i<25;i++){var t=$('mn-'+i);t.className='mn-tile';t.disabled=false;t.textContent='';}
-    $('mnStart').classList.add('hidden'); $('mnCash').classList.remove('hidden'); $('mnCash').textContent='Cash out';
-    msg(GAME._mines+' bombs hidden — pick a tile');
-  }).catch(function(){busy=false;});
-}
-function mnReset(){ GAME._active=false; busy=false; for(var k=0;k<25;k++){var e=$('mn-'+k);if(e)e.disabled=true;} var s=$('mnStart'),c=$('mnCash'); if(s)s.classList.remove('hidden'); if(c)c.classList.add('hidden'); }
-function mnReveal(i){
-  if(!GAME._active||busy)return; var t=$('mn-'+i); if(t.classList.contains('safe'))return; busy=true;
-  post('mines/reveal',{idx:i}).then(function(d){
-    busy=false; if(d.error){ msg(d.error,'bad'); if(/active|found/i.test(d.error)) mnReset(); return; }
-    if(d.hit){
-      GAME._active=false; sfx('lose');
-      d.bombs.forEach(function(b){var e=$('mn-'+b);e.classList.add('bomb');e.textContent='💣';});
-      $('mn-'+d.idx).classList.add('boom');
-      for(var k=0;k<25;k++)$('mn-'+k).disabled=true;
-      $('mnCash').classList.add('hidden'); $('mnStart').classList.remove('hidden');
-      msg('Boom! Lost '+fmt(bet())+' FC','bad');
-    } else {
-      t.classList.add('safe'); t.textContent='💎'; sfx('pop'); GAME._mult=d.mult;
-      $('mnCash').textContent='Cash out '+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)';
-      if(d.safeLeft<=0){ mnCash(); }
-    }
-  }).catch(function(){busy=false;});
-}
-function mnCash(){
-  if(busy)return; busy=true;
-  post('mines/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    GAME._active=false;
-    bal=d.balance; setBal();
-    if(d.cancelled){ sfx('pop'); for(var k=0;k<25;k++)$('mn-'+k).disabled=true; $('mnCash').classList.add('hidden'); $('mnStart').classList.remove('hidden'); msg('Cashed out early — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
-    sfx('win');
-    d.bombs.forEach(function(b){var e=$('mn-'+b);if(!e.classList.contains('safe')){e.classList.add('bomb');e.textContent='💣';}});
-    for(var k=0;k<25;k++)$('mn-'+k).disabled=true;
-    $('mnCash').classList.add('hidden'); $('mnStart').classList.remove('hidden');
-    msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
-  }).catch(function(){busy=false;});
-}
+            // ── Mines ───────────────────────────────────────────────────────────────
+            RENDER.mines = function () {
+                GAME._mines = 3;
+                GAME._active = false;
+                GAME._mult = 1;
+                var grid = '<div class="mn-grid" id="mnGrid">';
+                for (var i = 0; i < 25; i++)
+                    grid +=
+                        '<button class="mn-tile" id="mn-' +
+                        i +
+                        '" onclick="mnReveal(' +
+                        i +
+                        ')"></button>';
+                grid += "</div>";
+                $("hgBoard").innerHTML = grid;
+                $("hgControls").innerHTML =
+                    '<div class="seg" id="mnCount"><button class="seg-b" onclick="mnSet(1,this)">1</button><button class="seg-b on" onclick="mnSet(3,this)">3</button><button class="seg-b" onclick="mnSet(5,this)">5</button><button class="seg-b" onclick="mnSet(10,this)">10</button></div>' +
+                    '<button class="play-btn" id="mnStart" onclick="mnStart()">Start</button>' +
+                    '<button class="play-btn cash hidden" id="mnCash" onclick="mnCash()">Cash out</button>';
+            };
+            function mnSet(n, b) {
+                if (GAME._active) return;
+                GAME._mines = n;
+                document
+                    .querySelectorAll("#mnCount .seg-b")
+                    .forEach(function (x) {
+                        x.classList.remove("on");
+                    });
+                b.classList.add("on");
+            }
+            function mnStart() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                post("mines/start", { bet: bet(), mines: GAME._mines })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        GAME._active = true;
+                        GAME._mult = 1;
+                        for (var i = 0; i < 25; i++) {
+                            var t = $("mn-" + i);
+                            t.className = "mn-tile";
+                            t.disabled = false;
+                            t.textContent = "";
+                        }
+                        $("mnStart").classList.add("hidden");
+                        $("mnCash").classList.remove("hidden");
+                        $("mnCash").textContent = "Cash out";
+                        msg(GAME._mines + " bombs hidden — pick a tile");
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function mnReset() {
+                GAME._active = false;
+                busy = false;
+                for (var k = 0; k < 25; k++) {
+                    var e = $("mn-" + k);
+                    if (e) e.disabled = true;
+                }
+                var s = $("mnStart"),
+                    c = $("mnCash");
+                if (s) s.classList.remove("hidden");
+                if (c) c.classList.add("hidden");
+            }
+            function mnReveal(i) {
+                if (!GAME._active || busy) return;
+                var t = $("mn-" + i);
+                if (t.classList.contains("safe")) return;
+                busy = true;
+                post("mines/reveal", { idx: i })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            if (/active|found/i.test(d.error)) mnReset();
+                            return;
+                        }
+                        if (d.hit) {
+                            GAME._active = false;
+                            sfx("lose");
+                            d.bombs.forEach(function (b) {
+                                var e = $("mn-" + b);
+                                e.classList.add("bomb");
+                                e.textContent = "💣";
+                            });
+                            $("mn-" + d.idx).classList.add("boom");
+                            for (var k = 0; k < 25; k++)
+                                $("mn-" + k).disabled = true;
+                            $("mnCash").classList.add("hidden");
+                            $("mnStart").classList.remove("hidden");
+                            msg("Boom! Lost " + fmt(bet()) + " FC", "bad");
+                        } else {
+                            t.classList.add("safe");
+                            t.textContent = "💎";
+                            sfx("pop");
+                            GAME._mult = d.mult;
+                            $("mnCash").textContent =
+                                "Cash out " +
+                                fmt(d.payout) +
+                                " FC (" +
+                                d.mult.toFixed(2) +
+                                "×)";
+                            if (d.safeLeft <= 0) {
+                                mnCash();
+                            }
+                        }
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function mnCash() {
+                if (busy) return;
+                busy = true;
+                post("mines/cashout", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        GAME._active = false;
+                        bal = d.balance;
+                        setBal();
+                        if (d.cancelled) {
+                            sfx("pop");
+                            for (var k = 0; k < 25; k++)
+                                $("mn-" + k).disabled = true;
+                            $("mnCash").classList.add("hidden");
+                            $("mnStart").classList.remove("hidden");
+                            msg(
+                                "Cashed out early — bet refunded (" +
+                                    fmt(d.refund) +
+                                    " FC)",
+                                "good",
+                            );
+                            return;
+                        }
+                        sfx("win");
+                        d.bombs.forEach(function (b) {
+                            var e = $("mn-" + b);
+                            if (!e.classList.contains("safe")) {
+                                e.classList.add("bomb");
+                                e.textContent = "💣";
+                            }
+                        });
+                        for (var k = 0; k < 25; k++)
+                            $("mn-" + k).disabled = true;
+                        $("mnCash").classList.add("hidden");
+                        $("mnStart").classList.remove("hidden");
+                        msg(
+                            "Cashed +" +
+                                fmt(d.payout) +
+                                " FC (" +
+                                d.mult.toFixed(2) +
+                                "×)",
+                            "good",
+                        );
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
 
-// ── HiLo ────────────────────────────────────────────────────────────────
-var RANKS=['','A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-RENDER.hilo=function(){
-  GAME._active=false;
-  $('hgBoard').innerHTML='<div class="hl-card" id="hlCard">?</div><div class="hl-mult" id="hlMult"></div>';
-  $('hgControls').innerHTML=
-    '<button class="play-btn" id="hlStart" onclick="hlStart()">Deal</button>'+
-    '<div id="hlGuess" class="hidden"><button class="play-btn" id="hlHi" onclick="hlGuess(\'higher\')">▲ Higher+</button>'+
-    '<button class="play-btn" id="hlLo" onclick="hlGuess(\'lower\')">▼ Lower+</button>'+
-    '<button class="play-btn cash" id="hlCash" onclick="hlCash()">Cash out</button></div>';
-};
-function showCard(r){ $('hlCard').textContent=RANKS[r]; $('hlCard').className='hl-card flip'; setTimeout(function(){$('hlCard').className='hl-card';},250); }
-function hlBtns(d){ $('hlHi').textContent='▲ Higher+ '+d.higherMult+'×'; $('hlLo').textContent='▼ Lower+ '+d.lowerMult+'×'; }
-function hlStart(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true;
-  post('hilo/start',{bet:bet()}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    bal=d.balance; setBal(); GAME._active=true; showCard(d.card); hlBtns(d);
-    $('hlStart').classList.add('hidden'); $('hlGuess').classList.remove('hidden'); $('hlMult').textContent='1.00×';
-    $('hlCash').textContent='Cash out'; msg('Higher or lower?');
-  }).catch(function(){busy=false;});
-}
-function hlReset(){ GAME._active=false; busy=false; var g=$('hlGuess'),s=$('hlStart'),m=$('hlMult'); if(g)g.classList.add('hidden'); if(s)s.classList.remove('hidden'); if(m)m.textContent=''; }
-function hlGuess(dir){
-  if(!GAME._active||busy)return; busy=true;
-  post('hilo/guess',{dir:dir}).then(function(d){
-    busy=false; if(d.error){ msg(d.error,'bad'); if(/active|found/i.test(d.error)) hlReset(); return; }
-    showCard(d.next);
-    if(!d.win){ GAME._active=false; sfx('lose'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent=''; msg('Busted! ('+RANKS[d.prev]+' → '+RANKS[d.next]+')','bad'); return; }
-    sfx('pop'); hlBtns(d); $('hlMult').textContent=d.mult.toFixed(2)+'×'; $('hlCash').textContent='Cash out '+fmt(d.payout)+' FC'; msg('Streak! '+d.mult.toFixed(2)+'×','good');
-  }).catch(function(){busy=false;});
-}
-function hlCash(){
-  if(busy)return; busy=true;
-  post('hilo/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    GAME._active=false;
-    bal=d.balance; setBal();
-    if(d.cancelled){ sfx('pop'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent=''; msg('Cashed out early — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
-    sfx('win'); $('hlGuess').classList.add('hidden'); $('hlStart').classList.remove('hidden'); $('hlMult').textContent='';
-    msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
-  }).catch(function(){busy=false;});
-}
-// ── Chicken Road ──────────────────────────────────────────────────────────
-RENDER.chicken=function(){
-  GAME._active=false; GAME._step=0; GAME._mult=1;
-  $('hgBoard').innerHTML='<div class="cr-view" id="crView"><div class="cr-track" id="crTrack"><div class="cr-empty">Hit Start, then Cross lane by lane.<br>Every lane has a 10–50% chance of a car — shown before you step. Cleared lanes lock safe; cash out any time.</div></div><div class="cr-fade l"></div><div class="cr-fade r"></div><div class="cr-hud" id="crHud" hidden><b id="crHudMult">1.00×</b><small id="crHudCash">Cash out</small></div></div>';
-  $('hgControls').innerHTML=
-    '<button class="play-btn" id="crStart" onclick="crStart()">Start</button>'+
-    '<button class="play-btn cr-cross hidden" id="crCross" onclick="crStep()">Cross</button>'+
-    '<button class="play-btn cash hidden" id="crCash" onclick="crCash()">Cash out</button>';
-};
-function crResetUI(){ var s=$('crStart'),cr=$('crCross'),ca=$('crCash'),hud=$('crHud'); if(cr)cr.classList.add('hidden'); if(ca)ca.classList.add('hidden'); if(s)s.classList.remove('hidden'); if(hud)hud.hidden=true; }
-function crReset(){ GAME._active=false; busy=false; crResetUI(); }
-function crBuildRoad(lanes,mults){
-  var h='<div class="cr-lane curb done"><div class="cr-zone"><div class="cr-chk" id="crChk">🐔</div></div><div class="cr-foot">START</div></div>';
-  for(var i=1;i<=lanes;i++){ h+='<div class="cr-lane" id="cr-l'+i+'"><div class="cr-mult">'+Number(mults[i-1]).toFixed(2)+'×</div><div class="cr-zone"><div class="cr-line"></div></div><div class="cr-foot">'+i+'</div></div>'; }
-  h+='<div class="cr-lane finish"><div class="cr-mult">🏁</div><div class="cr-zone"><div class="cr-flag">🏁</div></div><div class="cr-foot">WIN</div></div>';
-  $('crTrack').innerHTML=h; $('crTrack').style.transform='translateX(0)'; crMarkNext(1); crScroll(0);
-}
-function crMarkNext(i){
-  document.querySelectorAll('#crTrack .cr-lane.next').forEach(function(x){ x.classList.remove('next'); var r=x.querySelector('.cr-risk'); if(r)r.remove(); });
-  var l=$('cr-l'+i); if(!l)return; l.classList.add('next');
-  var d=(GAME._deaths&&GAME._deaths[i-1]!=null)?GAME._deaths[i-1]:null;
-  if(d!=null){ var z=l.querySelector('.cr-zone'); var b=document.createElement('div'); b.className='cr-risk'; b.textContent='🚗 '+d+'%'; z.appendChild(b); }
-}
-function crScroll(i){ var t=$('crTrack'); if(!t||!t.children.length)return; var lane=$('cr-l'+i)||t.children[0]; var anchor=t.children[0].offsetWidth||92; var x=Math.max(0,(lane?lane.offsetLeft:0)-anchor); t.style.transform='translateX(-'+x+'px)'; }
-function crUpdHud(mult,payout){ var m=$('crHudMult'),c=$('crHudCash'); if(m)m.textContent=Number(mult).toFixed(2)+'×'; if(c)c.textContent=payout?('Cash '+fmt(payout)+' FC'):'Cash out'; }
-function crSetCross(nextMult,laneNo,death){ var b=$('crCross'); if(b) b.textContent='Cross → '+(nextMult?Number(nextMult).toFixed(2)+'× ':'')+(death!=null?'· '+death+'% 🚗':''); }
-function crStart(){
-  if(busy)return; if(bet()>bal){msg('Not enough balance','bad');return;}
-  busy=true;
-  post('chicken/start',{bet:bet()}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    bal=d.balance; setBal(); GAME._active=true; GAME._step=0; GAME._mult=1; GAME._lanes=d.lanes; GAME._mults=d.mults; GAME._deaths=d.deaths;
-    crBuildRoad(d.lanes,d.mults);
-    $('crStart').classList.add('hidden'); $('crCross').classList.remove('hidden'); $('crCash').classList.add('hidden');
-    var hud=$('crHud'); if(hud)hud.hidden=false; crUpdHud(1,0);
-    crSetCross(d.nextMult,1,d.nextDeath);
-    msg('Lane 1 ahead — '+d.nextDeath+'% chance of a car. Cross, or chicken out.');
-  }).catch(function(){busy=false;});
-}
-function crStep(){
-  if(!GAME._active||busy)return; busy=true;
-  var target=GAME._step+1;
-  post('chicken/step',{}).then(function(d){
-    busy=false; if(d.error){ msg(d.error,'bad'); if(/active/i.test(d.error)) crReset(); return; }
-    if(d.dead){
-      GAME._active=false; sfx('lose');
-      var dl=$('cr-l'+target); if(dl){ dl.classList.remove('next'); var rr=dl.querySelector('.cr-risk'); if(rr)rr.remove(); dl.classList.add('dead'); var z=dl.querySelector('.cr-zone'); var car=document.createElement('div'); car.className='cr-car'; car.textContent=['🚗','🚙','🚕','🚌'][Math.floor(Math.random()*4)]; z.appendChild(car); var chk=$('crChk'); if(chk){ z.appendChild(chk); chk.textContent='💥'; } }
-      crScroll(target); crResetUI();
-      msg('Splat! A car got you on lane '+target+'. Lost '+fmt(bet())+' FC','bad'); return;
-    }
-    GAME._step=d.step; GAME._mult=d.mult;
-    var lane=$('cr-l'+d.step);
-    if(lane){ lane.classList.remove('next'); var r=lane.querySelector('.cr-risk'); if(r)r.remove(); lane.classList.add('done'); var zz=lane.querySelector('.cr-zone'); var chk=$('crChk'); if(chk&&zz){ zz.appendChild(chk); chk.classList.remove('cr-hop'); void chk.offsetWidth; chk.classList.add('cr-hop'); } var rb=document.createElement('div'); rb.className='cr-block'; rb.textContent='🚧'; if(zz)zz.appendChild(rb); }
-    crScroll(d.step); crUpdHud(d.mult,d.payout);
-    if(d.done){
-      GAME._active=false; bal=d.balance; setBal(); sfx('win'); crResetUI();
-      msg('Made it all the way across! +'+fmt(d.payout)+' FC ('+Number(d.mult).toFixed(2)+'×)','good'); return;
-    }
-    sfx('pop'); crMarkNext(d.step+1);
-    $('crCash').classList.remove('hidden'); $('crCash').textContent='Cash out '+fmt(d.payout)+' FC';
-    crSetCross(d.nextMult,d.step+1,d.nextDeath);
-    msg('Lane '+d.step+' cleared · '+Number(d.mult).toFixed(2)+'× banked','good');
-  }).catch(function(){busy=false;});
-}
-function crCash(){
-  if(busy)return; busy=true;
-  post('chicken/cashout',{}).then(function(d){
-    busy=false; if(d.error){msg(d.error,'bad');return;}
-    GAME._active=false; bal=d.balance; setBal();
-    if(d.cancelled){ crResetUI(); sfx('pop'); msg('Chickened out — bet refunded ('+fmt(d.refund)+' FC)','good'); return; }
-    sfx('win');
-    var lane=$('cr-l'+d.step); if(lane){ lane.classList.remove('next'); lane.classList.add('cashed'); }
-    crResetUI();
-    msg('Cashed +'+fmt(d.payout)+' FC ('+d.mult.toFixed(2)+'×)','good');
-  }).catch(function(){busy=false;});
-}
-window.sgPaintTax && window.sgPaintTax(); // show the active server's tax cut
-</script>
-</body>
+            // ── HiLo ────────────────────────────────────────────────────────────────
+            var RANKS = [
+                "",
+                "A",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "J",
+                "Q",
+                "K",
+            ];
+            RENDER.hilo = function () {
+                GAME._active = false;
+                $("hgBoard").innerHTML =
+                    '<div class="hl-card" id="hlCard">?</div><div class="hl-mult" id="hlMult"></div>';
+                $("hgControls").innerHTML =
+                    '<button class="play-btn" id="hlStart" onclick="hlStart()">Deal</button>' +
+                    '<div id="hlGuess" class="hidden"><button class="play-btn" id="hlHi" onclick="hlGuess(\'higher\')">▲ Higher+</button>' +
+                    '<button class="play-btn" id="hlLo" onclick="hlGuess(\'lower\')">▼ Lower+</button>' +
+                    '<button class="play-btn cash" id="hlCash" onclick="hlCash()">Cash out</button></div>';
+            };
+            function showCard(r) {
+                $("hlCard").textContent = RANKS[r];
+                $("hlCard").className = "hl-card flip";
+                setTimeout(function () {
+                    $("hlCard").className = "hl-card";
+                }, 250);
+            }
+            function hlBtns(d) {
+                $("hlHi").textContent = "▲ Higher+ " + d.higherMult + "×";
+                $("hlLo").textContent = "▼ Lower+ " + d.lowerMult + "×";
+            }
+            function hlStart() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                post("hilo/start", { bet: bet() })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        GAME._active = true;
+                        showCard(d.card);
+                        hlBtns(d);
+                        $("hlStart").classList.add("hidden");
+                        $("hlGuess").classList.remove("hidden");
+                        $("hlMult").textContent = "1.00×";
+                        $("hlCash").textContent = "Cash out";
+                        msg("Higher or lower?");
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function hlReset() {
+                GAME._active = false;
+                busy = false;
+                var g = $("hlGuess"),
+                    s = $("hlStart"),
+                    m = $("hlMult");
+                if (g) g.classList.add("hidden");
+                if (s) s.classList.remove("hidden");
+                if (m) m.textContent = "";
+            }
+            function hlGuess(dir) {
+                if (!GAME._active || busy) return;
+                busy = true;
+                post("hilo/guess", { dir: dir })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            if (/active|found/i.test(d.error)) hlReset();
+                            return;
+                        }
+                        showCard(d.next);
+                        if (!d.win) {
+                            GAME._active = false;
+                            sfx("lose");
+                            $("hlGuess").classList.add("hidden");
+                            $("hlStart").classList.remove("hidden");
+                            $("hlMult").textContent = "";
+                            msg(
+                                "Busted! (" +
+                                    RANKS[d.prev] +
+                                    " → " +
+                                    RANKS[d.next] +
+                                    ")",
+                                "bad",
+                            );
+                            return;
+                        }
+                        sfx("pop");
+                        hlBtns(d);
+                        $("hlMult").textContent = d.mult.toFixed(2) + "×";
+                        $("hlCash").textContent =
+                            "Cash out " + fmt(d.payout) + " FC";
+                        msg("Streak! " + d.mult.toFixed(2) + "×", "good");
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function hlCash() {
+                if (busy) return;
+                busy = true;
+                post("hilo/cashout", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        GAME._active = false;
+                        bal = d.balance;
+                        setBal();
+                        if (d.cancelled) {
+                            sfx("pop");
+                            $("hlGuess").classList.add("hidden");
+                            $("hlStart").classList.remove("hidden");
+                            $("hlMult").textContent = "";
+                            msg(
+                                "Cashed out early — bet refunded (" +
+                                    fmt(d.refund) +
+                                    " FC)",
+                                "good",
+                            );
+                            return;
+                        }
+                        sfx("win");
+                        $("hlGuess").classList.add("hidden");
+                        $("hlStart").classList.remove("hidden");
+                        $("hlMult").textContent = "";
+                        msg(
+                            "Cashed +" +
+                                fmt(d.payout) +
+                                " FC (" +
+                                d.mult.toFixed(2) +
+                                "×)",
+                            "good",
+                        );
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            // ── Chicken Road ──────────────────────────────────────────────────────────
+            RENDER.chicken = function () {
+                GAME._active = false;
+                GAME._step = 0;
+                GAME._mult = 1;
+                $("hgBoard").innerHTML =
+                    '<div class="cr-view" id="crView"><div class="cr-track" id="crTrack"><div class="cr-empty">Hit Start, then Cross lane by lane.<br>Every lane has a 10–50% chance of a car — shown before you step. Cleared lanes lock safe; cash out any time.</div></div><div class="cr-fade l"></div><div class="cr-fade r"></div><div class="cr-hud" id="crHud" hidden><b id="crHudMult">1.00×</b><small id="crHudCash">Cash out</small></div></div>';
+                $("hgControls").innerHTML =
+                    '<button class="play-btn" id="crStart" onclick="crStart()">Start</button>' +
+                    '<button class="play-btn cr-cross hidden" id="crCross" onclick="crStep()">Cross</button>' +
+                    '<button class="play-btn cash hidden" id="crCash" onclick="crCash()">Cash out</button>';
+            };
+            function crResetUI() {
+                var s = $("crStart"),
+                    cr = $("crCross"),
+                    ca = $("crCash"),
+                    hud = $("crHud");
+                if (cr) cr.classList.add("hidden");
+                if (ca) ca.classList.add("hidden");
+                if (s) s.classList.remove("hidden");
+                if (hud) hud.hidden = true;
+            }
+            function crReset() {
+                GAME._active = false;
+                busy = false;
+                crResetUI();
+            }
+            function crBuildRoad(lanes, mults) {
+                var h =
+                    '<div class="cr-lane curb done"><div class="cr-zone"><div class="cr-chk" id="crChk">🐔</div></div><div class="cr-foot">START</div></div>';
+                for (var i = 1; i <= lanes; i++) {
+                    h +=
+                        '<div class="cr-lane" id="cr-l' +
+                        i +
+                        '"><div class="cr-mult">' +
+                        Number(mults[i - 1]).toFixed(2) +
+                        '×</div><div class="cr-zone"><div class="cr-line"></div></div><div class="cr-foot">' +
+                        i +
+                        "</div></div>";
+                }
+                h +=
+                    '<div class="cr-lane finish"><div class="cr-mult">🏁</div><div class="cr-zone"><div class="cr-flag">🏁</div></div><div class="cr-foot">WIN</div></div>';
+                $("crTrack").innerHTML = h;
+                $("crTrack").style.transform = "translateX(0)";
+                crMarkNext(1);
+                crScroll(0);
+            }
+            function crMarkNext(i) {
+                document
+                    .querySelectorAll("#crTrack .cr-lane.next")
+                    .forEach(function (x) {
+                        x.classList.remove("next");
+                        var r = x.querySelector(".cr-risk");
+                        if (r) r.remove();
+                    });
+                var l = $("cr-l" + i);
+                if (!l) return;
+                l.classList.add("next");
+                var d =
+                    GAME._deaths && GAME._deaths[i - 1] != null
+                        ? GAME._deaths[i - 1]
+                        : null;
+                if (d != null) {
+                    var z = l.querySelector(".cr-zone");
+                    var b = document.createElement("div");
+                    b.className = "cr-risk";
+                    b.textContent = "🚗 " + d + "%";
+                    z.appendChild(b);
+                }
+            }
+            function crScroll(i) {
+                var t = $("crTrack");
+                if (!t || !t.children.length) return;
+                var lane = $("cr-l" + i) || t.children[0];
+                var anchor = t.children[0].offsetWidth || 92;
+                var x = Math.max(0, (lane ? lane.offsetLeft : 0) - anchor);
+                t.style.transform = "translateX(-" + x + "px)";
+            }
+            function crUpdHud(mult, payout) {
+                var m = $("crHudMult"),
+                    c = $("crHudCash");
+                if (m) m.textContent = Number(mult).toFixed(2) + "×";
+                if (c)
+                    c.textContent = payout
+                        ? "Cash " + fmt(payout) + " FC"
+                        : "Cash out";
+            }
+            function crSetCross(nextMult, laneNo, death) {
+                var b = $("crCross");
+                if (b)
+                    b.textContent =
+                        "Cross → " +
+                        (nextMult ? Number(nextMult).toFixed(2) + "× " : "") +
+                        (death != null ? "· " + death + "% 🚗" : "");
+            }
+            function crStart() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                post("chicken/start", { bet: bet() })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        GAME._active = true;
+                        GAME._step = 0;
+                        GAME._mult = 1;
+                        GAME._lanes = d.lanes;
+                        GAME._mults = d.mults;
+                        GAME._deaths = d.deaths;
+                        crBuildRoad(d.lanes, d.mults);
+                        $("crStart").classList.add("hidden");
+                        $("crCross").classList.remove("hidden");
+                        $("crCash").classList.add("hidden");
+                        var hud = $("crHud");
+                        if (hud) hud.hidden = false;
+                        crUpdHud(1, 0);
+                        crSetCross(d.nextMult, 1, d.nextDeath);
+                        msg(
+                            "Lane 1 ahead — " +
+                                d.nextDeath +
+                                "% chance of a car. Cross, or chicken out.",
+                        );
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function crStep() {
+                if (!GAME._active || busy) return;
+                busy = true;
+                var target = GAME._step + 1;
+                post("chicken/step", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            if (/active/i.test(d.error)) crReset();
+                            return;
+                        }
+                        if (d.dead) {
+                            GAME._active = false;
+                            sfx("lose");
+                            var dl = $("cr-l" + target);
+                            if (dl) {
+                                dl.classList.remove("next");
+                                var rr = dl.querySelector(".cr-risk");
+                                if (rr) rr.remove();
+                                dl.classList.add("dead");
+                                var z = dl.querySelector(".cr-zone");
+                                var car = document.createElement("div");
+                                car.className = "cr-car";
+                                car.textContent = ["🚗", "🚙", "🚕", "🚌"][
+                                    Math.floor(Math.random() * 4)
+                                ];
+                                z.appendChild(car);
+                                var chk = $("crChk");
+                                if (chk) {
+                                    z.appendChild(chk);
+                                    chk.textContent = "💥";
+                                }
+                            }
+                            crScroll(target);
+                            crResetUI();
+                            msg(
+                                "Splat! A car got you on lane " +
+                                    target +
+                                    ". Lost " +
+                                    fmt(bet()) +
+                                    " FC",
+                                "bad",
+                            );
+                            return;
+                        }
+                        GAME._step = d.step;
+                        GAME._mult = d.mult;
+                        var lane = $("cr-l" + d.step);
+                        if (lane) {
+                            lane.classList.remove("next");
+                            var r = lane.querySelector(".cr-risk");
+                            if (r) r.remove();
+                            lane.classList.add("done");
+                            var zz = lane.querySelector(".cr-zone");
+                            var chk = $("crChk");
+                            if (chk && zz) {
+                                zz.appendChild(chk);
+                                chk.classList.remove("cr-hop");
+                                void chk.offsetWidth;
+                                chk.classList.add("cr-hop");
+                            }
+                            var rb = document.createElement("div");
+                            rb.className = "cr-block";
+                            rb.textContent = "🚧";
+                            if (zz) zz.appendChild(rb);
+                        }
+                        crScroll(d.step);
+                        crUpdHud(d.mult, d.payout);
+                        if (d.done) {
+                            GAME._active = false;
+                            bal = d.balance;
+                            setBal();
+                            sfx("win");
+                            crResetUI();
+                            msg(
+                                "Made it all the way across! +" +
+                                    fmt(d.payout) +
+                                    " FC (" +
+                                    Number(d.mult).toFixed(2) +
+                                    "×)",
+                                "good",
+                            );
+                            return;
+                        }
+                        sfx("pop");
+                        crMarkNext(d.step + 1);
+                        $("crCash").classList.remove("hidden");
+                        $("crCash").textContent =
+                            "Cash out " + fmt(d.payout) + " FC";
+                        crSetCross(d.nextMult, d.step + 1, d.nextDeath);
+                        msg(
+                            "Lane " +
+                                d.step +
+                                " cleared · " +
+                                Number(d.mult).toFixed(2) +
+                                "× banked",
+                            "good",
+                        );
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            function crCash() {
+                if (busy) return;
+                busy = true;
+                post("chicken/cashout", {})
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        GAME._active = false;
+                        bal = d.balance;
+                        setBal();
+                        if (d.cancelled) {
+                            crResetUI();
+                            sfx("pop");
+                            msg(
+                                "Chickened out — bet refunded (" +
+                                    fmt(d.refund) +
+                                    " FC)",
+                                "good",
+                            );
+                            return;
+                        }
+                        sfx("win");
+                        var lane = $("cr-l" + d.step);
+                        if (lane) {
+                            lane.classList.remove("next");
+                            lane.classList.add("cashed");
+                        }
+                        crResetUI();
+                        msg(
+                            "Cashed +" +
+                                fmt(d.payout) +
+                                " FC (" +
+                                d.mult.toFixed(2) +
+                                "×)",
+                            "good",
+                        );
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            // ── Dice (over/under) ───────────────────────────────────────────────────
+            function dcOdds() {
+                var t = GAME._dt,
+                    m = GAME._dmode;
+                var prob = m === "under" ? t / 100 : (100 - t) / 100;
+                return {
+                    prob: prob,
+                    mult: +(0.97 / prob).toFixed(4),
+                    chance: +(prob * 100).toFixed(2),
+                };
+            }
+            function dcRenderTrack() {
+                var t = GAME._dt,
+                    m = GAME._dmode,
+                    win = $("dcWin"),
+                    knob = $("dcKnob");
+                if (m === "under") {
+                    win.classList.remove("over");
+                    win.style.left = "0";
+                    win.style.width = t + "%";
+                } else {
+                    win.classList.add("over");
+                    win.style.left = 100 - t + "%";
+                    win.style.width = t + "%";
+                }
+                if (knob) knob.style.left = t + "%";
+            }
+            function dcUpd() {
+                var o = dcOdds();
+                $("dcRead").innerHTML =
+                    "Roll " +
+                    GAME._dmode +
+                    " <b>" +
+                    GAME._dt +
+                    "</b> · <b>" +
+                    o.chance +
+                    "%</b> chance · <b>" +
+                    o.mult +
+                    "×</b> payout";
+                dcRenderTrack();
+            }
+            RENDER.dice = function () {
+                GAME._dmode = "under";
+                GAME._dt = 50;
+                $("hgBoard").innerHTML =
+                    '<div class="dc-wrap"><div class="dc-num" id="dcNum">—</div><div class="dc-track"><div class="dc-win" id="dcWin"></div><div class="dc-marker" id="dcKnob"></div></div></div>';
+                $("hgControls").innerHTML =
+                    '<div class="seg"><button class="seg-b on" onclick="dcMode(\'under\',this)">Roll Under</button><button class="seg-b" onclick="dcMode(\'over\',this)">Roll Over</button></div>' +
+                    '<input class="dc-slider" id="dcSlider" type="range" min="2" max="98" step="1" value="50" oninput="dcSlide(this.value)">' +
+                    '<div class="dc-read" id="dcRead"></div>' +
+                    '<button class="play-btn" id="dcGo" onclick="dcPlay()">Roll dice</button>';
+                dcUpd();
+            };
+            function dcMode(s, b) {
+                GAME._dmode = s;
+                document
+                    .querySelectorAll("#hgControls .seg-b")
+                    .forEach(function (x) {
+                        x.classList.remove("on");
+                    });
+                b.classList.add("on");
+                dcUpd();
+            }
+            function dcSlide(v) {
+                GAME._dt = Math.max(2, Math.min(98, Math.floor(+v || 50)));
+                dcUpd();
+            }
+            function dcPlay() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                msg("");
+                sfx("spin");
+                post("dice", {
+                    bet: bet(),
+                    target: GAME._dt,
+                    mode: GAME._dmode,
+                })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        var num = $("dcNum"),
+                            knob = $("dcKnob");
+                        if (knob)
+                            knob.style.left =
+                                Math.min(99.5, Math.max(0.5, d.roll)) + "%";
+                        num.textContent = d.roll.toFixed(2);
+                        num.className = "dc-num " + (d.win ? "win" : "lose");
+                        if (d.win) {
+                            sfx("win");
+                            msg(
+                                "+" + fmt(d.payout) + " FC · " + d.mult + "×",
+                                "good",
+                            );
+                        } else {
+                            sfx("lose");
+                            msg(
+                                "Rolled " + d.roll.toFixed(2) + " — no win",
+                                "bad",
+                            );
+                        }
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+
+            // ── Limbo (crash) ─────────────────────────────────────────────────────────
+            function lmUpd() {
+                var t = GAME._lt;
+                $("lmRead").innerHTML =
+                    "Target <b>" +
+                    t.toFixed(2) +
+                    "×</b> · <b>" +
+                    ((0.97 / t) * 100).toFixed(2) +
+                    "%</b> chance";
+            }
+            function lmUpdGo() {
+                var g = $("lmGo");
+                if (g)
+                    g.textContent = "Bet · target " + GAME._lt.toFixed(2) + "×";
+            }
+            RENDER.limbo = function () {
+                GAME._lt = 2;
+                $("hgBoard").innerHTML =
+                    '<div class="lm-wrap"><div class="lm-num" id="lmNum">1.00×</div><div class="dc-read" id="lmRead"></div></div>';
+                $("hgControls").innerHTML =
+                    '<div class="lm-quick" id="lmQuick"><button onclick="lmQ(1.5,this)">1.5×</button><button class="on" onclick="lmQ(2,this)">2×</button><button onclick="lmQ(5,this)">5×</button><button onclick="lmQ(10,this)">10×</button><button onclick="lmQ(25,this)">25×</button></div>' +
+                    '<input class="lm-in" id="lmIn" type="number" min="1.01" step="0.01" value="2.00" oninput="lmInput(this.value)">' +
+                    '<button class="play-btn" id="lmGo" onclick="lmPlay()">Bet · target 2.00×</button>';
+                lmUpd();
+                lmUpdGo();
+            };
+            function lmQ(v, b) {
+                GAME._lt = v;
+                $("lmIn").value = v.toFixed(2);
+                document
+                    .querySelectorAll("#lmQuick button")
+                    .forEach(function (x) {
+                        x.classList.remove("on");
+                    });
+                b.classList.add("on");
+                lmUpd();
+                lmUpdGo();
+            }
+            function lmInput(v) {
+                var t = Number(v);
+                if (Number.isFinite(t) && t >= 1.01) {
+                    GAME._lt = Math.min(1000, t);
+                    document
+                        .querySelectorAll("#lmQuick button")
+                        .forEach(function (x) {
+                            x.classList.remove("on");
+                        });
+                    lmUpd();
+                    lmUpdGo();
+                }
+            }
+            function lmPlay() {
+                if (busy) return;
+                if (bet() > bal) {
+                    msg("Not enough balance", "bad");
+                    return;
+                }
+                busy = true;
+                msg("");
+                sfx("spin");
+                post("limbo", { bet: bet(), target: GAME._lt })
+                    .then(function (d) {
+                        busy = false;
+                        if (d.error) {
+                            msg(d.error, "bad");
+                            return;
+                        }
+                        bal = d.balance;
+                        setBal();
+                        var num = $("lmNum");
+                        num.className = "lm-num";
+                        var start = 1,
+                            end = d.crash,
+                            t0 = performance.now(),
+                            dur = Math.min(
+                                900,
+                                280 + Math.log2(Math.max(2, end)) * 110,
+                            );
+                        function tick(now) {
+                            var p = Math.min(1, (now - t0) / dur),
+                                e = 1 - Math.pow(1 - p, 3),
+                                v = start + (end - start) * e;
+                            num.textContent = v.toFixed(2) + "×";
+                            if (p < 1) {
+                                requestAnimationFrame(tick);
+                            } else {
+                                num.textContent = end.toFixed(2) + "×";
+                                num.className =
+                                    "lm-num " + (d.win ? "win" : "lose");
+                                if (d.win) {
+                                    sfx("win");
+                                    msg(
+                                        "+" +
+                                            fmt(d.payout) +
+                                            " FC · crashed at " +
+                                            end.toFixed(2) +
+                                            "×",
+                                        "good",
+                                    );
+                                } else {
+                                    sfx("lose");
+                                    msg(
+                                        "Crashed at " +
+                                            end.toFixed(2) +
+                                            "× before " +
+                                            d.target.toFixed(2) +
+                                            "×",
+                                        "bad",
+                                    );
+                                }
+                            }
+                        }
+                        requestAnimationFrame(tick);
+                    })
+                    .catch(function () {
+                        busy = false;
+                    });
+            }
+            window.sgPaintTax && window.sgPaintTax(); // show the active server's tax cut
+        </script>
+    </body>
 </html>
