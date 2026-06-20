@@ -1329,8 +1329,8 @@ async function crashTick() {
         if (
           b.status === "in" &&
           b.auto > 1 &&
-          m >= b.auto &&
-          m < crashState.crash
+          b.auto <= crashState.crash &&
+          m >= b.auto
         ) {
           await crashCashoutPlayer(b, b.auto);
         }
@@ -1918,6 +1918,7 @@ const app = new Elysia()
     let auto = Number(b?.auto);
     if (!Number.isFinite(auto) || auto < CRASH.minAuto) auto = 0;
     if (auto > CRASH.maxTarget) auto = CRASH.maxTarget;
+    if (auto > 0) auto = Math.floor(auto * 100) / 100; // match crashMult's 2dp precision
     // Replacing an existing bet refunds the old stake first.
     const existing = crashState.bets.find((x) => x.uid === uid);
     if (existing) {

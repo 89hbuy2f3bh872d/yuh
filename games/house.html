@@ -595,6 +595,14 @@
             .rk-auto-in:focus {
                 border-color: var(--gc, #f43f5e);
             }
+            .rk-auto-in::-webkit-inner-spin-button,
+            .rk-auto-in::-webkit-outer-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
+            .rk-auto-in {
+                -moz-appearance: textfield;
+            }
             .rk-cash {
                 background: linear-gradient(
                     180deg,
@@ -2278,6 +2286,10 @@
                     return b.uid === rkMe;
                 });
             }
+            function rkActive() {
+                var vg = $("view-game");
+                return !!$("rkSky") && !!vg && !vg.classList.contains("hidden");
+            }
             function rkAv(b) {
                 return (
                     '<span class="rk-bav rk-binit">' +
@@ -2379,7 +2391,7 @@
                     if (cash) cash.classList.add("hidden");
                     if (place) {
                         place.classList.remove("hidden");
-                        place.textContent = mine ? "Update Bet" : "Place Bet";
+                        place.textContent = "Place Bet";
                     }
                     if (cancel) cancel.classList.toggle("hidden", !mine);
                 } else {
@@ -2521,7 +2533,7 @@
                 if (s.me) rkMe = s.me;
                 rkBettors();
                 rkHistory();
-                if (prev !== s.phase) {
+                if (prev !== s.phase && rkActive()) {
                     if (s.phase === "crashed") rkOnCrash();
                     else if (s.phase === "running") sfx("spin");
                     else if (s.phase === "waiting") {
@@ -2576,7 +2588,7 @@
                             bal = d.balance;
                             setBal();
                         }
-                        msg("Bet placed for the next round", "good");
+                        msg("Bet placed", "good");
                     })
                     .catch(function () {
                         busy = false;
