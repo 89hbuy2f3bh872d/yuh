@@ -401,12 +401,7 @@
                 z-index: 4;
                 will-change: left, top, transform;
                 filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
-                transition:
-                    transform 0.6s ease-out,
-                    opacity 0.4s;
-            }
-            .rk-rocket.flying {
-                transform: translate(-50%, -50%) rotate(45deg);
+                transition: opacity 0.4s;
             }
             .rk-body {
                 font-size: 2.8rem;
@@ -2124,16 +2119,21 @@
                 RK_SY = 76,
                 RK_AX = 66,
                 RK_AY = 22,
+                RK_DX = 46,
+                RK_DY = 54,
                 RK_DCAP = 1.1,
                 RK_PX = 240,
                 RK_BOOST_AT = 20;
             function rkPos(d) {
-                var t01 = Math.min(1, d / RK_DCAP);
-                return {
-                    x: RK_SX + (RK_AX - RK_SX) * t01,
-                    y: RK_SY + (RK_AY - RK_SY) * t01,
-                    over: Math.max(0, d - RK_DCAP),
-                };
+                // Quadratic Bézier: launch upward from (SX,SY), curve right to (AX,AY),
+                // control at (SX,AY) so it rises first then arcs right (natural pitch-over).
+                var t01 = Math.min(1, d / RK_DCAP),
+                    it = 1 - t01;
+                var x = RK_SX * (1 - t01 * t01) + RK_AX * t01 * t01;
+                var y = RK_SY * it * it + RK_AY * (1 - it * it);
+                // Rotate the rocket to follow the path tangent (up → up-right → right).
+                var ang = (Math.atan2(t01 * RK_DX, it * RK_DY) * 180) / Math.PI;
+                return { x: x, y: y, ang: ang, over: Math.max(0, d - RK_DCAP) };
             }
             function rkReset() {
                 GAME._flying = false;
@@ -2159,6 +2159,7 @@
                     r.style.left = RK_SX + "%";
                     r.style.top = RK_SY + "%";
                     r.style.opacity = "1";
+                    r.style.transform = "";
                     r.classList.remove("flying");
                 }
                 var bf = $("rkBoost");
@@ -2222,6 +2223,7 @@
                             r.style.left = RK_SX + "%";
                             r.style.top = RK_SY + "%";
                             r.style.opacity = "1";
+                            r.style.transform = "";
                             r.classList.add("flying");
                         }
                         var bf = $("rkBoost");
@@ -2253,6 +2255,10 @@
                 if (r) {
                     r.style.left = p.x + "%";
                     r.style.top = p.y + "%";
+                    r.style.transform =
+                        "translate(-50%,-50%) rotate(" +
+                        p.ang.toFixed(2) +
+                        "deg)";
                 }
                 // Blue boost flame: fades in slowly once the multiplier passes ~20× and
                 // grows as it climbs — a trailing boost jet, not a hard on/off.

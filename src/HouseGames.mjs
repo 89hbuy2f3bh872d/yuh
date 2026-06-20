@@ -71,7 +71,7 @@ export function dice(bet, target, mode) {
 // or sets an auto-cashout target. If m reaches C before cashout, the bet is lost. The time
 // curve only sets the visual pace; the crash-point distribution keeps RTP = EDGE (~3%).
 // C is hidden until the round ends (server-authoritative).
-export const CRASH = { k: 0.035, p: 2.0, minAuto: 1.01, maxTarget: 1000 };
+export const CRASH = { k: 0.024, p: 2.0, minAuto: 1.01, maxTarget: 1000 };
 function crashMult(elapsedMs) {
   if (elapsedMs <= 0) return 1;
   return (
