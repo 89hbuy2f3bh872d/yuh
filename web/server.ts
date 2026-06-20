@@ -27,7 +27,6 @@ import {
   coinflip,
   doubleOrNothing,
   dice,
-  limbo,
   HOUSE_GAMES,
   PLINKO,
 } from "../src/HouseGames.mjs";
@@ -1610,17 +1609,38 @@ const app = new Elysia()
       db.recordGame?.(uid, r.win, bet).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
-    if (sub === "limbo") {
+    if (sub === "crash/start") {
       if (!goodBet) return { error: "Invalid bet" };
+      const stranded = house.crashRefundIfOpen(uid);
+      if (stranded > 0) await stdb.credit(uid, stranded).catch(() => {});
       try {
         await stdb.deduct(uid, bet);
       } catch {
         return { error: "Insufficient balance" };
       }
       wager(bet);
-      const r = limbo(bet, d?.target);
-      await payWin(r.payout, bet);
-      db.recordGame?.(uid, r.win, bet).catch(() => {});
+      return Object.assign(house.startCrash(uid, bet, d?.auto), {
+        ok: true,
+        balance: bal(),
+      });
+    }
+    if (sub === "crash/status") {
+      const r = house.crashStatus(uid);
+      if ((r as any).crashed) {
+        db.recordGame?.(uid, false, 0).catch(() => {});
+        return Object.assign(r, { balance: bal() });
+      }
+      return r;
+    }
+    if (sub === "crash/cashout") {
+      const r: any = house.crashCashout(uid);
+      if (r.error) return r;
+      if (r.crashed) {
+        db.recordGame?.(uid, false, 0).catch(() => {});
+        return Object.assign(r, { balance: bal() });
+      }
+      await payWin(r.payout, r.bet ?? 0);
+      db.recordGame?.(uid, true, 0).catch(() => {});
       return Object.assign(r, { balance: bal() });
     }
     if (sub === "mines/start") {

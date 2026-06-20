@@ -63,28 +63,16 @@ export function dice(bet, target, mode) {
   };
 }
 
-// ── Limbo (crash) ───────────────────────────────────────────────────────
-// Pick a target multiplier m >= 1.01. A crash point is drawn so P(crash >= m) = EDGE/m:
-// crash = EDGE/u (u uniform), floored to 2dp; values below 1.00 snap to 1.00 (instant bust,
-// the house-edge mass). Win if crash >= target; pays bet × target. RTP = EDGE (~3%).
-export const LIMBO = { minTarget: 1.01, maxTarget: 1000 };
-export function limbo(bet, target) {
-  let t = Number(target);
-  if (!Number.isFinite(t) || t < LIMBO.minTarget) t = LIMBO.minTarget;
-  if (t > LIMBO.maxTarget) t = LIMBO.maxTarget;
-  const u = rnd();
-  let crash = u > 0 ? EDGE / u : 1e6;
-  if (crash < 1) crash = 1; // instant bust at 1.00
-  crash = Math.floor(crash * 100) / 100;
-  const win = crash >= t;
-  return {
-    target: +t.toFixed(2),
-    crash,
-    win,
-    mult: +t.toFixed(2),
-    chance: +((EDGE / t) * 100).toFixed(3),
-    payout: win ? Math.round(bet * t) : 0,
-  };
+// ── Crash (rocket, stateful) ─────────────────────────────────────────────
+// A crash point C is drawn at start so P(crash >= m) = EDGE/m — the house edge lives in the
+// instant-bust mass at 1.00. The multiplier m(t) = exp(GROWTH·t) rises from 1.00 with elapsed
+// ms. The player rides the rocket and cashes out manually (wins bet·m if m < C) or sets an
+// auto-cashout target. If m reaches C before cashout, the bet is lost. Server-authoritative:
+// C is hidden until the round ends. RTP = EDGE (~3%).
+export const CRASH = { growth: 0.0003, minAuto: 1.01, maxTarget: 1000 };
+function crashMult(elapsedMs) {
+  if (elapsedMs <= 0) return 1;
+  return Math.floor(Math.exp(CRASH.growth * elapsedMs) * 100) / 100;
 }
 
 // ── Chicken Road config. Each lane independently rolls a car-chance between
@@ -101,6 +89,7 @@ export class HouseState {
     this.mines = new Map();
     this.hilo = new Map();
     this.chicken = new Map();
+    this.crash = new Map();
   }
 
   // ── Chicken Road: cross lanes one at a time. Each lane's car-chance is fixed
@@ -331,6 +320,71 @@ export class HouseState {
   clearHilo(uid) {
     this.hilo.delete(uid);
   }
+
+  // ── Crash: ride the rocket, cash out before it crashes. C is drawn at start and
+  // hidden from the client. m(t) = exp(GROWTH·t). Manual cashout wins bet·m (if m < C);
+  // a cashout at/after C, or a status tick past C, is a bust. `auto` is a client hint
+  // only — the client triggers cashout at that mult; the server still validates vs C.
+  startCrash(uid, bet, auto) {
+    const u = rnd();
+    let crash = u > 0 ? EDGE / u : 1e6;
+    if (crash < 1) crash = 1; // instant bust at 1.00 (house-edge mass)
+    crash = Math.floor(crash * 100) / 100;
+    let a = Number(auto);
+    if (!Number.isFinite(a) || a < CRASH.minAuto) a = 0;
+    if (a > CRASH.maxTarget) a = CRASH.maxTarget;
+    this.crash.set(uid, {
+      bet,
+      crash,
+      start: Date.now(),
+      over: false,
+      auto: a,
+    });
+    return {
+      growth: CRASH.growth,
+      auto: a,
+      minAuto: CRASH.minAuto,
+      maxTarget: CRASH.maxTarget,
+    };
+  }
+  crashStatus(uid) {
+    const g = this.crash.get(uid);
+    if (!g) return { idle: true };
+    if (g.over) return { over: true };
+    const m = crashMult(Date.now() - g.start);
+    if (m >= g.crash) {
+      g.over = true;
+      this.crash.delete(uid);
+      return { crashed: true, crash: g.crash, mult: m };
+    }
+    return { flying: true, mult: m };
+  }
+  crashCashout(uid) {
+    const g = this.crash.get(uid);
+    if (!g || g.over) return { error: "No active game" };
+    const m = crashMult(Date.now() - g.start);
+    if (m >= g.crash) {
+      g.over = true;
+      this.crash.delete(uid);
+      return { crashed: true, crash: g.crash, mult: m };
+    }
+    const payout = Math.round(g.bet * m);
+    const bet = g.bet;
+    this.crash.delete(uid);
+    return { cashed: true, mult: m, payout, bet, crash: g.crash };
+  }
+  crashActive(uid) {
+    return this.crash.has(uid);
+  }
+  crashRefundIfOpen(uid) {
+    const g = this.crash.get(uid);
+    if (!g || g.over) return 0;
+    this.crash.delete(uid);
+    return g.bet;
+  }
+  clearCrash(uid) {
+    this.crash.delete(uid);
+  }
 }
 
 export const HOUSE_GAMES = [
@@ -377,9 +431,9 @@ export const HOUSE_GAMES = [
     color: "#14b8a6",
   },
   {
-    id: "limbo",
-    name: "Limbo",
-    tag: "Pick a multiplier, beat the crash point",
+    id: "crash",
+    name: "Crash",
+    tag: "Ride the rocket, cash out before it crashes",
     color: "#f43f5e",
   },
 ];
