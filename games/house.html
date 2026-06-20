@@ -326,31 +326,46 @@
                 border-radius: 16px;
                 overflow: hidden;
                 background: radial-gradient(
-                    120% 80% at 50% 120%,
+                    120% 80% at 30% 110%,
                     #1b2a4a 0%,
                     #0a0f1f 60%,
                     #05070f 100%
                 );
                 border: 1px solid var(--border);
             }
+            /* Tiled starfield — scrolled via background-position to convey speed (camera follow). */
             .rk-stars {
                 position: absolute;
-                inset: 0;
+                inset: -30%;
                 pointer-events: none;
+                background-image:
+                    radial-gradient(
+                        1.4px 1.4px at 22px 30px,
+                        #fff,
+                        transparent
+                    ),
+                    radial-gradient(1px 1px at 90px 70px, #fff, transparent),
+                    radial-gradient(
+                        1.6px 1.6px at 140px 120px,
+                        #cfe6ff,
+                        transparent
+                    ),
+                    radial-gradient(1px 1px at 60px 160px, #fff, transparent),
+                    radial-gradient(2px 2px at 175px 45px, #fff, transparent),
+                    radial-gradient(
+                        1.2px 1.2px at 110px 180px,
+                        #bdf,
+                        transparent
+                    );
+                background-size: 200px 200px;
+                background-repeat: repeat;
+                background-position: 0 0;
+                animation: rkTw 3.2s ease-in-out infinite;
             }
-            .rk-star {
-                position: absolute;
-                width: 2px;
-                height: 2px;
-                border-radius: 50%;
-                background: #fff;
-                opacity: 0.5;
-                animation: rkTwinkle 2.4s ease-in-out infinite;
-            }
-            @keyframes rkTwinkle {
+            @keyframes rkTw {
                 0%,
                 100% {
-                    opacity: 0.12;
+                    opacity: 0.45;
                 }
                 50% {
                     opacity: 0.85;
@@ -359,8 +374,7 @@
             .rk-mult {
                 position: absolute;
                 top: 1rem;
-                left: 50%;
-                transform: translateX(-50%);
+                left: 1.1rem;
                 font-size: 2.4rem;
                 font-weight: 900;
                 color: #fff;
@@ -377,13 +391,15 @@
                 color: #ffd34d;
                 text-shadow: 0 0 24px rgba(255, 211, 77, 0.7);
             }
+            /* Rocket travels diagonally up-right (left/top set by JS). Camera is fixed until it
+               reaches the top-right anchor, then the background scrolls (camera follow). */
             .rk-rocket {
                 position: absolute;
-                left: 50%;
-                bottom: 8%;
-                transform: translateX(-50%);
+                left: 20%;
+                top: 76%;
+                transform: translate(-50%, -50%);
                 z-index: 4;
-                will-change: bottom;
+                will-change: left, top;
                 filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
                 transition: opacity 0.4s;
             }
@@ -393,6 +409,7 @@
                 display: block;
                 transform: rotate(-45deg);
             }
+            /* Flames trail below the rocket. Hidden until .flying; blue boost flame on .boost. */
             .rk-flame {
                 position: absolute;
                 left: 50%;
@@ -400,6 +417,15 @@
                 transform: translateX(-50%);
                 width: 20px;
                 height: 34px;
+                border-radius: 50% 50% 50% 50%/40% 40% 65% 65%;
+                filter: blur(0.5px);
+                transform-origin: top center;
+                animation: rkFlicker 0.09s infinite alternate;
+                z-index: -1;
+                opacity: 0;
+                transition: opacity 0.25s;
+            }
+            .rk-flame.oj {
                 background: linear-gradient(
                     180deg,
                     #fff6b0 0%,
@@ -407,13 +433,8 @@
                     #ff8a1a 62%,
                     #ff3b00 100%
                 );
-                border-radius: 50% 50% 50% 50%/40% 40% 65% 65%;
-                filter: blur(0.5px);
-                transform-origin: top center;
-                animation: rkFlicker 0.09s infinite alternate;
-                z-index: -1;
             }
-            .rk-flame::after {
+            .rk-flame.oj::after {
                 content: "";
                 position: absolute;
                 left: 50%;
@@ -430,6 +451,33 @@
                 border-radius: 50%;
                 filter: blur(0.6px);
             }
+            .rk-rocket.flying .rk-flame.oj {
+                opacity: 1;
+            }
+            .rk-flame.boost {
+                width: 30px;
+                height: 56px;
+                background: linear-gradient(
+                    180deg,
+                    #e8f7ff 0%,
+                    #7fd4ff 35%,
+                    #2b8fe6 70%,
+                    #1d4ed8 100%
+                );
+                z-index: -2;
+                filter: blur(0.8px);
+            }
+            .rk-flame.boost::after {
+                background: linear-gradient(
+                    180deg,
+                    #fff 0%,
+                    #bff 60%,
+                    #2b8fe6 100%
+                );
+            }
+            .rk-rocket.flying.boost .rk-flame.boost {
+                opacity: 0.92;
+            }
             @keyframes rkFlicker {
                 from {
                     transform: translateX(-50%) scaleY(0.8) scaleX(0.9);
@@ -443,6 +491,7 @@
             .rk-burst {
                 position: absolute;
                 left: 50%;
+                top: 50%;
                 z-index: 6;
                 font-size: 3rem;
                 transform: translate(-50%, -50%);
@@ -455,6 +504,7 @@
             .rk-ring {
                 position: absolute;
                 left: 50%;
+                top: 50%;
                 z-index: 5;
                 transform: translate(-50%, -50%);
                 border: 3px solid #ff7a00;
@@ -2062,30 +2112,28 @@
             }
 
             // ── Crash (rocket) ─────────────────────────────────────────────────────────
+            // Trajectory: the rocket creeps from bottom-left toward the top-right corner
+            // (camera fixed). Once it passes RK_DCAP (~3×, “out of frame”), the camera follows —
+            // the rocket pins at the anchor and the starfield scrolls down-left, accelerating
+            // with the multiplier. Flame shows only while flying; a blue boost flame kicks in
+            // at high multiplier.
             var rkRaf = 0,
                 rkPollT = 0,
                 rkLocalStart = 0;
-            function rkMakeStars() {
-                var s = $("rkStars");
-                if (!s) return;
-                var h = "";
-                for (var i = 0; i < 70; i++) {
-                    var x = Math.random() * 100,
-                        y = Math.random() * 100,
-                        d = (Math.random() * 2.4).toFixed(2);
-                    h +=
-                        '<div class="rk-star" style="left:' +
-                        x +
-                        "%;top:" +
-                        y +
-                        "%;animation-delay:" +
-                        d +
-                        's"></div>';
-                }
-                s.innerHTML = h;
-            }
-            function rkY(m) {
-                return Math.min(82, Math.log2(Math.max(1, m)) * 11);
+            var RK_SX = 20,
+                RK_SY = 76,
+                RK_AX = 66,
+                RK_AY = 22,
+                RK_DCAP = 1.1,
+                RK_PX = 240,
+                RK_BOOST = 5;
+            function rkPos(d) {
+                var t01 = Math.min(1, d / RK_DCAP);
+                return {
+                    x: RK_SX + (RK_AX - RK_SX) * t01,
+                    y: RK_SY + (RK_AY - RK_SY) * t01,
+                    over: Math.max(0, d - RK_DCAP),
+                };
             }
             function rkReset() {
                 GAME._flying = false;
@@ -2102,14 +2150,19 @@
                     r = $("rkRocket"),
                     m = $("rkMult"),
                     b = $("rkBurst"),
-                    rg = $("rkRing");
+                    rg = $("rkRing"),
+                    s = $("rkStars");
                 if (st) st.classList.remove("hidden");
                 if (ca) ca.classList.add("hidden");
                 if (r) {
                     r.style.transition = "none";
-                    r.style.bottom = "8%";
+                    r.style.left = RK_SX + "%";
+                    r.style.top = RK_SY + "%";
                     r.style.opacity = "1";
+                    r.classList.remove("flying");
+                    r.classList.remove("boost");
                 }
+                if (s) s.style.backgroundPosition = "0 0";
                 if (m) {
                     m.textContent = "1.00×";
                     m.className = "rk-mult";
@@ -2122,12 +2175,11 @@
                 GAME._auto = 0;
                 GAME._autoOn = false;
                 $("hgBoard").innerHTML =
-                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div>';
+                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame boost"></div><div class="rk-flame oj"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div>';
                 $("hgControls").innerHTML =
                     '<div class="rk-auto"><label><input type="checkbox" id="rkAutoOn" onchange="rkAutoToggle()"> Auto cash out at</label> <input class="rk-auto-in" id="rkAutoIn" type="number" min="1.01" step="0.01" value="2.00"> ×</div>' +
                     '<button class="play-btn" id="rkStart" onclick="rkStart()">Start 🚀</button>' +
                     '<button class="play-btn cash rk-cash hidden" id="rkCash" onclick="rkCashout()">Cash Out <span id="rkCashVal">0</span> FC</button>';
-                rkMakeStars();
                 rkReset();
             };
             function rkAutoToggle() {
@@ -2153,7 +2205,8 @@
                         bal = d.balance;
                         setBal();
                         GAME._flying = true;
-                        GAME._growth = d.growth;
+                        GAME._k = d.k;
+                        GAME._p = d.p;
                         GAME._auto = d.auto || 0;
                         rkLocalStart = Date.now();
                         var m = $("rkMult");
@@ -2162,9 +2215,14 @@
                         var r = $("rkRocket");
                         if (r) {
                             r.style.transition = "none";
-                            r.style.bottom = "8%";
+                            r.style.left = RK_SX + "%";
+                            r.style.top = RK_SY + "%";
                             r.style.opacity = "1";
+                            r.classList.add("flying");
+                            r.classList.remove("boost");
                         }
+                        var s = $("rkStars");
+                        if (s) s.style.backgroundPosition = "0 0";
                         $("rkStart").classList.add("hidden");
                         $("rkCash").classList.remove("hidden");
                         if (rkRaf) cancelAnimationFrame(rkRaf);
@@ -2178,13 +2236,25 @@
             }
             function rkLoop() {
                 if (!GAME._flying) return;
-                var el = Date.now() - rkLocalStart,
-                    m = Math.max(1, Math.exp(GAME._growth * el));
+                var el = (Date.now() - rkLocalStart) / 1000;
+                var m = Math.max(1, Math.exp(GAME._k * Math.pow(el, GAME._p)));
                 m = Math.floor(m * 100) / 100;
+                var d = Math.log(m),
+                    p = rkPos(d);
+                var r = $("rkRocket");
+                if (r) {
+                    r.style.left = p.x + "%";
+                    r.style.top = p.y + "%";
+                    r.classList.toggle("boost", m >= RK_BOOST);
+                }
+                // Camera follow: once past the anchor, pin the rocket and scroll the starfield
+                // down-left. The scroll rate tracks dm/dt, so stars accelerate with the rocket.
+                var s = $("rkStars");
+                if (s)
+                    s.style.backgroundPosition =
+                        -p.over * RK_PX + "px " + p.over * RK_PX + "px";
                 var mult = $("rkMult");
                 if (mult) mult.textContent = m.toFixed(2) + "×";
-                var r = $("rkRocket");
-                if (r) r.style.bottom = 8 + rkY(m) + "%";
                 var cv = $("rkCashVal");
                 if (cv) cv.textContent = fmt(Math.round(bet() * m));
                 // Auto cash out: the client triggers it at the target mult; the server still
@@ -2199,8 +2269,7 @@
                 if (!GAME._flying) return;
                 post("crash/status", {})
                     .then(function (d) {
-                        if (!GAME._flying) return;
-                        if (d.crashed) rkCrash(d);
+                        if (GAME._flying && d.crashed) rkCrash(d);
                     })
                     .catch(function () {});
             }
@@ -2236,9 +2305,11 @@
                 var r = $("rkRocket");
                 if (r) {
                     r.style.transition =
-                        "bottom .55s ease-in, opacity .55s ease-in";
-                    r.style.bottom = "120%";
+                        "left .6s ease-in, top .6s ease-in, opacity .6s ease-in";
+                    r.style.left = "112%";
+                    r.style.top = "-12%";
                     r.style.opacity = "0";
+                    r.classList.remove("boost");
                 }
                 sfx("win");
                 msg(
@@ -2249,7 +2320,7 @@
                         "×)",
                     "good",
                 );
-                setTimeout(rkReset, 750);
+                setTimeout(rkReset, 800);
             }
             function rkCrash(d) {
                 GAME._flying = false;
@@ -2269,24 +2340,30 @@
                 var mult = $("rkMult");
                 mult.textContent = c.toFixed(2) + "×";
                 mult.className = "rk-mult crash";
-                var by = 8 + rkY(c) + 4;
+                var pc = rkPos(Math.log(c));
                 var b = $("rkBurst"),
                     rg = $("rkRing"),
                     r = $("rkRocket"),
                     sky = $("rkSky");
                 if (b) {
-                    b.style.bottom = by + "%";
+                    b.style.left = pc.x + "%";
+                    b.style.top = pc.y + "%";
                     b.classList.remove("go");
                     void b.offsetWidth;
                     b.classList.add("go");
                 }
                 if (rg) {
-                    rg.style.bottom = by + "%";
+                    rg.style.left = pc.x + "%";
+                    rg.style.top = pc.y + "%";
                     rg.classList.remove("go");
                     void rg.offsetWidth;
                     rg.classList.add("go");
                 }
-                if (r) r.style.opacity = "0";
+                if (r) {
+                    r.style.opacity = "0";
+                    r.classList.remove("flying");
+                    r.classList.remove("boost");
+                }
                 if (sky) {
                     sky.classList.remove("shake");
                     void sky.offsetWidth;

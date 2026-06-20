@@ -65,14 +65,19 @@ export function dice(bet, target, mode) {
 
 // ── Crash (rocket, stateful) ─────────────────────────────────────────────
 // A crash point C is drawn at start so P(crash >= m) = EDGE/m — the house edge lives in the
-// instant-bust mass at 1.00. The multiplier m(t) = exp(GROWTH·t) rises from 1.00 with elapsed
-// ms. The player rides the rocket and cashes out manually (wins bet·m if m < C) or sets an
-// auto-cashout target. If m reaches C before cashout, the bet is lost. Server-authoritative:
-// C is hidden until the round ends. RTP = EDGE (~3%).
-export const CRASH = { growth: 0.0003, minAuto: 1.01, maxTarget: 1000 };
+// instant-bust mass at 1.00. The multiplier m(t) = exp(k·t^p) (t in seconds) starts flat
+// (derivative 0 at t=0, so it creeps at first) and gradually accelerates — slow start, then
+// picks up speed. The player rides the rocket and cashes out manually (wins bet·m if m < C)
+// or sets an auto-cashout target. If m reaches C before cashout, the bet is lost. The time
+// curve only sets the visual pace; the crash-point distribution keeps RTP = EDGE (~3%).
+// C is hidden until the round ends (server-authoritative).
+export const CRASH = { k: 0.09, p: 1.6, minAuto: 1.01, maxTarget: 1000 };
 function crashMult(elapsedMs) {
   if (elapsedMs <= 0) return 1;
-  return Math.floor(Math.exp(CRASH.growth * elapsedMs) * 100) / 100;
+  return (
+    Math.floor(Math.exp(CRASH.k * Math.pow(elapsedMs / 1000, CRASH.p)) * 100) /
+    100
+  );
 }
 
 // ── Chicken Road config. Each lane independently rolls a car-chance between
@@ -341,7 +346,8 @@ export class HouseState {
       auto: a,
     });
     return {
-      growth: CRASH.growth,
+      k: CRASH.k,
+      p: CRASH.p,
       auto: a,
       minAuto: CRASH.minAuto,
       maxTarget: CRASH.maxTarget,
