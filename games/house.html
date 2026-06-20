@@ -397,11 +397,16 @@
                 position: absolute;
                 left: 20%;
                 top: 76%;
-                transform: translate(-50%, -50%);
+                transform: translate(-50%, -50%) rotate(0deg);
                 z-index: 4;
-                will-change: left, top;
+                will-change: left, top, transform;
                 filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
-                transition: opacity 0.4s;
+                transition:
+                    transform 0.6s ease-out,
+                    opacity 0.4s;
+            }
+            .rk-rocket.flying {
+                transform: translate(-50%, -50%) rotate(45deg);
             }
             .rk-body {
                 font-size: 2.8rem;
@@ -423,7 +428,7 @@
                 animation: rkFlicker 0.09s infinite alternate;
                 z-index: -1;
                 opacity: 0;
-                transition: opacity 0.25s;
+                transition: opacity 0.4s;
             }
             .rk-flame.oj {
                 background: linear-gradient(
@@ -475,17 +480,12 @@
                     #2b8fe6 100%
                 );
             }
-            .rk-rocket.flying.boost .rk-flame.boost {
-                opacity: 0.92;
-            }
             @keyframes rkFlicker {
                 from {
                     transform: translateX(-50%) scaleY(0.8) scaleX(0.9);
-                    opacity: 0.82;
                 }
                 to {
                     transform: translateX(-50%) scaleY(1.15) scaleX(1.08);
-                    opacity: 1;
                 }
             }
             .rk-burst {
@@ -2126,7 +2126,7 @@
                 RK_AY = 22,
                 RK_DCAP = 1.1,
                 RK_PX = 240,
-                RK_BOOST = 5;
+                RK_BOOST_AT = 20;
             function rkPos(d) {
                 var t01 = Math.min(1, d / RK_DCAP);
                 return {
@@ -2160,7 +2160,11 @@
                     r.style.top = RK_SY + "%";
                     r.style.opacity = "1";
                     r.classList.remove("flying");
-                    r.classList.remove("boost");
+                }
+                var bf = $("rkBoost");
+                if (bf) {
+                    bf.style.opacity = "0";
+                    bf.style.height = "44px";
                 }
                 if (s) s.style.backgroundPosition = "0 0";
                 if (m) {
@@ -2175,7 +2179,7 @@
                 GAME._auto = 0;
                 GAME._autoOn = false;
                 $("hgBoard").innerHTML =
-                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame boost"></div><div class="rk-flame oj"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div>';
+                    '<div class="rk-sky" id="rkSky"><div class="rk-stars" id="rkStars"></div><div class="rk-mult" id="rkMult">1.00×</div><div class="rk-rocket" id="rkRocket"><div class="rk-flame boost" id="rkBoost"></div><div class="rk-flame oj"></div><div class="rk-body">🚀</div></div><div class="rk-ring" id="rkRing"></div><div class="rk-burst" id="rkBurst">💥</div></div>';
                 $("hgControls").innerHTML =
                     '<div class="rk-auto"><label><input type="checkbox" id="rkAutoOn" onchange="rkAutoToggle()"> Auto cash out at</label> <input class="rk-auto-in" id="rkAutoIn" type="number" min="1.01" step="0.01" value="2.00"> ×</div>' +
                     '<button class="play-btn" id="rkStart" onclick="rkStart()">Start 🚀</button>' +
@@ -2214,12 +2218,16 @@
                         m.className = "rk-mult";
                         var r = $("rkRocket");
                         if (r) {
-                            r.style.transition = "none";
+                            r.style.transition = "";
                             r.style.left = RK_SX + "%";
                             r.style.top = RK_SY + "%";
                             r.style.opacity = "1";
                             r.classList.add("flying");
-                            r.classList.remove("boost");
+                        }
+                        var bf = $("rkBoost");
+                        if (bf) {
+                            bf.style.opacity = "0";
+                            bf.style.height = "44px";
                         }
                         var s = $("rkStars");
                         if (s) s.style.backgroundPosition = "0 0";
@@ -2245,7 +2253,21 @@
                 if (r) {
                     r.style.left = p.x + "%";
                     r.style.top = p.y + "%";
-                    r.classList.toggle("boost", m >= RK_BOOST);
+                }
+                // Blue boost flame: fades in slowly once the multiplier passes ~20× and
+                // grows as it climbs — a trailing boost jet, not a hard on/off.
+                var bf = $("rkBoost");
+                if (bf) {
+                    var bg =
+                        m >= RK_BOOST_AT
+                            ? Math.min(
+                                  1,
+                                  (Math.log(m) - Math.log(RK_BOOST_AT)) /
+                                      (Math.log(1000) - Math.log(RK_BOOST_AT)),
+                              )
+                            : 0;
+                    bf.style.opacity = (bg * 0.9).toFixed(3);
+                    bf.style.height = 44 + bg * 80 + "px";
                 }
                 // Camera follow: once past the anchor, pin the rocket and scroll the starfield
                 // down-left. The scroll rate tracks dm/dt, so stars accelerate with the rocket.
@@ -2309,8 +2331,9 @@
                     r.style.left = "112%";
                     r.style.top = "-12%";
                     r.style.opacity = "0";
-                    r.classList.remove("boost");
                 }
+                var bf = $("rkBoost");
+                if (bf) bf.style.opacity = "0";
                 sfx("win");
                 msg(
                     "Cashed out +" +
@@ -2362,8 +2385,9 @@
                 if (r) {
                     r.style.opacity = "0";
                     r.classList.remove("flying");
-                    r.classList.remove("boost");
                 }
+                var bf = $("rkBoost");
+                if (bf) bf.style.opacity = "0";
                 if (sky) {
                     sky.classList.remove("shake");
                     void sky.offsetWidth;
